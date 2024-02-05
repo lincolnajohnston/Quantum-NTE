@@ -9,6 +9,8 @@ import math
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
+import sys
+np.set_printoptions(threshold=sys.maxsize)
 
 # number of variable points in each direction
 n_x = 2
@@ -46,11 +48,12 @@ def get_solution_vector(solution, n):
     """Extracts and normalizes simulated state vector
     from LinearSolverResult."""
     state_vector = Statevector(solution.state)
-    solution_vector = Statevector(solution.state).data.real
-    print(Statevector(solution.state))
+    (outcome,state) = state_vector.measure()
+    solution_vector = state_vector.data.real
+    print(state_vector.data)
     solution_length = len(solution_vector)
     #solution_vector = solution_vector[int(solution_length/2):int(solution_length/2) + n]
-    solution_vector = solution_vector[:n]
+    solution_vector = solution_vector[:n] # get portion of solution corresponding to all zeros in ancilla LCU qubits
     norm = np.linalg.norm(solution_vector)
     return norm * solution_vector / np.linalg.norm(solution_vector)
 

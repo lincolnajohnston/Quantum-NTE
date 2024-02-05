@@ -49,7 +49,7 @@ def gram_schmidt_ortho(vector):
     
     # Normalize the input vector and add it to the orthogonal basis
     ortho_basis[0] = vector / np.linalg.norm(vector)
-    print(ortho_basis)
+    #print(ortho_basis)
 
     # Gram-Schmidt orthogonalization
     for i in range(1, num_dimensions):
@@ -465,7 +465,7 @@ class LCU(LinearSolver):
 
         # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
         A_mat_size = len(matrix)
-        J = 32
+        J = 64
         K = 16
         num_unitaries = 2 * J * K
         num_LCU_bits = math.ceil(np.log2(num_unitaries))
@@ -480,12 +480,12 @@ class LCU(LinearSolver):
         qb = QuantumRegister(nb)  # right hand side and solution
         if na > 0:
             qa = AncillaRegister(na)  # ancilla qubits
-        qf = QuantumRegister(nf)  # flag qubits
+        #qf = QuantumRegister(nf)  # flag qubits
 
         if na > 0:
-            qc = QuantumCircuit(qb, ql, qa, qf)
+            qc = QuantumCircuit(qb, ql, qa)
         else:
-            qc = QuantumCircuit(qb, ql, qf)
+            qc = QuantumCircuit(qb, ql)
 
         # State preparation
         qc.append(vector_circuit, qb[:])
@@ -496,6 +496,7 @@ class LCU(LinearSolver):
         alpha = 0
 
         for j in range(J):
+            print("J: ", j)
             y = j * delta_y
             for k in range(-K,K):
                 #condition_mat = np.zeros((pow(2,num_LCU_bits), pow(2,num_LCU_bits)))
@@ -514,10 +515,10 @@ class LCU(LinearSolver):
                 alpha += alpha_temp
                 alphas[2 * j * K + (k + K)] = alpha_temp
                 M = M + M_temp
-        print(U)
+        #print(U)
         matrix_invert = np.linalg.inv(matrix)
         print(matrix_invert)
-        print("prob: ", math.pow(np.linalg.norm(np.matmul(matrix_invert, vector)) / alpha,2))
+        #print("prob: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
         print(M)
         V = gram_schmidt_ortho(alphas)
         V = np.kron(V, np.eye(A_mat_size))
@@ -525,43 +526,14 @@ class LCU(LinearSolver):
 
 
         # check if W is unitary
-        print("V is unitary: ", is_unitary(V))
-        print("U is unitary: ", is_unitary(U))
-        print("W is unitary: ", is_unitary(W))
+        #print("V is unitary: ", is_unitary(V))
+        #print("U is unitary: ", is_unitary(U))
+        #print("W is unitary: ", is_unitary(W))
 
-        '''M_circuit = NumPyMatrix(M_test, evolution_time=2 * np.pi)
-        M_test = np.array([[0,1],[1,0]])
-        M_circuit = NumPyMatrix(M_test, evolution_time=2 * np.pi)
-        qc.compose(M_circuit, qubits=qb[0:1], inplace=True)
-        qc.draw('mpl', filename="circuit_image")'''
         LCU = Operator(W)
         qc.unitary(LCU, ql[:] + qb[:], label='lcu')
         #qc.measure(ql[:],cl[:])
         #qc.append(M_circuit, qb[:])
-        # QPE
-        '''phase_estimation = PhaseEstimation(nl, matrix_circuit)
-        if na > 0:
-            qc.append(
-                phase_estimation, ql[:] + qb[:] + qa[: matrix_circuit.num_ancillas]
-            )
-        else:
-            qc.append(phase_estimation, ql[:] + qb[:])
-        # Conditioned rotation
-        if self._exact_reciprocal:
-            qc.append(reciprocal_circuit, ql[::-1] + [qf[0]])
-        else:
-            qc.append(
-                reciprocal_circuit.to_instruction(),
-                ql[:] + [qf[0]] + qa[: reciprocal_circuit.num_ancillas],
-            )
-        # QPE inverse
-        if na > 0:
-            qc.append(
-                phase_estimation.inverse(),
-                ql[:] + qb[:] + qa[: matrix_circuit.num_ancillas],
-            )
-        else:
-            qc.append(phase_estimation.inverse(), ql[:] + qb[:])'''
         return qc
 
     def solve(
