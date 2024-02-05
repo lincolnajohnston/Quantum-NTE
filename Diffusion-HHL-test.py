@@ -1,6 +1,7 @@
 import numpy as np
 #from linear_solvers import HHL
 from linear_solvers.hhl import HHL
+from linear_solvers.lcu import LCU
 from qiskit.quantum_info import Statevector
 from qiskit import transpile
 from linear_solvers.matrices.tridiagonal_toeplitz import TridiagonalToeplitz
@@ -44,10 +45,13 @@ A_mat_size = (n_x) * (n_y)
 def get_solution_vector(solution, n):
     """Extracts and normalizes simulated state vector
     from LinearSolverResult."""
+    state_vector = Statevector(solution.state)
     solution_vector = Statevector(solution.state).data.real
+    print(Statevector(solution.state))
     solution_length = len(solution_vector)
-    solution_vector = solution_vector[int(solution_length/2):int(solution_length/2) + n]
-    norm = solution.euclidean_norm
+    #solution_vector = solution_vector[int(solution_length/2):int(solution_length/2) + n]
+    solution_vector = solution_vector[:n]
+    norm = np.linalg.norm(solution_vector)
     return norm * solution_vector / np.linalg.norm(solution_vector)
 
 def unroll_index(index_vec):
@@ -143,7 +147,8 @@ else:
     print("\n b vector: ")
     print(b_vector)
 
-naive_hhl_solution = HHL().solve(A_matrix, b_vector)
+#naive_hhl_solution = HHL().solve(A_matrix, b_vector)
+naive_hhl_solution = LCU().solve(A_matrix, b_vector)
 #tridi_solution = HHL().solve(tridi_matrix, vector)
 
 solution_vector = get_solution_vector(naive_hhl_solution, n_x*n_y)
