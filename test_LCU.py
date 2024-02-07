@@ -11,7 +11,6 @@ from scipy.linalg import ishermitian, expm
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
 
 
-from scipy.linalg import ishermitian, expm
 from qiskit.quantum_info.operators import Operator
 from linear_solvers.matrices.numpy_matrix import NumPyMatrix
 np.set_printoptions(threshold=np.inf)
@@ -89,14 +88,14 @@ def initialize_XSs():
             y_val = (j + 1) * delta_y - y_range
             if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                 # use fuel XSs
-                sigma_a[i * n_y + j] = 10
-                nu_sigma_f[i * n_y + j] = 1
-                D[i * n_y + j] = 1
+                sigma_a[i * n_y + j] = 4
+                nu_sigma_f[i * n_y + j] = 3
+                D[i * n_y + j] = 4
                 Q[i * n_y + j] = 5
             else:
                 # use moderator XSs
-                sigma_a[i * n_y + j] = 1
-                D[i * n_y + j] = 5
+                sigma_a[i * n_y + j] = 2
+                D[i * n_y + j] = 1
 
 # Perform Gram-Schmidt orthogonalization to have basis of vectors including the alpha vector
 # Function modified from ChatGPT suggestion
@@ -177,45 +176,10 @@ elif isinstance(vector, (list, np.ndarray)):
     )
 
 
-# Hamiltonian simulation circuit - default is Trotterization
-if isinstance(matrix, QuantumCircuit):
-    matrix_circuit = matrix
-elif isinstance(matrix, (list, np.ndarray)):
-    if isinstance(matrix, list):
-        matrix = np.array(matrix)
-
-    if matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("Input matrix must be square!")
-    if np.log2(matrix.shape[0]) % 1 != 0:
-        raise ValueError("Input matrix dimension must be 2^n!")
-    if not np.allclose(matrix, matrix.conj().T):
-        raise ValueError("Input matrix must be hermitian!")
-    if matrix.shape[0] != 2**vector_circuit.num_qubits:
-        raise ValueError(
-            "Input vector dimension does not match input "
-            "matrix dimension! Vector dimension: "
-            + str(vector_circuit.num_qubits)
-            + ". Matrix dimension: "
-            + str(matrix.shape[0])
-        )
-    matrix_circuit = NumPyMatrix(matrix, evolution_time=2 * np.pi)
-else:
-    raise ValueError(f"Invalid type for matrix: {type(matrix)}.")
-
-
-# check if the matrix can calculate the condition number and store the upper bound
-if (
-    hasattr(matrix_circuit, "condition_bounds")
-    and matrix_circuit.condition_bounds() is not None
-):
-    kappa = matrix_circuit.condition_bounds()[1]
-else:
-    kappa = 1
-
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
 A_mat_size = len(matrix)
-J = 64
+J = 128
 K = 16
 num_unitaries = 2 * J * K
 num_LCU_bits = math.ceil(np.log2(num_unitaries))
@@ -249,58 +213,41 @@ for j in range(J):
         alpha_temp = (1) / math.sqrt(2 * math.pi) * delta_y * delta_z * z * math.exp(-z*z/2)
         uni_mat = (1j) * expm(-(1j) * matrix * y * z)
         assert(is_unitary(uni_mat))
-        M_temp = alpha_temp * uni_mat
-        #U_temp = np.kron(condition_mat, uni_mat)
+        #M_temp = alpha_temp * uni_mat
         #print(U_temp[A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1),A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1)])
         if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
             alpha_temp *= -1
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = -1 * uni_mat
         else:
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = uni_mat
-        '''if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
-            alpha_temp *= -1
-            U = U - U_temp
-        else:
-            U = U + U_temp'''
         alpha += alpha_temp
         alphas[2 * j * K + (k + K)] = alpha_temp
-        M = M + M_temp
-print(U[len(U)-2*A_mat_size:len(U),len(U)-2*A_mat_size:len(U)])
-matrix_invert = np.linalg.inv(matrix)
-print(matrix_invert)
-#print("prob: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
-print(M)
-print("Matrix inverse error: ", M - matrix_invert)
-print(np.linalg.norm(M - matrix_invert))
+        #M = M + M_temp
+alphas = np.sqrt(alphas)
+#matrix_invert = np.linalg.inv(matrix)
+print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
+#print(M)
+#print("Matrix inverse error: ", M - matrix_invert)
+#print(np.linalg.norm(M - matrix_invert))
 V = gram_schmidt_ortho(alphas)
-zero_vec = np.zeros(2*J*K).T
-zero_vec[0] = 1
-print("V * zero_vec: ", np.matmul(V,zero_vec))
-print("normalized alphas: ", alphas / np.linalg.norm(alphas))
-print("V is unitary: ", is_unitary(V))
-V = np.kron(V, np.eye(A_mat_size))
 
-# check if W is unitary
+
+# check if operator matrices are unitary
 #print("V is unitary: ", is_unitary(V))
 #print("U is unitary: ", is_unitary(U))
-#print("W is unitary: ", is_unitary(W))
-
-#W = np.matmul(np.conj(V).T, np.matmul(U , V)) # U and V are sparse matrices so this can be made more efficient
-#LCU = Operator(W)
-#qc.unitary(LCU, ql[:] + qb[:], label='lcu')
 
 V_op = Operator(V)
 U_op = Operator(U)
 V_inv_op = Operator(np.conj(V).T)
 
-qc.unitary(V_op, qb[:] + ql[:], label='V') # further to the right registers are the more major ones (ql has most major qubits here)
+
+qc.unitary(V_op, ql[:], label='V') # further to the right registers are the more major ones (ql has most major qubits here)
 qc.unitary(U_op, qb[:] + ql[:], label='U')
-qc.unitary(V_inv_op, qb[:] + ql[:], label='V_inv')
+qc.unitary(V_inv_op, ql[:], label='V_inv')
 
 qc.save_statevector()
 
 backend = QasmSimulator(method="statevector")
-#backend_options = {'method': 'statevector'}
 job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
@@ -308,14 +255,12 @@ print(state_vec)
 print(state_vec[0:A_mat_size])
 state_vec = np.absolute(state_vec[0:A_mat_size])
 state_vec = state_vec / np.linalg.norm(state_vec)
-print("quantum solution vector: ", state_vec)
+print("quantum state vector: ", state_vec)
+state_vec = state_vec / math.sqrt(np.dot(vector, vector) * alpha)
+print("quantum solution estimate: ", state_vec)
 
-print("expected quantum solution: ", np.matmul(M, vector / np.linalg.norm(vector)))
+#print("expected quantum solution: ", np.matmul(M, vector))
 
-classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
+classical_sol_vec = np.linalg.solve(matrix, vector)
 print('classical solution vector:          ', classical_sol_vec)
-
-
-print("work")
-
 
