@@ -89,14 +89,14 @@ def initialize_XSs():
             y_val = (j + 1) * delta_y - y_range
             if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                 # use fuel XSs
-                sigma_a[i * n_y + j] = 2
-                nu_sigma_f[i * n_y + j] = 2
+                sigma_a[i * n_y + j] = 10
+                nu_sigma_f[i * n_y + j] = 1
                 D[i * n_y + j] = 1
                 Q[i * n_y + j] = 5
             else:
                 # use moderator XSs
                 sigma_a[i * n_y + j] = 1
-                D[i * n_y + j] = 0.1
+                D[i * n_y + j] = 5
 
 # Perform Gram-Schmidt orthogonalization to have basis of vectors including the alpha vector
 # Function modified from ChatGPT suggestion
@@ -118,7 +118,7 @@ def gram_schmidt_ortho(vector):
             ortho_vector -= np.dot(ortho_basis[j], ortho_vector) / np.dot(ortho_basis[j], ortho_basis[j]) * ortho_basis[j]
         ortho_basis[i] = ortho_vector / np.linalg.norm(ortho_vector)
     
-    return ortho_basis
+    return ortho_basis.T
 
 def is_unitary(matrix):
     I = matrix.dot(np.conj(matrix).T)
@@ -215,7 +215,7 @@ else:
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
 A_mat_size = len(matrix)
-J = 128
+J = 64
 K = 16
 num_unitaries = 2 * J * K
 num_LCU_bits = math.ceil(np.log2(num_unitaries))
@@ -229,37 +229,43 @@ delta_z = z_max / K
 # Initialise the quantum registers
 qb = QuantumRegister(nb)  # right hand side and solution
 
-qc = QuantumCircuit(qb, ql, cl)
+qc = QuantumCircuit(qb, ql)
 
 # State preparation
 qc.append(vector_circuit, qb[:])
 
 M = np.zeros((A_mat_size, A_mat_size))
-U = np.zeros((A_mat_size * pow(2,num_LCU_bits), A_mat_size * pow(2,num_LCU_bits)), dtype=complex)
-alphas = np.zeros(pow(2,num_LCU_bits))
+U = np.zeros((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex)
+alphas = np.zeros(2 * J * K)
 alpha = 0
 
 for j in range(J):
     print("J: ", j)
     y = j * delta_y
     for k in range(-K,K):
-        #condition_mat = np.zeros((pow(2,num_LCU_bits), pow(2,num_LCU_bits)))
-        #condition_mat[j * J + (k + K),j * J + (k + K)] = 1
+        condition_mat = np.zeros((2*J*K, 2*J*K))
+        condition_mat[j * 2 * K + (k + K),j * 2 * K + (k + K)] = 1.0
         z = k * delta_z
         alpha_temp = (1) / math.sqrt(2 * math.pi) * delta_y * delta_z * z * math.exp(-z*z/2)
         uni_mat = (1j) * expm(-(1j) * matrix * y * z)
         assert(is_unitary(uni_mat))
         M_temp = alpha_temp * uni_mat
-        #U_temp = U_temp + np.kron(condition_mat, uni_mat)
+        #U_temp = np.kron(condition_mat, uni_mat)
+        #print(U_temp[A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1),A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1)])
         if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
             alpha_temp *= -1
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = -1 * uni_mat
         else:
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = uni_mat
+        '''if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
+            alpha_temp *= -1
+            U = U - U_temp
+        else:
+            U = U + U_temp'''
         alpha += alpha_temp
         alphas[2 * j * K + (k + K)] = alpha_temp
         M = M + M_temp
-#print(U)
+print(U[len(U)-2*A_mat_size:len(U),len(U)-2*A_mat_size:len(U)])
 matrix_invert = np.linalg.inv(matrix)
 print(matrix_invert)
 #print("prob: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
@@ -267,17 +273,29 @@ print(M)
 print("Matrix inverse error: ", M - matrix_invert)
 print(np.linalg.norm(M - matrix_invert))
 V = gram_schmidt_ortho(alphas)
+zero_vec = np.zeros(2*J*K).T
+zero_vec[0] = 1
+print("V * zero_vec: ", np.matmul(V,zero_vec))
+print("normalized alphas: ", alphas / np.linalg.norm(alphas))
+print("V is unitary: ", is_unitary(V))
 V = np.kron(V, np.eye(A_mat_size))
-W = np.matmul(np.conj(V).T, np.matmul(U , V)) # U and V are sparse matrices so this can be made more efficient
-
 
 # check if W is unitary
 #print("V is unitary: ", is_unitary(V))
 #print("U is unitary: ", is_unitary(U))
 #print("W is unitary: ", is_unitary(W))
 
-LCU = Operator(W)
-qc.unitary(LCU, ql[:] + qb[:], label='lcu')
+#W = np.matmul(np.conj(V).T, np.matmul(U , V)) # U and V are sparse matrices so this can be made more efficient
+#LCU = Operator(W)
+#qc.unitary(LCU, ql[:] + qb[:], label='lcu')
+
+V_op = Operator(V)
+U_op = Operator(U)
+V_inv_op = Operator(np.conj(V).T)
+
+qc.unitary(V_op, qb[:] + ql[:], label='V') # further to the right registers are the more major ones (ql has most major qubits here)
+qc.unitary(U_op, qb[:] + ql[:], label='U')
+qc.unitary(V_inv_op, qb[:] + ql[:], label='V_inv')
 
 qc.save_statevector()
 
@@ -286,14 +304,17 @@ backend = QasmSimulator(method="statevector")
 job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
+print(state_vec)
 print(state_vec[0:A_mat_size])
 state_vec = np.absolute(state_vec[0:A_mat_size])
+state_vec = state_vec / np.linalg.norm(state_vec)
 print("quantum solution vector: ", state_vec)
+
+print("expected quantum solution: ", np.matmul(M, vector / np.linalg.norm(vector)))
 
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 print('classical solution vector:          ', classical_sol_vec)
 
-#qc.measure(ql, cl)
 
 
 
