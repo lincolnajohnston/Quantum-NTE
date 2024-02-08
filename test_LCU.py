@@ -35,10 +35,6 @@ bottom_x_BCs = np.zeros(n_pts_x) * bottom_flux
 right_y_BCs = np.zeros(n_pts_y) * right_flux
 left_y_BCs = np.zeros(n_pts_y) * left_flux
 
-
-#sigma_a = np.array([1, 2, 3, 4])
-#nu_sigma_f = np.array([2,4,3,1])
-#Q = np.array([5,4,6,7])
 sigma_a = np.zeros(n_x*n_y)
 nu_sigma_f = np.zeros(n_x*n_y)
 D = np.zeros(n_x*n_y)
@@ -84,18 +80,21 @@ def initialize_XSs():
 
     for i in range(n_x):
         for j in range(n_y):
-            x_val = (i + 1) * delta_x - x_range
-            y_val = (j + 1) * delta_y - y_range
+            x_val = (i + 1) * delta_x - x_range/2
+            y_val = (j + 1) * delta_y - y_range/2
             if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                 # use fuel XSs
                 sigma_a[i * n_y + j] = 4
                 nu_sigma_f[i * n_y + j] = 3
-                D[i * n_y + j] = 4
+                D[i * n_y + j] = 1
                 Q[i * n_y + j] = 5
             else:
                 # use moderator XSs
                 sigma_a[i * n_y + j] = 2
                 D[i * n_y + j] = 1
+
+def get_mean_D(p1, p2):
+    return (D[p1] + D[p2])/2
 
 # Perform Gram-Schmidt orthogonalization to have basis of vectors including the alpha vector
 # Function modified from ChatGPT suggestion
@@ -134,19 +133,19 @@ for i in range(A_mat_size):
     A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
     current_index = roll_index(i)
     if(current_index[0] > 0):
-        A_matrix[i,unroll_index(current_index + np.array([-1, 0]))] = -D[i] / (delta_x*delta_x) # (i-1,j) term
+        A_matrix[i,unroll_index(current_index + np.array([-1, 0]))] = -get_mean_D(i,unroll_index(current_index + np.array([-1, 0]))) / (delta_x*delta_x) # (i-1,j) term
     else:
         b_vector[i] += D[i] / (delta_x*delta_x) * get_BC_flux(current_index + np.array([-1, 0]))
     if(current_index[0] < n_x - 1):
-        A_matrix[i,unroll_index(current_index + np.array([1, 0]))] = -D[i] / (delta_x*delta_x) # (i+1,j) term
+        A_matrix[i,unroll_index(current_index + np.array([1, 0]))] = -get_mean_D(i,unroll_index(current_index + np.array([1, 0]))) / (delta_x*delta_x) # (i+1,j) term
     else:
         b_vector[i] += D[i] / (delta_x*delta_x) * get_BC_flux(current_index + np.array([1, 0]))
     if(current_index[1] > 0):
-        A_matrix[i,unroll_index(current_index + np.array([0, -1]))] = -D[i] / (delta_y*delta_y) # (i,j-1) term
+        A_matrix[i,unroll_index(current_index + np.array([0, -1]))] = -get_mean_D(i,unroll_index(current_index + np.array([0, -1]))) / (delta_y*delta_y) # (i,j-1) term
     else:
         b_vector[i] += D[i] / (delta_y*delta_y) * get_BC_flux(current_index + np.array([0, -1]))
     if(current_index[1] < n_y - 1):
-        A_matrix[i,unroll_index(current_index + np.array([0, 1]))] = -D[i] / (delta_y*delta_y) # (i,j+1) term
+        A_matrix[i,unroll_index(current_index + np.array([0, 1]))] = -get_mean_D(i,unroll_index(current_index + np.array([0, 1]))) / (delta_y*delta_y) # (i,j+1) term
     else:
         b_vector[i] += D[i] / (delta_y*delta_y) * get_BC_flux(current_index + np.array([0, 1]))
 
@@ -179,14 +178,14 @@ elif isinstance(vector, (list, np.ndarray)):
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
 A_mat_size = len(matrix)
-J = 128
+J = 64
 K = 16
 num_unitaries = 2 * J * K
 num_LCU_bits = math.ceil(np.log2(num_unitaries))
 ql = QuantumRegister(num_LCU_bits)  # LCU ancilla zero bits
 cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
 y_max = 3
-z_max = 4
+z_max = 3
 delta_y = y_max / J
 delta_z = z_max / K
 
@@ -213,22 +212,24 @@ for j in range(J):
         alpha_temp = (1) / math.sqrt(2 * math.pi) * delta_y * delta_z * z * math.exp(-z*z/2)
         uni_mat = (1j) * expm(-(1j) * matrix * y * z)
         assert(is_unitary(uni_mat))
-        #M_temp = alpha_temp * uni_mat
+        M_temp = alpha_temp * uni_mat
         #print(U_temp[A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1),A_mat_size*(j * 2 * K + (k + K)):A_mat_size*(j * 2 * K + (k + K) + 1)])
         if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
             alpha_temp *= -1
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = -1 * uni_mat
         else:
+            alpha_temp *= 1
             U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = uni_mat
         alpha += alpha_temp
         alphas[2 * j * K + (k + K)] = alpha_temp
-        #M = M + M_temp
+        M = M + M_temp
 alphas = np.sqrt(alphas)
-#matrix_invert = np.linalg.inv(matrix)
+matrix_invert = np.linalg.inv(matrix)
+print(matrix_invert)
 print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
-#print(M)
-#print("Matrix inverse error: ", M - matrix_invert)
-#print(np.linalg.norm(M - matrix_invert))
+print(M)
+print("Matrix inverse error: ", (M - matrix_invert) / matrix_invert)
+print("norm of diff matrix: ", np.linalg.norm(M - matrix_invert))
 V = gram_schmidt_ortho(alphas)
 
 
@@ -251,15 +252,12 @@ backend = QasmSimulator(method="statevector")
 job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
-print(state_vec)
 print(state_vec[0:A_mat_size])
 state_vec = np.absolute(state_vec[0:A_mat_size])
-state_vec = state_vec / np.linalg.norm(state_vec)
-print("quantum state vector: ", state_vec)
-state_vec = state_vec / math.sqrt(np.dot(vector, vector) * alpha)
+state_vec = state_vec * math.sqrt(np.dot(vector, vector)) * alpha
 print("quantum solution estimate: ", state_vec)
 
-#print("expected quantum solution: ", np.matmul(M, vector))
+print("expected quantum solution: ", np.matmul(M, vector))
 
 classical_sol_vec = np.linalg.solve(matrix, vector)
 print('classical solution vector:          ', classical_sol_vec)
