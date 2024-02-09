@@ -7,10 +7,9 @@ import math
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, expm
+import time
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
-
-
 from qiskit.quantum_info.operators import Operator
 from linear_solvers.matrices.numpy_matrix import NumPyMatrix
 np.set_printoptions(threshold=np.inf)
@@ -18,9 +17,10 @@ np.set_printoptions(threshold=np.inf)
 # code to implement the Linear Combination of Unitaries method described in the link below
 # https://arxiv.org/pdf/1511.02306.pdf
 
+start = time.perf_counter()
 # number of variable points in each direction
-n_x = 2
-n_y = 2
+n_x = 8
+n_y = 8
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -85,7 +85,8 @@ def initialize_XSs():
     x_range = (n_pts_x - 1) * delta_x
     y_range = (n_pts_y - 1) * delta_y
 
-    fuel_radius = min(x_range,y_range)/3
+    fuel_radius = min(x_range,y_range)/4
+    #fuel_radius = 9999
 
     for i in range(n_x):
         for j in range(n_y):
@@ -172,34 +173,47 @@ def get_b_setup_gate(vector, nb):
 
 # return the U gate in the LCU process as well as a vector of the alpha values.
 # Use the Fourier process from the LCU paper to approximate the inverse of A
-def get_fourier_unitaries(J, K, matrix):
+def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
     A_mat_size = len(matrix)
-    y_max = 3
-    z_max = 3
     delta_y = y_max / J
     delta_z = z_max / K
-    U = np.zeros((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex) # matrix from 
-    alphas = np.zeros(2 * J * K)
+    if doFullSolution:
+        U = np.zeros((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex) # matrix from 
+        alphas = np.zeros(2 * J * K)
+    M = np.zeros((A_mat_size, A_mat_size)) # approximation of inverse of A matrix
 
     for j in range(J):
-        print("J: ", j)
+        #print("J: ", j)
         y = j * delta_y
         for k in range(-K,K):
             z = k * delta_z
             alpha_temp = (1) / math.sqrt(2 * math.pi) * delta_y * delta_z * z * math.exp(-z*z/2)
             uni_mat = (1j) * expm(-(1j) * matrix * y * z)
             assert(is_unitary(uni_mat))
-            #M_temp = alpha_temp * uni_mat
-            if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
-                alpha_temp *= -1
-                U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = -1 * uni_mat
-            else:
-                alpha_temp *= 1
-                U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = uni_mat
-            alphas[2 * j * K + (k + K)] = alpha_temp
-            #M = M + M_temp
-    alphas = np.sqrt(alphas)
-    return U, alphas
+            M_temp = alpha_temp * uni_mat
+            if doFullSolution:
+                if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
+                    alpha_temp *= -1
+                    U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = -1 * uni_mat
+                else:
+                    alpha_temp *= 1
+                    U[A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1),A_mat_size*(2 * j * K + (k + K)):A_mat_size*(2 * j * K + (k + K) + 1)] = uni_mat
+                alphas[2 * j * K + (k + K)] = alpha_temp
+            M = M + M_temp
+
+    matrix_invert = np.linalg.inv(matrix)
+    error_norm = np.linalg.norm(M - matrix_invert)
+    if doFullSolution:
+        alphas = np.sqrt(alphas)
+        print("real matrix inverse: ", matrix_invert)
+        #print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
+        print("estimated matrix inverse: ", M)
+        print("Matrix inverse error: ", (M - matrix_invert) / matrix_invert)
+        
+        print("norm of inverse error: ", error_norm)
+
+        return U, alphas, error_norm
+    return 0, 0, error_norm
 
 # make b vector
 b_vector = Q
@@ -216,14 +230,46 @@ eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
 print("A eigenvalues: ", eigenvalues)
 print("A condition number: ", max(eigenvalues) / min(eigenvalues))
 
+material_initialization_time = time.perf_counter()
+print("Initialization Time: ", material_initialization_time - start)
+
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-J = 64 # number of discrete points in the y direction for approximating A^(-1)
-K = 16 # half the number of discrete points in the z direction for approximating A^(-1)
-num_unitaries = 2 * J * K # number of separate unitaries used to approximate the inverse of the A matrix
-num_LCU_bits = math.ceil(np.log2(num_unitaries))
-nb = int(np.log2(len(b_vector)))
+num_LCU_bits = 8
+num_unitaries = pow(2,num_LCU_bits)
+last_error_norm = np.inf
+
+# select optimal J, K, y_max, and z_max in just about the least efficient way possible
+best_j = 0
+best_y_max = 0
+best_z_max = 0
+best_error_norm = np.inf
+for j in range(3,num_LCU_bits - 3):
+    J = pow(2,j)
+    K = pow(2,num_LCU_bits-j-1)
+    for y_max in np.linspace(2,6,10):
+        for z_max in np.linspace(2,5,10):
+            U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, A_matrix, False)
+            print("J: ", J)
+            print("K: ", K)
+            print("y_max: ", y_max)
+            print("z_max: ", z_max)
+            print("Error: ", error_norm)
+            if(last_error_norm < error_norm):
+                break
+            if error_norm < best_error_norm:
+                best_j = j
+                best_y_max = y_max
+                best_z_max = z_max
+                best_error_norm = error_norm
+            last_error_norm = error_norm
+
+U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, A_matrix, True)
+
+unitary_construction_time = time.perf_counter()
+print("Unitary Construction Time: ", unitary_construction_time - material_initialization_time)
 
 # Initialise the quantum registers
+nb = int(np.log2(len(b_vector)))
 qb = QuantumRegister(nb)  # right hand side and solution
 ql = QuantumRegister(num_LCU_bits)  # LCU ancilla zero bits
 cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
@@ -233,34 +279,31 @@ qc = QuantumCircuit(qb, ql)
 # b vector State preparation
 qc.append(get_b_setup_gate(b_vector, nb), qb[:])
 
-#M = np.zeros((A_mat_size, A_mat_size)) # approximation of inverse of A matrix
-U, alphas = get_fourier_unitaries(J, K, A_matrix)
+circuit_setup_time = time.perf_counter()
+print("Circuit Setup Time: ", circuit_setup_time - unitary_construction_time)
+
 alpha = np.dot(alphas, alphas)
 
-'''A_matrix_invert = np.linalg.inv(A_matrix)
-print(A_matrix_invert)
-print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(A_matrix, vector/ np.linalg.norm(vector))),2))
-print(M)
-print("A_Matrix inverse error: ", (M - A_matrix_invert) / A_matrix_invert)
-print("norm of diff A_matrix: ", np.linalg.norm(M - A_matrix_invert))'''
-
 V = gram_schmidt_ortho(alphas)
-
-# check if operator matrices are unitary
-#print("V is unitary: ", is_unitary(V))
-#print("U is unitary: ", is_unitary(U))
+v_mat_time = time.perf_counter()
+print("Construction of V matrix time: ", v_mat_time - circuit_setup_time)
 
 V_op = Operator(V)
 U_op = Operator(U)
 V_inv_op = Operator(np.conj(V).T)
+op_time = time.perf_counter()
+print("Operator Construction Time: ", op_time - v_mat_time)
 
 
 qc.unitary(V_op, ql[:], label='V') # further to the right registers are the more major ones (ql has most major qubits here)
 qc.unitary(U_op, qb[:] + ql[:], label='U')
 qc.unitary(V_inv_op, ql[:], label='V_inv')
+gate_time = time.perf_counter()
+print("Gate U and V Application Time: ", gate_time - op_time)
 
 qc.save_statevector()
 
+# Run quantum algorithm
 backend = QasmSimulator(method="statevector")
 job = execute(qc, backend)
 job_result = job.result()
@@ -268,10 +311,35 @@ state_vec = job_result.get_statevector(qc).data
 print(state_vec[0:A_mat_size])
 state_vec = np.absolute(state_vec[0:A_mat_size])
 state_vec = state_vec * math.sqrt(np.dot(b_vector, b_vector)) * alpha
-print("quantum solution estimate: ", state_vec)
 
+# Print results
+print("quantum solution estimate: ", state_vec)
 #print("expected quantum solution: ", np.matmul(M, vector))
 
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 print('classical solution vector:          ', classical_sol_vec)
+
+sol_error = (state_vec - classical_sol_vec) / classical_sol_vec
+print("Relative solution error: ", sol_error)
+
+solve_time = time.perf_counter()
+print("Circuit Solve Time: ", solve_time - gate_time)
+print("Total time: ", solve_time - start)
+
+
+# Make graphs of results
+state_vec.resize((n_x,n_y))
+ax = sns.heatmap(state_vec, linewidth=0.5)
+plt.title("Quantum Solution")
+plt.figure()
+
+classical_sol_vec.resize((n_x,n_y))
+ax = sns.heatmap(classical_sol_vec, linewidth=0.5)
+plt.title("Real Solution")
+plt.figure()
+
+sol_error.resize((n_x,n_y))
+ax = sns.heatmap(sol_error, linewidth=0.5)
+plt.title("Relative error between quantum and real solution")
+plt.show()
 
