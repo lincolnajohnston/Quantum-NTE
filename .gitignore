@@ -39,3 +39,4 @@ Thumbs.db
 # specific to Quantum-NTE
 env/
 __pycache__/
+*.png
