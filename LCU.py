@@ -21,7 +21,7 @@ np.set_printoptions(threshold=np.inf)
 start = time.perf_counter()
 # number of variable points in each direction
 n_x = 32
-n_y = 64
+n_y = 32
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -253,7 +253,7 @@ num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
 # select optimal J, K, y_max, and z_max in just about the least efficient way possible
-best_j = 0
+'''best_j = 0
 best_y_max = 0
 best_z_max = 0
 best_error_norm = np.inf
@@ -263,11 +263,11 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     for y_max in np.linspace(2,6,10):
         for z_max in np.linspace(2,5,10):
             U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, A_matrix, False)
-            '''print("J: ", J)
+            print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
             print("z_max: ", z_max)
-            print("Error: ", error_norm)'''
+            print("Error: ", error_norm)
             if(last_error_norm < error_norm):
                 break
             if error_norm < best_error_norm:
@@ -275,9 +275,45 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
                 best_y_max = y_max
                 best_z_max = z_max
                 best_error_norm = error_norm
-            last_error_norm = error_norm
+            last_error_norm = error_norm'''
+
+# a little quicker way to get best parameters for LCU, but gets worse answers
+'''best_j = math.floor(num_LCU_bits/2)
+best_y_max = 4
+best_z_max = 3
+best_error_norm = np.inf
+J = pow(2, best_j)
+K = pow(2,num_LCU_bits-best_j-1)
+for y_max in np.linspace(0.1,6,30):
+    U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False)
+    print("y_max: ", y_max)
+    print("Error: ", error_norm)
+    if error_norm < best_error_norm:
+        best_y_max = y_max
+        best_error_norm = error_norm
+    else:
+        break
+best_error_norm = np.inf
+for z_max in np.linspace(0.1,5,30):
+    U, alphas, error_norm = get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False)
+    print("z_max: ", z_max)
+    print("Error: ", error_norm)
+    if(last_error_norm < error_norm):
+        break
+    if error_norm < best_error_norm:
+        best_z_max = z_max
+        best_error_norm = error_norm
+    else:
+        break'''
+
+
+# manually input paremters for LCU
+best_j = 1
+best_y_max = 1
+best_z_max = 1
 
 U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, A_matrix, True)
+print("Error Norm: ", error_norm)
 
 unitary_construction_time = time.perf_counter()
 print("Unitary Construction Time: ", unitary_construction_time - material_initialization_time)
