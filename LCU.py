@@ -218,7 +218,6 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
     matrix_invert = np.linalg.inv(matrix)
     error_norm = np.linalg.norm(M - matrix_invert)
     if doFullSolution:
-        alphas = np.sqrt(alphas)
         #print("real matrix inverse: ", matrix_invert)
         #print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
         #print("estimated matrix inverse: ", M)
@@ -248,7 +247,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 4
+num_LCU_bits = 5
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -308,7 +307,7 @@ for z_max in np.linspace(0.1,5,30):
 
 
 # manually input paremters for LCU
-best_j = 1
+best_j = 2
 best_y_max = 1
 best_z_max = 1
 
@@ -332,15 +331,12 @@ qc.append(get_b_setup_gate(b_vector, nb), qb[:])
 circuit_setup_time = time.perf_counter()
 print("Circuit Setup Time: ", circuit_setup_time - unitary_construction_time)
 
-alpha = np.dot(alphas, alphas)
+alpha = np.sum(alphas)
 
-V = gram_schmidt_ortho(alphas)
+V = gram_schmidt_ortho(np.sqrt(alphas))
 v_mat_time = time.perf_counter()
 print("Construction of V matrix time: ", v_mat_time - circuit_setup_time)
 
-#V_op = Operator(V)
-#U_op = Operator(U)
-#V_inv_op = Operator(np.conj(V).T)
 op_time = time.perf_counter()
 print("Operator Construction Time: ", op_time - v_mat_time)
 
@@ -363,8 +359,9 @@ job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
-state_vec = np.absolute(state_vec[0:A_mat_size])
-state_vec = state_vec * math.sqrt(np.dot(b_vector, b_vector)) * alpha
+state_vec = np.real(state_vec[0:A_mat_size])
+state_vec = state_vec / np.linalg.norm(state_vec)
+state_vec = state_vec * np.linalg.norm(b_vector) * alpha
 
 # Print results
 #print("quantum solution estimate: ", state_vec)
