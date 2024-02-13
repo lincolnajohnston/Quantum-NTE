@@ -12,6 +12,7 @@ import time
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
 from qiskit.quantum_info.operators import Operator
 from linear_solvers.matrices.numpy_matrix import NumPyMatrix
+from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 np.set_printoptions(threshold=np.inf)
 
 # code to implement the Linear Combination of Unitaries method described in the link below
@@ -19,8 +20,8 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 8
-n_y = 8
+n_x = 32
+n_y = 64
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -30,7 +31,7 @@ n_pts_y = n_y + 2
 delta_x = 0.5
 delta_y = 0.5
 
-# create simple, constant boundary flux values for now
+# create simple, constant boundary flux values for now, O(N)
 top_flux = 0.5
 bottom_flux = 1.5
 right_flux = 2.5
@@ -40,7 +41,7 @@ bottom_x_BCs = np.zeros(n_pts_x) * bottom_flux
 right_y_BCs = np.zeros(n_pts_y) * right_flux
 left_y_BCs = np.zeros(n_pts_y) * left_flux
 
-# material data initialization
+# material data initialization, O(N)
 sigma_a = np.zeros(n_x*n_y)
 nu_sigma_f = np.zeros(n_x*n_y)
 D = np.zeros(n_x*n_y)
@@ -48,7 +49,7 @@ Q = np.zeros(n_x*n_y)
 
 A_mat_size = (n_x) * (n_y)
 
-# from quantum state after passing through algorithm, extract solution to differential equation
+# from quantum state after passing through algorithm, extract solution to differential equation, O(2^(N+L))
 def get_solution_vector(solution, n):
     """Extracts and normalizes simulated state vector
     from LinearSolverResult."""
@@ -80,19 +81,33 @@ def get_BC_flux(index):
         return top_x_BCs[i+1]
     raise Exception("tried to get BC on non-boundary node")
 
-# Set material data at each finite difference point
+# Set material data at each finite difference point, O(N)
 def initialize_XSs():
     x_range = (n_pts_x - 1) * delta_x
     y_range = (n_pts_y - 1) * delta_y
 
-    fuel_radius = min(x_range,y_range)/4
+    fuel_radius = min(x_range,y_range)/8
     #fuel_radius = 9999
 
     for i in range(n_x):
         for j in range(n_y):
             x_val = (i + 1) * delta_x - x_range/2
             y_val = (j + 1) * delta_y - y_range/2
-            if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+
+            # fuel at center
+            '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+                # use fuel XSs
+                sigma_a[i * n_y + j] = 4
+                nu_sigma_f[i * n_y + j] = 3
+                D[i * n_y + j] = 1
+                Q[i * n_y + j] = 5
+            else:
+                # use moderator XSs
+                sigma_a[i * n_y + j] = 2
+                D[i * n_y + j] = 1'''
+
+            # 4 fuel pins
+            if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                 # use fuel XSs
                 sigma_a[i * n_y + j] = 4
                 nu_sigma_f[i * n_y + j] = 3
@@ -111,7 +126,7 @@ def get_mean_D(p1, p2):
 # The first column is the normalized set of sqrt(alpha) values,
 # all other columns' actual values are irrelevant to the algorithm but are set to be
 # orthogonal to the alpha vector to ensure V is unitary.
-# Function modified from ChatGPT suggestion
+# Function modified from ChatGPT suggestion, O(2^(2L))
 def gram_schmidt_ortho(vector):
     num_dimensions = len(vector)
     ortho_basis = np.zeros((num_dimensions, num_dimensions), dtype=float)
@@ -124,20 +139,20 @@ def gram_schmidt_ortho(vector):
     # Gram-Schmidt orthogonalization
     for i in range(1, num_dimensions):
         ortho_vector = np.random.rand(num_dimensions)  # random initialization
-        if(abs(np.log2(i) - np.ceil(np.log2(i))) < 0.00001):
-            print("dimension: ", i)
+        #if(abs(np.log2(i) - np.ceil(np.log2(i))) < 0.00001):
+        #    print("dimension: ", i)
         for j in range(i):
             ortho_vector -= np.dot(ortho_basis[j], ortho_vector) / np.dot(ortho_basis[j], ortho_basis[j]) * ortho_basis[j]
         ortho_basis[i] = ortho_vector / np.linalg.norm(ortho_vector)
     
     return ortho_basis.T
 
-# return True if matrix is unitary, False otherwise
+# return True if matrix is unitary, False otherwise, O(len(matrix)^2)
 def is_unitary(matrix):
     I = matrix.dot(np.conj(matrix).T)
     return I.shape[0] == I.shape[1] and np.allclose(I, np.eye(I.shape[0]))
 
-# use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b
+# use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
 def construct_A_matrix():
     A_matrix = np.zeros((A_mat_size, A_mat_size))
     for i in range(A_mat_size):
@@ -172,7 +187,7 @@ def get_b_setup_gate(vector, nb):
     return vector_circuit
 
 # return the U gate in the LCU process as well as a vector of the alpha values.
-# Use the Fourier process from the LCU paper to approximate the inverse of A
+# Use the Fourier process from the LCU paper to approximate the inverse of A, O(2^L * N^2) ??, need to verify this
 def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
     A_mat_size = len(matrix)
     delta_y = y_max / J
@@ -183,7 +198,6 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
     M = np.zeros((A_mat_size, A_mat_size)) # approximation of inverse of A matrix
 
     for j in range(J):
-        #print("J: ", j)
         y = j * delta_y
         for k in range(-K,K):
             z = k * delta_z
@@ -205,12 +219,12 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
     error_norm = np.linalg.norm(M - matrix_invert)
     if doFullSolution:
         alphas = np.sqrt(alphas)
-        print("real matrix inverse: ", matrix_invert)
+        #print("real matrix inverse: ", matrix_invert)
         #print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))
-        print("estimated matrix inverse: ", M)
-        print("Matrix inverse error: ", (M - matrix_invert) / matrix_invert)
+        #print("estimated matrix inverse: ", M)
+        #print("Matrix inverse error: ", (M - matrix_invert) / matrix_invert)
         
-        print("norm of inverse error: ", error_norm)
+        #print("norm of inverse error: ", error_norm)
 
         return U, alphas, error_norm
     return 0, 0, error_norm
@@ -222,19 +236,19 @@ b_vector = Q
 initialize_XSs() # create the vectors holding the material data at each discretized point
 A_matrix = construct_A_matrix() # use the material data (like XSs) to make the A matrix for the equation being solved
 
-print("A matrix:")
+'''print("A matrix:")
 print(A_matrix)
 print("\n b vector: ")
 print(b_vector)
 eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
 print("A eigenvalues: ", eigenvalues)
-print("A condition number: ", max(eigenvalues) / min(eigenvalues))
+print("A condition number: ", max(eigenvalues) / min(eigenvalues))'''
 
 material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 8
+num_LCU_bits = 4
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -243,17 +257,17 @@ best_j = 0
 best_y_max = 0
 best_z_max = 0
 best_error_norm = np.inf
-for j in range(3,num_LCU_bits - 3):
+for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     J = pow(2,j)
     K = pow(2,num_LCU_bits-j-1)
     for y_max in np.linspace(2,6,10):
         for z_max in np.linspace(2,5,10):
             U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, A_matrix, False)
-            print("J: ", J)
+            '''print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
             print("z_max: ", z_max)
-            print("Error: ", error_norm)
+            print("Error: ", error_norm)'''
             if(last_error_norm < error_norm):
                 break
             if error_norm < best_error_norm:
@@ -288,16 +302,20 @@ V = gram_schmidt_ortho(alphas)
 v_mat_time = time.perf_counter()
 print("Construction of V matrix time: ", v_mat_time - circuit_setup_time)
 
-V_op = Operator(V)
-U_op = Operator(U)
-V_inv_op = Operator(np.conj(V).T)
+#V_op = Operator(V)
+#U_op = Operator(U)
+#V_inv_op = Operator(np.conj(V).T)
 op_time = time.perf_counter()
 print("Operator Construction Time: ", op_time - v_mat_time)
 
+V_gate = UnitaryGate(V, 'V', False)
+U_gate = UnitaryGate(U, 'U', False)
+V_inv_gate = UnitaryGate(np.conj(V).T, 'V_inv', False)
 
-qc.unitary(V_op, ql[:], label='V') # further to the right registers are the more major ones (ql has most major qubits here)
-qc.unitary(U_op, qb[:] + ql[:], label='U')
-qc.unitary(V_inv_op, ql[:], label='V_inv')
+qc.append(V_gate, ql[:])
+qc.append(U_gate, qb[:] + ql[:])
+qc.append(V_inv_gate, ql[:])
+
 gate_time = time.perf_counter()
 print("Gate U and V Application Time: ", gate_time - op_time)
 
@@ -308,19 +326,19 @@ backend = QasmSimulator(method="statevector")
 job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
-print(state_vec[0:A_mat_size])
+#print(state_vec[0:A_mat_size])
 state_vec = np.absolute(state_vec[0:A_mat_size])
 state_vec = state_vec * math.sqrt(np.dot(b_vector, b_vector)) * alpha
 
 # Print results
-print("quantum solution estimate: ", state_vec)
+#print("quantum solution estimate: ", state_vec)
 #print("expected quantum solution: ", np.matmul(M, vector))
 
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
-print('classical solution vector:          ', classical_sol_vec)
+#print('classical solution vector:          ', classical_sol_vec)
 
 sol_error = (state_vec - classical_sol_vec) / classical_sol_vec
-print("Relative solution error: ", sol_error)
+#print("Relative solution error: ", sol_error)
 
 solve_time = time.perf_counter()
 print("Circuit Solve Time: ", solve_time - gate_time)
@@ -331,15 +349,18 @@ print("Total time: ", solve_time - start)
 state_vec.resize((n_x,n_y))
 ax = sns.heatmap(state_vec, linewidth=0.5)
 plt.title("Quantum Solution")
+plt.savefig('q_sol.png')
 plt.figure()
 
 classical_sol_vec.resize((n_x,n_y))
 ax = sns.heatmap(classical_sol_vec, linewidth=0.5)
 plt.title("Real Solution")
+plt.savefig('real_sol.png')
 plt.figure()
 
 sol_error.resize((n_x,n_y))
 ax = sns.heatmap(sol_error, linewidth=0.5)
 plt.title("Relative error between quantum and real solution")
+plt.savefig('rel_error.png')
 plt.show()
 
