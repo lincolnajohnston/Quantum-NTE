@@ -247,7 +247,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 5
+num_LCU_bits = 4
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -360,18 +360,21 @@ job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
 state_vec = np.real(state_vec[0:A_mat_size])
-state_vec = state_vec / np.linalg.norm(state_vec)
-state_vec = state_vec * np.linalg.norm(b_vector) * alpha
+classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
+
+state_vec = state_vec * np.linalg.norm(classical_sol_vec) / np.linalg.norm(state_vec) # scale result to match true answer
 
 # Print results
-#print("quantum solution estimate: ", state_vec)
+print("quantum solution estimate: ", state_vec)
 #print("expected quantum solution: ", np.matmul(M, vector))
 
-classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
-#print('classical solution vector:          ', classical_sol_vec)
+print('classical solution vector:          ', classical_sol_vec)
 
-sol_error = (state_vec - classical_sol_vec) / classical_sol_vec
-#print("Relative solution error: ", sol_error)
+sol_rel_error = (state_vec - classical_sol_vec) / classical_sol_vec
+#print("Relative solution error: ", sol_rel_error)
+
+sol_error = state_vec - classical_sol_vec
+#print("Solution error: ", sol_error)
 
 solve_time = time.perf_counter()
 print("Circuit Solve Time: ", solve_time - gate_time)
@@ -391,9 +394,15 @@ plt.title("Real Solution")
 plt.savefig('real_sol.png')
 plt.figure()
 
-sol_error.resize((n_x,n_y))
-ax = sns.heatmap(sol_error, linewidth=0.5)
+sol_rel_error.resize((n_x,n_y))
+ax = sns.heatmap(sol_rel_error, linewidth=0.5)
 plt.title("Relative error between quantum and real solution")
 plt.savefig('rel_error.png')
+plt.figure()
+
+sol_error.resize((n_x,n_y))
+ax = sns.heatmap(sol_error, linewidth=0.5)
+plt.title("Actual error between quantum and real solution")
+plt.savefig('error.png')
 plt.show()
 
