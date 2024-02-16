@@ -20,8 +20,8 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 4
-n_y = 4
+n_x = 16
+n_y = 16
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -32,10 +32,10 @@ delta_x = 0.5
 delta_y = 0.5
 
 # create simple, constant boundary flux values for now, O(N)
-top_J_minus = 0.5
-bottom_J_minus = 1.5
-right_J_minus = 2.5
-left_J_minus = 3.5
+top_J_minus = 0
+bottom_J_minus = 0
+right_J_minus = 0
+left_J_minus = 0
 top_x_BCs = np.ones(n_pts_x) * top_J_minus
 bottom_x_BCs = np.zeros(n_pts_x) * bottom_J_minus
 right_y_BCs = np.zeros(n_pts_y) * right_J_minus
@@ -151,6 +151,7 @@ def is_unitary(matrix):
 
 # use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
 def construct_A_matrix():
+    fd_order = 2
     A_matrix = np.zeros((A_mat_size, A_mat_size))
     for x_i in range(n_x):
         for y_i in range(n_y):
@@ -160,31 +161,45 @@ def construct_A_matrix():
                 b_vector[i] = 4 * get_BC_value([x_i,y_i])
                 if(x_i == 0): # left BC, normal vector = (-1,0)
                     diffu_n_x = D[i] * -1
-                    A_matrix[i,i] += diffu_n_x * -3 / delta_x
-                    A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 4 / delta_x
-                    A_matrix[i,unroll_index([x_i+2, y_i])] += diffu_n_x * -1 / delta_x
+                    if fd_order == 2: # second order F.D.
+                        A_matrix[i,i] += diffu_n_x * -3 / delta_x
+                        A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 4 / delta_x
+                        A_matrix[i,unroll_index([x_i+2, y_i])] += diffu_n_x * -1 / delta_x
+                    elif fd_order == 1: # first order F.D.
+                        A_matrix[i,i] += diffu_n_x * -2 / delta_x
+                        A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 2 / delta_x
                 elif(x_i == n_x - 1): # right BC, normal vector = (1,0)
                     diffu_n_x = D[i] * 1
-                    A_matrix[i,i] += diffu_n_x * 3 / delta_x
-                    A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -4 / delta_x
-                    A_matrix[i,unroll_index([x_i-2, y_i])] += diffu_n_x * 1 / delta_x
+                    if fd_order == 2: # second order F.D.
+                        A_matrix[i,i] += diffu_n_x * 3 / delta_x
+                        A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -4 / delta_x
+                        A_matrix[i,unroll_index([x_i-2, y_i])] += diffu_n_x * 1 / delta_x
+                    elif fd_order == 1: # first order F.D.
+                        A_matrix[i,i] += diffu_n_x * 2 / delta_x
+                        A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -2 / delta_x
                 elif(y_i == 0): # bottom BC, normal vector = (0,-1)
                     diffu_n_y = D[i] * -1
-                    A_matrix[i,i] += diffu_n_y * -3 / delta_y
-                    A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 4 / delta_y
-                    A_matrix[i,unroll_index([x_i, y_i+2])] += diffu_n_y * -1 / delta_y
+                    if fd_order == 2: # second order F.D.
+                        A_matrix[i,i] += diffu_n_y * -3 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 4 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i+2])] += diffu_n_y * -1 / delta_y
+                    elif fd_order == 1: # first order F.D.
+                        A_matrix[i,i] += diffu_n_y * -2 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 2 / delta_y
                 elif(y_i == n_y - 1): # top BC, normal vector = (0,1)
-                    diffu_n_y = D[i] * 1
-                    A_matrix[i,i] += diffu_n_y * 3 / delta_y
-                    A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -4 / delta_y
-                    A_matrix[i,unroll_index([x_i, y_i-2])] += diffu_n_y * 1 / delta_y
+                    if fd_order == 2: # second order F.D.
+                        A_matrix[i,i] += diffu_n_y * 3 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -4 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i-2])] += diffu_n_y * 1 / delta_y
+                    elif fd_order == 1: # first order F.D.
+                        A_matrix[i,i] += diffu_n_y * 2 / delta_y
+                        A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -2 / delta_y
             else:
                 A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
                 A_matrix[i,unroll_index([x_i-1, y_i])] = -D[i] / (delta_x*delta_x) # (i-1,j) term
                 A_matrix[i,unroll_index([x_i+1, y_i])] = -D[i] / (delta_x*delta_x) # (i+1,j) term
                 A_matrix[i,unroll_index([x_i, y_i-1])] = -D[i] / (delta_y*delta_y) # (i,j-1) term
                 A_matrix[i,unroll_index([x_i, y_i+1])] = -D[i] / (delta_y*delta_y) # (i,j+1) term
-    print(A_matrix)
     return A_matrix
 
 # return gate to transform 0 state to vector b represented as a quantum state
@@ -246,9 +261,9 @@ b_vector = Q
 initialize_XSs() # create the vectors holding the material data at each discretized point
 A_matrix = construct_A_matrix() # use the material data (like XSs) to make the A matrix for the equation being solved
 
-'''print("A matrix:")
+print("A matrix:")
 print(A_matrix)
-print("\n b vector: ")
+'''print("\n b vector: ")
 print(b_vector)
 eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
 print("A eigenvalues: ", eigenvalues)
@@ -258,7 +273,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 4
+num_LCU_bits = 5
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -322,14 +337,27 @@ best_j = 1
 best_y_max = 1
 best_z_max = 1
 
-U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, A_matrix, True)
+A_mat_size = len(A_matrix)
+if(not ishermitian(A_matrix)): # make sure the matrix is hermitian
+    quantum_mat = np.zeros((2*A_mat_size,2*A_mat_size))
+    quantum_mat[A_mat_size:2*A_mat_size, 0:A_mat_size] = np.conj(A_matrix).T
+    quantum_mat[0:A_mat_size, A_mat_size:2*A_mat_size] = A_matrix
+    quantum_b_vector = np.zeros(2*len(b_vector))
+    quantum_b_vector[0:len(b_vector)] = b_vector
+    quantum_b_vector[len(b_vector):2*len(b_vector)] = b_vector
+    A_mat_size *= 2
+else:
+    quantum_mat = A_matrix
+    quantum_b_vector = b_vector
+
+U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True)
 print("Error Norm: ", error_norm)
 
 unitary_construction_time = time.perf_counter()
 print("Unitary Construction Time: ", unitary_construction_time - material_initialization_time)
 
 # Initialise the quantum registers
-nb = int(np.log2(len(b_vector)))
+nb = int(np.log2(len(quantum_b_vector)))
 qb = QuantumRegister(nb)  # right hand side and solution
 ql = QuantumRegister(num_LCU_bits)  # LCU ancilla zero bits
 cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
@@ -337,7 +365,7 @@ cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
 qc = QuantumCircuit(qb, ql)
 
 # b vector State preparation
-qc.append(get_b_setup_gate(b_vector, nb), qb[:])
+qc.append(get_b_setup_gate(quantum_b_vector, nb), qb[:])
 
 circuit_setup_time = time.perf_counter()
 print("Circuit Setup Time: ", circuit_setup_time - unitary_construction_time)
@@ -370,7 +398,7 @@ job = execute(qc, backend)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
-state_vec = np.real(state_vec[0:A_mat_size])
+state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 
 state_vec = state_vec * np.linalg.norm(classical_sol_vec) / np.linalg.norm(state_vec) # scale result to match true answer
