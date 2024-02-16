@@ -149,6 +149,9 @@ def is_unitary(matrix):
     I = matrix.dot(np.conj(matrix).T)
     return I.shape[0] == I.shape[1] and np.allclose(I, np.eye(I.shape[0]))
 
+
+
+
 # use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
 def construct_A_matrix():
     fd_order = 2
@@ -277,6 +280,19 @@ num_LCU_bits = 5
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
+A_mat_size = len(A_matrix)
+if(not ishermitian(A_matrix)): # make sure the matrix is hermitian
+    quantum_mat = np.zeros((2*A_mat_size,2*A_mat_size))
+    quantum_mat[A_mat_size:2*A_mat_size, 0:A_mat_size] = np.conj(A_matrix).T
+    quantum_mat[0:A_mat_size, A_mat_size:2*A_mat_size] = A_matrix
+    quantum_b_vector = np.zeros(2*len(b_vector))
+    quantum_b_vector[0:len(b_vector)] = b_vector
+    quantum_b_vector[len(b_vector):2*len(b_vector)] = b_vector
+    A_mat_size *= 2
+else:
+    quantum_mat = A_matrix
+    quantum_b_vector = b_vector
+
 # select optimal J, K, y_max, and z_max in just about the least efficient way possible
 '''best_j = 0
 best_y_max = 0
@@ -285,9 +301,9 @@ best_error_norm = np.inf
 for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     J = pow(2,j)
     K = pow(2,num_LCU_bits-j-1)
-    for y_max in np.linspace(2,6,10):
-        for z_max in np.linspace(2,5,10):
-            U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, A_matrix, False)
+    for y_max in np.linspace(0.5,5,10):
+        for z_max in np.linspace(0.5,5,10):
+            U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False)
             print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
@@ -337,18 +353,6 @@ best_j = 1
 best_y_max = 1
 best_z_max = 1
 
-A_mat_size = len(A_matrix)
-if(not ishermitian(A_matrix)): # make sure the matrix is hermitian
-    quantum_mat = np.zeros((2*A_mat_size,2*A_mat_size))
-    quantum_mat[A_mat_size:2*A_mat_size, 0:A_mat_size] = np.conj(A_matrix).T
-    quantum_mat[0:A_mat_size, A_mat_size:2*A_mat_size] = A_matrix
-    quantum_b_vector = np.zeros(2*len(b_vector))
-    quantum_b_vector[0:len(b_vector)] = b_vector
-    quantum_b_vector[len(b_vector):2*len(b_vector)] = b_vector
-    A_mat_size *= 2
-else:
-    quantum_mat = A_matrix
-    quantum_b_vector = b_vector
 
 U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True)
 print("Error Norm: ", error_norm)
