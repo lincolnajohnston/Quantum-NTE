@@ -20,8 +20,8 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 32
-n_y = 32
+n_x = 4
+n_y = 4
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -32,14 +32,14 @@ delta_x = 0.5
 delta_y = 0.5
 
 # create simple, constant boundary flux values for now, O(N)
-top_flux = 0.5
-bottom_flux = 1.5
-right_flux = 2.5
-left_flux = 3.5
-top_x_BCs = np.ones(n_pts_x) * top_flux
-bottom_x_BCs = np.zeros(n_pts_x) * bottom_flux
-right_y_BCs = np.zeros(n_pts_y) * right_flux
-left_y_BCs = np.zeros(n_pts_y) * left_flux
+top_J_minus = 0.5
+bottom_J_minus = 1.5
+right_J_minus = 2.5
+left_J_minus = 3.5
+top_x_BCs = np.ones(n_pts_x) * top_J_minus
+bottom_x_BCs = np.zeros(n_pts_x) * bottom_J_minus
+right_y_BCs = np.zeros(n_pts_y) * right_J_minus
+left_y_BCs = np.zeros(n_pts_y) * left_J_minus
 
 # material data initialization, O(N)
 sigma_a = np.zeros(n_x*n_y)
@@ -68,16 +68,16 @@ def roll_index(index):
     return np.array([math.floor(index/n_y), index % n_y])
 
 # return flux at B.C.s outside of valid index range
-def get_BC_flux(index):
+def get_BC_value(index):
     i = index[0]
     j = index[1]
-    if (i == -1):
+    if (i == 0):
         return left_y_BCs[j+1]
-    if (i == n_x):
+    if (i == n_x-1):
         return right_y_BCs[j+1]
-    if (j == -1):
+    if (j == 0):
         return bottom_x_BCs[i+1]
-    if (j == n_y):
+    if (j == n_y-1):
         return top_x_BCs[i+1]
     raise Exception("tried to get BC on non-boundary node")
 
@@ -118,9 +118,6 @@ def initialize_XSs():
                 sigma_a[i * n_y + j] = 2
                 D[i * n_y + j] = 1
 
-# return average of diffusion coefficient between two points (defined with 1D index)
-def get_mean_D(p1, p2):
-    return (D[p1] + D[p2])/2
 
 # Perform Gram-Schmidt orthogonalization to return V vector from LCU paper.
 # The first column is the normalized set of sqrt(alpha) values,
@@ -155,25 +152,39 @@ def is_unitary(matrix):
 # use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
 def construct_A_matrix():
     A_matrix = np.zeros((A_mat_size, A_mat_size))
-    for i in range(A_mat_size):
-        A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
-        current_index = roll_index(i)
-        if(current_index[0] > 0):
-            A_matrix[i,unroll_index(current_index + np.array([-1, 0]))] = -get_mean_D(i,unroll_index(current_index + np.array([-1, 0]))) / (delta_x*delta_x) # (i-1,j) term
-        else:
-            b_vector[i] += D[i] / (delta_x*delta_x) * get_BC_flux(current_index + np.array([-1, 0]))
-        if(current_index[0] < n_x - 1):
-            A_matrix[i,unroll_index(current_index + np.array([1, 0]))] = -get_mean_D(i,unroll_index(current_index + np.array([1, 0]))) / (delta_x*delta_x) # (i+1,j) term
-        else:
-            b_vector[i] += D[i] / (delta_x*delta_x) * get_BC_flux(current_index + np.array([1, 0]))
-        if(current_index[1] > 0):
-            A_matrix[i,unroll_index(current_index + np.array([0, -1]))] = -get_mean_D(i,unroll_index(current_index + np.array([0, -1]))) / (delta_y*delta_y) # (i,j-1) term
-        else:
-            b_vector[i] += D[i] / (delta_y*delta_y) * get_BC_flux(current_index + np.array([0, -1]))
-        if(current_index[1] < n_y - 1):
-            A_matrix[i,unroll_index(current_index + np.array([0, 1]))] = -get_mean_D(i,unroll_index(current_index + np.array([0, 1]))) / (delta_y*delta_y) # (i,j+1) term
-        else:
-            b_vector[i] += D[i] / (delta_y*delta_y) * get_BC_flux(current_index + np.array([0, 1]))
+    for x_i in range(n_x):
+        for y_i in range(n_y):
+            i = unroll_index([x_i, y_i])
+            if (math.remainder(x_i, n_x - 1) == 0 or math.remainder(y_i, n_y - 1) == 0): # in first or last x or y row, use Marshak B.C. equations
+                A_matrix[i,i] = 1
+                b_vector[i] = 4 * get_BC_value([x_i,y_i])
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    diffu_n_x = D[i] * -1
+                    A_matrix[i,i] += diffu_n_x * -3 / delta_x
+                    A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 4 / delta_x
+                    A_matrix[i,unroll_index([x_i+2, y_i])] += diffu_n_x * -1 / delta_x
+                elif(x_i == n_x - 1): # right BC, normal vector = (1,0)
+                    diffu_n_x = D[i] * 1
+                    A_matrix[i,i] += diffu_n_x * 3 / delta_x
+                    A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -4 / delta_x
+                    A_matrix[i,unroll_index([x_i-2, y_i])] += diffu_n_x * 1 / delta_x
+                elif(y_i == 0): # bottom BC, normal vector = (0,-1)
+                    diffu_n_y = D[i] * -1
+                    A_matrix[i,i] += diffu_n_y * -3 / delta_y
+                    A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 4 / delta_y
+                    A_matrix[i,unroll_index([x_i, y_i+2])] += diffu_n_y * -1 / delta_y
+                elif(y_i == n_y - 1): # top BC, normal vector = (0,1)
+                    diffu_n_y = D[i] * 1
+                    A_matrix[i,i] += diffu_n_y * 3 / delta_y
+                    A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -4 / delta_y
+                    A_matrix[i,unroll_index([x_i, y_i-2])] += diffu_n_y * 1 / delta_y
+            else:
+                A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
+                A_matrix[i,unroll_index([x_i-1, y_i])] = -D[i] / (delta_x*delta_x) # (i-1,j) term
+                A_matrix[i,unroll_index([x_i+1, y_i])] = -D[i] / (delta_x*delta_x) # (i+1,j) term
+                A_matrix[i,unroll_index([x_i, y_i-1])] = -D[i] / (delta_y*delta_y) # (i,j-1) term
+                A_matrix[i,unroll_index([x_i, y_i+1])] = -D[i] / (delta_y*delta_y) # (i,j+1) term
+    print(A_matrix)
     return A_matrix
 
 # return gate to transform 0 state to vector b represented as a quantum state
@@ -307,7 +318,7 @@ for z_max in np.linspace(0.1,5,30):
 
 
 # manually input paremters for LCU
-best_j = 2
+best_j = 1
 best_y_max = 1
 best_z_max = 1
 
