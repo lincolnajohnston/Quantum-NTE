@@ -199,10 +199,10 @@ def construct_A_matrix():
                         A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -2 / delta_y
             else:
                 A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
-                A_matrix[i,unroll_index([x_i-1, y_i])] = -D[i] / (delta_x*delta_x) # (i-1,j) term
-                A_matrix[i,unroll_index([x_i+1, y_i])] = -D[i] / (delta_x*delta_x) # (i+1,j) term
-                A_matrix[i,unroll_index([x_i, y_i-1])] = -D[i] / (delta_y*delta_y) # (i,j-1) term
-                A_matrix[i,unroll_index([x_i, y_i+1])] = -D[i] / (delta_y*delta_y) # (i,j+1) term
+                A_matrix[i,unroll_index([x_i-1, y_i])] = (D[unroll_index([x_i+1, y_i])] - D[unroll_index([x_i-1, y_i])] - 4*D[i]) / (4*delta_x**2) # (i-1,j) terms
+                A_matrix[i,unroll_index([x_i+1, y_i])] = (-D[unroll_index([x_i+1, y_i])] + D[unroll_index([x_i-1, y_i])] - 4*D[i]) / (4*delta_x**2) # (i+1,j) term
+                A_matrix[i,unroll_index([x_i, y_i-1])] = (D[unroll_index([x_i, y_i+1])] - D[unroll_index([x_i, y_i-1])] - 4*D[i]) / (4*delta_y**2) # (i,j-1) term
+                A_matrix[i,unroll_index([x_i, y_i+1])] = (-D[unroll_index([x_i, y_i+1])] + D[unroll_index([x_i, y_i-1])] - 4*D[i]) / (4*delta_y**2) # (i,j+1) term
     return A_matrix
 
 # return gate to transform 0 state to vector b represented as a quantum state
