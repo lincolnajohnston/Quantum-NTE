@@ -20,8 +20,8 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 16
-n_y = 16
+n_x = 32
+n_y = 32
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -150,59 +150,53 @@ def is_unitary(matrix):
     return I.shape[0] == I.shape[1] and np.allclose(I, np.eye(I.shape[0]))
 
 
+# get averaged diffusion coefficient in either the "x" or "y" direction for interior points
+# lower_index is lower index in the direction of the averaged diffusion coefficient
+# set_index is the other dimension index
+def get_av_D(direction, lower_index, set_index):
+    if direction == "x":
+        D_lower = D[unroll_index([lower_index, set_index])]
+        D_upper = D[unroll_index([lower_index+1, set_index])]
+        delta = delta_x
+    elif direction == "y":
+        D_lower = D[unroll_index([set_index, lower_index])]
+        D_upper = D[unroll_index([set_index, lower_index+1])]
+        delta = delta_y
+    return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
+
+def get_edge_D(beta, x_i, y_i, delta):
+    return 2 * (beta/2) * (D[unroll_index([x_i, y_i])]/delta) / (beta/2 + (D[unroll_index([x_i, y_i])]/delta))
 
 
-# use finite difference method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
+
+# use finite volume method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
 def construct_A_matrix():
     fd_order = 2
     A_matrix = np.zeros((A_mat_size, A_mat_size))
     for x_i in range(n_x):
         for y_i in range(n_y):
             i = unroll_index([x_i, y_i])
-            if (math.remainder(x_i, n_x - 1) == 0 or math.remainder(y_i, n_y - 1) == 0): # in first or last x or y row, use Marshak B.C. equations
-                A_matrix[i,i] = 1
-                b_vector[i] = 4 * get_BC_value([x_i,y_i])
-                if(x_i == 0): # left BC, normal vector = (-1,0)
-                    diffu_n_x = D[i] * -1
-                    if fd_order == 2: # second order F.D.
-                        A_matrix[i,i] += diffu_n_x * -3 / delta_x
-                        A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 4 / delta_x
-                        A_matrix[i,unroll_index([x_i+2, y_i])] += diffu_n_x * -1 / delta_x
-                    elif fd_order == 1: # first order F.D.
-                        A_matrix[i,i] += diffu_n_x * -2 / delta_x
-                        A_matrix[i,unroll_index([x_i+1, y_i])] += diffu_n_x * 2 / delta_x
-                elif(x_i == n_x - 1): # right BC, normal vector = (1,0)
-                    diffu_n_x = D[i] * 1
-                    if fd_order == 2: # second order F.D.
-                        A_matrix[i,i] += diffu_n_x * 3 / delta_x
-                        A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -4 / delta_x
-                        A_matrix[i,unroll_index([x_i-2, y_i])] += diffu_n_x * 1 / delta_x
-                    elif fd_order == 1: # first order F.D.
-                        A_matrix[i,i] += diffu_n_x * 2 / delta_x
-                        A_matrix[i,unroll_index([x_i-1, y_i])] += diffu_n_x * -2 / delta_x
-                elif(y_i == 0): # bottom BC, normal vector = (0,-1)
-                    diffu_n_y = D[i] * -1
-                    if fd_order == 2: # second order F.D.
-                        A_matrix[i,i] += diffu_n_y * -3 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 4 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i+2])] += diffu_n_y * -1 / delta_y
-                    elif fd_order == 1: # first order F.D.
-                        A_matrix[i,i] += diffu_n_y * -2 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i+1])] += diffu_n_y * 2 / delta_y
-                elif(y_i == n_y - 1): # top BC, normal vector = (0,1)
-                    if fd_order == 2: # second order F.D.
-                        A_matrix[i,i] += diffu_n_y * 3 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -4 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i-2])] += diffu_n_y * 1 / delta_y
-                    elif fd_order == 1: # first order F.D.
-                        A_matrix[i,i] += diffu_n_y * 2 / delta_y
-                        A_matrix[i,unroll_index([x_i, y_i-1])] += diffu_n_y * -2 / delta_y
+            if(x_i == 0): # left BC, normal vector = (-1,0)
+                J_x_minus = get_edge_D(0.5, x_i ,y_i,delta_x) * delta_y
             else:
-                A_matrix[i,i] = (2*D[i]/(delta_x*delta_x) + 2*D[i]/(delta_y*delta_y) + sigma_a[i] - nu_sigma_f[i])
-                A_matrix[i,unroll_index([x_i-1, y_i])] = (D[unroll_index([x_i+1, y_i])] - D[unroll_index([x_i-1, y_i])] - 4*D[i]) / (4*delta_x**2) # (i-1,j) terms
-                A_matrix[i,unroll_index([x_i+1, y_i])] = (-D[unroll_index([x_i+1, y_i])] + D[unroll_index([x_i-1, y_i])] - 4*D[i]) / (4*delta_x**2) # (i+1,j) term
-                A_matrix[i,unroll_index([x_i, y_i-1])] = (D[unroll_index([x_i, y_i+1])] - D[unroll_index([x_i, y_i-1])] - 4*D[i]) / (4*delta_y**2) # (i,j-1) term
-                A_matrix[i,unroll_index([x_i, y_i+1])] = (-D[unroll_index([x_i, y_i+1])] + D[unroll_index([x_i, y_i-1])] - 4*D[i]) / (4*delta_y**2) # (i,j+1) term
+                J_x_minus = get_av_D("x",x_i-1,y_i) * delta_y
+                A_matrix[i,unroll_index([x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
+            if(x_i == n_x - 1): # right BC, normal vector = (1,0)
+                J_x_plus = get_edge_D(0.5, x_i ,y_i,delta_x) * delta_y
+            else:
+                J_x_plus = get_av_D("x",x_i,y_i) * delta_y
+                A_matrix[i,unroll_index([x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
+            if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                J_y_minus = get_edge_D(0.5, x_i ,y_i,delta_y) * delta_x
+            else:
+                J_y_minus = get_av_D("y",y_i-1,x_i) * delta_x
+                A_matrix[i,unroll_index([x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
+            if(y_i == n_y - 1): # right BC, normal vector = (0,1)
+                J_y_plus = get_edge_D(0.5, x_i ,y_i,delta_y) * delta_x
+            else:
+                J_y_plus = get_av_D("x",y_i,x_i) * delta_x
+                A_matrix[i,unroll_index([x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
+            A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (sigma_a[i] - nu_sigma_f[i]) * delta_x * delta_y
     return A_matrix
 
 # return gate to transform 0 state to vector b represented as a quantum state
@@ -257,15 +251,15 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
         return U, alphas, error_norm
     return 0, 0, error_norm
 
-# make b vector
-b_vector = Q
-
 # make A matrix
 initialize_XSs() # create the vectors holding the material data at each discretized point
 A_matrix = construct_A_matrix() # use the material data (like XSs) to make the A matrix for the equation being solved
 
-print("A matrix:")
-print(A_matrix)
+# make b vector
+b_vector = Q * delta_x * delta_y
+
+#print("A matrix:")
+#print(A_matrix)
 '''print("\n b vector: ")
 print(b_vector)
 eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
@@ -276,7 +270,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 5
+num_LCU_bits = 3
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
