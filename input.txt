@@ -1,0 +1,6 @@
+n_x and n_y
+8
+delta_x and delta_y
+0.5
+diffusion or sp3
+diffusion
