@@ -3,4 +3,4 @@ n_x and n_y
 delta_x and delta_y
 0.5
 diffusion or sp3
-diffusion
+sp3

@@ -184,7 +184,7 @@ def get_av_D2(direction, lower_index, set_index, D2, delta_x, delta_y, n_y):
 
 
 # use finite volume method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
-def FV_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3):
+def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3):
     fd_order = 2
     beta = 0.5
     phi_2_offset = n_x * n_y

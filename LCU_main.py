@@ -62,11 +62,13 @@ Q = np.zeros(n_x*n_y)
 
 A_mat_size = 2 * (n_x) * (n_y)
 
-
+#Choose method, either diffusion or sp3
+method = Helpers.input_variable('input.txt', 6)
 # make A matrix
 Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D0, D2, Q, n_x, n_y) 
 # create the vectors holding the material data at each discretized point
-A_matrix, b_vector = Helpers.FV_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) # use the material data (like XSs) to make the A matrix for the equation being solved
+if method == "sp3":
+    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) # use the material data (like XSs) to make the A matrix for the equation being solved
 
 '''print("A matrix:")
 print(A_matrix)
