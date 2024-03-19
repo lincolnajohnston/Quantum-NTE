@@ -20,8 +20,11 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 32
-n_y = 32
+n_x = 4
+n_y = 4
+
+# number of energy groups
+G = 8
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2
@@ -42,12 +45,15 @@ right_y_BCs = np.zeros(n_pts_y) * right_J_minus
 left_y_BCs = np.zeros(n_pts_y) * left_J_minus
 
 # material data initialization, O(N)
-sigma_a = np.zeros(n_x*n_y)
-nu_sigma_f = np.zeros(n_x*n_y)
-D = np.zeros(n_x*n_y)
-Q = np.zeros(n_x*n_y)
-
-A_mat_size = (n_x) * (n_y)
+A_mat_size = G * (n_x) * (n_y)
+sigma_a = np.zeros(A_mat_size)
+nu_sigma_f = np.zeros(A_mat_size)
+chi = np.zeros(A_mat_size)
+sigma_s = np.zeros(A_mat_size)
+sigma_s1 = np.zeros(A_mat_size)
+sigma_sgg = np.zeros(A_mat_size * G)
+D = np.zeros(A_mat_size)
+Q = np.zeros(A_mat_size)
 
 # from quantum state after passing through algorithm, extract solution to differential equation, O(2^(N+L))
 def get_solution_vector(solution, n):
@@ -61,11 +67,11 @@ def get_solution_vector(solution, n):
 
 # convert 2D (x,y) index to 1D index
 def unroll_index(index_vec):
-    return index_vec[0]*n_y + index_vec[1]
+    return index_vec[0]*n_x*n_y + index_vec[1]*n_y + index_vec[2]
 
 # convert 1D index to 2D (x,y) index
 def roll_index(index):
-    return np.array([math.floor(index/n_y), index % n_y])
+    return np.array([math.floor(index/(n_x * n_y)), math.floor((index % (n_x * n_y))/n_y)  , index % n_y])
 
 # return flux at B.C.s outside of valid index range
 def get_BC_value(index):
@@ -87,12 +93,46 @@ def initialize_XSs():
     y_range = (n_pts_y - 1) * delta_y
 
     fuel_radius = min(x_range,y_range)/8
+
+    # store fuel xs_data
+    f_fuel = open("Quantum-NTE/XS/fuel/xs.txt", "r")
+    fuel_xs_data = np.zeros((G,21))
+    for g in range(G):
+        fuel_xs_data[g,:] = [float(numeric_string) for numeric_string in f_fuel.readline().split()]
+
+    # store water xs_data
+    f_water = open("Quantum-NTE/XS/water/xs.txt", "r")
+    water_xs_data = np.zeros((G,21))
+    for g in range(G):
+        water_xs_data[g,:] = [float(numeric_string) for numeric_string in f_water.readline().split()]
     #fuel_radius = 9999
 
     for i in range(n_x):
         for j in range(n_y):
             x_val = (i + 1) * delta_x - x_range/2
             y_val = (j + 1) * delta_y - y_range/2
+
+            # homogeneous fuel
+            for g_p in range(G):
+                sigma_a[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,1] - fuel_xs_data[g,2] # TODO: find out what XSs actually mean, make sure this is fixed
+                nu_sigma_f[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,3]
+                sigma_s[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,2]
+                for g in range(G):
+                    sigma_sgg[g * (n_x * n_y * G) +  g_p * (n_x * n_y)  + i * (n_y) + j] = fuel_xs_data[g_p,4+g]
+                chi[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,20]
+                D[g_p * n_x * n_y + i * n_y + j] = 1 / (3 * (fuel_xs_data[g_p,1] - fuel_xs_data[g_p,12 + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+                Q[g_p * n_x * n_y + i * n_y + j] = 1
+
+            # homogeneous water
+            '''for g_p in range(G):
+                sigma_a[g_p * n_x * n_y + i * n_y + j] = water_xs_data[g_p,1] - water_xs_data[g,2] # TODO: find out what XSs actually mean, make sure this is fixed
+                nu_sigma_f[g_p * n_x * n_y + i * n_y + j] = water_xs_data[g_p,3]
+                sigma_s[g_p * n_x * n_y + i * n_y + j] = water_xs_data[g_p,2]
+                for g in range(G):
+                    sigma_sgg[g * (n_x * n_y * G) +  g_p * (n_x * n_y)  + i * (n_y) + j] = water_xs_data[g_p,4+g]
+                chi[g_p * n_x * n_y + i * n_y + j] = water_xs_data[g_p,20]
+                D[g_p * n_x * n_y + i * n_y + j] = 1 / (3 * (water_xs_data[g_p,1] - water_xs_data[g_p,12 + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+                Q[g_p * n_x * n_y + i * n_y + j] = 1'''
 
             # fuel at center
             '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
@@ -107,16 +147,28 @@ def initialize_XSs():
                 D[i * n_y + j] = 1'''
 
             # 4 fuel pins
-            if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+            '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                 # use fuel XSs
-                sigma_a[i * n_y + j] = 4
-                nu_sigma_f[i * n_y + j] = 3
-                D[i * n_y + j] = 1
-                Q[i * n_y + j] = 5
+                for g_p in range(G):
+                    sigma_a[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,1] - fuel_xs_data[g,2] # TODO: find out what XSs actually mean, make sure this is fixed
+                    nu_sigma_f[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,3]
+                    sigma_s[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,2]
+                    for g in range(G):
+                        sigma_sgg[g * (n_x * n_y * G) +  g_p * (n_x * n_y)  + i * (n_y) + j] = fuel_xs_data[g_p,4+g]
+                    chi[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,20]
+                    D[g_p * n_x * n_y + i * n_y + j] = 1 / (3 * (fuel_xs_data[g_p,1] - fuel_xs_data[g_p,12 + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+                    Q[g_p * n_x * n_y + i * n_y + j] = 1
             else:
                 # use moderator XSs
-                sigma_a[i * n_y + j] = 2
-                D[i * n_y + j] = 1
+                for g in range(G):
+                    sigma_a[g * n_x * n_y + i * n_y + j] = clad_xs_data[g,1] - clad_xs_data[g,2] # TODO: find out what XSs actually mean, make sure this is fixed
+                    nu_sigma_f[g * n_x * n_y + i * n_y + j] = clad_xs_data[g,3]
+                    sigma_s[g * n_x * n_y + i * n_y + j] = clad_xs_data[g,2]
+                    for g_p in range(G):
+                        sigma_sgg[g * (n_x * n_y * G) +  g_p * (n_x * n_y)  + i * (n_y) + j] = clad_xs_data[g,4+g_p]
+                    chi[g * n_x * n_y + i * n_y + j] = clad_xs_data[g,20]
+                    D[g * n_x * n_y + i * n_y + j] = 1 / (3 * (clad_xs_data[g,1] - clad_xs_data[g,12 + g])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+                    Q[i * n_y + j] = 1'''
 
 
 # Perform Gram-Schmidt orthogonalization to return V vector from LCU paper.
@@ -153,19 +205,19 @@ def is_unitary(matrix):
 # get averaged diffusion coefficient in either the "x" or "y" direction for interior points
 # lower_index is lower index in the direction of the averaged diffusion coefficient
 # set_index is the other dimension index
-def get_av_D(direction, lower_index, set_index):
+def get_av_D(direction, g, lower_index, set_index):
     if direction == "x":
-        D_lower = D[unroll_index([lower_index, set_index])]
-        D_upper = D[unroll_index([lower_index+1, set_index])]
+        D_lower = D[unroll_index([g, lower_index, set_index])]
+        D_upper = D[unroll_index([g, lower_index+1, set_index])]
         delta = delta_x
     elif direction == "y":
-        D_lower = D[unroll_index([set_index, lower_index])]
-        D_upper = D[unroll_index([set_index, lower_index+1])]
+        D_lower = D[unroll_index([g, set_index, lower_index])]
+        D_upper = D[unroll_index([g, set_index, lower_index+1])]
         delta = delta_y
     return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
 
-def get_edge_D(beta, x_i, y_i, delta):
-    return 2 * (beta/2) * (D[unroll_index([x_i, y_i])]/delta) / (beta/2 + (D[unroll_index([x_i, y_i])]/delta))
+def get_edge_D(beta, g, x_i, y_i, delta):
+    return 2 * (beta/2) * (D[unroll_index([g, x_i, y_i])]/delta) / (beta/2 + (D[unroll_index([g, x_i, y_i])]/delta))
 
 
 
@@ -173,30 +225,36 @@ def get_edge_D(beta, x_i, y_i, delta):
 def construct_A_matrix():
     fd_order = 2
     A_matrix = np.zeros((A_mat_size, A_mat_size))
-    for x_i in range(n_x):
-        for y_i in range(n_y):
-            i = unroll_index([x_i, y_i])
-            if(x_i == 0): # left BC, normal vector = (-1,0)
-                J_x_minus = get_edge_D(0.5, x_i ,y_i,delta_x) * delta_y
-            else:
-                J_x_minus = get_av_D("x",x_i-1,y_i) * delta_y
-                A_matrix[i,unroll_index([x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
-            if(x_i == n_x - 1): # right BC, normal vector = (1,0)
-                J_x_plus = get_edge_D(0.5, x_i ,y_i,delta_x) * delta_y
-            else:
-                J_x_plus = get_av_D("x",x_i,y_i) * delta_y
-                A_matrix[i,unroll_index([x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
-            if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                J_y_minus = get_edge_D(0.5, x_i ,y_i,delta_y) * delta_x
-            else:
-                J_y_minus = get_av_D("y",y_i-1,x_i) * delta_x
-                A_matrix[i,unroll_index([x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
-            if(y_i == n_y - 1): # right BC, normal vector = (0,1)
-                J_y_plus = get_edge_D(0.5, x_i ,y_i,delta_y) * delta_x
-            else:
-                J_y_plus = get_av_D("x",y_i,x_i) * delta_x
-                A_matrix[i,unroll_index([x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
-            A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (sigma_a[i] - nu_sigma_f[i]) * delta_x * delta_y
+    for g in range(G):
+        for x_i in range(n_x):
+            for y_i in range(n_y):
+                i = unroll_index([g, x_i, y_i])
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    J_x_minus = get_edge_D(0.5, g, x_i ,y_i,delta_x) * delta_y
+                else:
+                    J_x_minus = get_av_D("x", g, x_i-1,y_i) * delta_y
+                    A_matrix[i,unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
+                if(x_i == n_x - 1): # right BC, normal vector = (1,0)
+                    J_x_plus = get_edge_D(0.5, g, x_i ,y_i,delta_x) * delta_y
+                else:
+                    J_x_plus = get_av_D("x", g, x_i,y_i) * delta_y
+                    A_matrix[i,unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
+                if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                    J_y_minus = get_edge_D(0.5, g, x_i ,y_i,delta_y) * delta_x
+                else:
+                    J_y_minus = get_av_D("y",g, y_i-1,x_i) * delta_x
+                    A_matrix[i,unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
+                if(y_i == n_y - 1): # right BC, normal vector = (0,1)
+                    J_y_plus = get_edge_D(0.5, g, x_i ,y_i,delta_y) * delta_x
+                else:
+                    J_y_plus = get_av_D("x",g, y_i,x_i) * delta_x
+                    A_matrix[i,unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
+                A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (sigma_a[i]) * delta_x * delta_y
+                # g_prime is incoming group, g is outgoing group
+                for g_prime in range(G):
+                    if(g_prime == g): # don't put within group scattering term in either gains or losses
+                        continue
+                    A_matrix[i,unroll_index([g_prime, x_i, y_i])] = (-sigma_sgg[g * (n_x * n_y * G) +  g_prime * (n_x * n_y)  + x_i * (n_y) + y_i] - nu_sigma_f[g_prime * (n_x * n_y)  + x_i * (n_y) + y_i] * chi[g * (n_x * n_y)  + x_i * (n_y) + y_i])  *delta_x * delta_y
     return A_matrix
 
 # return gate to transform 0 state to vector b represented as a quantum state
@@ -254,6 +312,12 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution):
 # make A matrix
 initialize_XSs() # create the vectors holding the material data at each discretized point
 A_matrix = construct_A_matrix() # use the material data (like XSs) to make the A matrix for the equation being solved
+
+A_plot = np.ceil(np.abs(A_matrix)/1000.0)
+ax = sns.heatmap(A_plot, linewidth=0)
+plt.title("A_matrix")
+plt.savefig('A_mat.png')
+plt.figure()
 
 # make b vector
 b_vector = Q * delta_x * delta_y
