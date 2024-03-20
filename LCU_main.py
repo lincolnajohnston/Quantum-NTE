@@ -21,7 +21,7 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = int(Helpers.input_variable('input.txt', 2))
+n_x = int(Helpers.input_variable('input.txt', 1))
 n_y = int(Helpers.input_variable('input.txt', 2))
 
 # number of points (including boundary values) in each direction
@@ -29,19 +29,19 @@ n_pts_x = n_x + 2
 n_pts_y = n_y + 2
 
 # distance between finite difference points
-delta_x = float(Helpers.input_variable('input.txt', 4))
+delta_x = float(Helpers.input_variable('input.txt', 3))
 delta_y = float(Helpers.input_variable('input.txt', 4))
 
 # create boundary conditions
-top_I_1 = 0
-bottom_I_1 = 0
-right_I_1 = 0
-left_I_1 = 0
-top_x_I_1 = np.ones(n_pts_x) * top_I_1
-bottom_x_I_1 = np.zeros(n_pts_x) * bottom_I_1
-right_y_I_1 = np.zeros(n_pts_y) * right_I_1
-left_y_I_1 = np.zeros(n_pts_y) * left_I_1
-
+top_J_minus = 0
+bottom_J_minus = 0
+right_J_minus = 0
+left_J_minus = 0
+top_x_BCs = np.ones(n_pts_x) * top_J_minus
+bottom_x_BCs = np.zeros(n_pts_x) * bottom_J_minus
+right_y_BCs = np.zeros(n_pts_y) * right_J_minus
+left_y_BCs = np.zeros(n_pts_y) * left_J_minus
+#for sp3 only below
 top_I_3 = 0
 bottom_I_3 = 0
 right_I_3 = 0
@@ -52,25 +52,34 @@ right_y_I_3 = np.zeros(n_pts_y) * right_I_3
 left_y_I_3 = np.zeros(n_pts_y) * left_I_3
 
 # material data initialization, O(N)
+sigma_a = np.zeros(n_x*n_y)
+nu_sigma_f = np.zeros(n_x*n_y)
+D = np.zeros(n_x*n_y)
+Q = np.zeros(n_x*n_y)
+#for sp3 only below
 sigma_t = np.zeros(n_x*n_y)
 sigma_s0 = np.zeros(n_x*n_y)
 sigma_s2 = np.zeros(n_x*n_y)
-nu_sigma_f = np.zeros(n_x*n_y)
-D0 = np.zeros(n_x*n_y)
 D2 = np.zeros(n_x*n_y)
-Q = np.zeros(n_x*n_y)
 
-A_mat_size = 2 * (n_x) * (n_y)
+A_mat_size = None
+b_vector = None
 
 #Choose method, either diffusion or sp3
-method = Helpers.input_variable('input.txt', 6)
+method = Helpers.input_variable('input.txt', 5)
 # make A matrix
-Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D0, D2, Q, n_x, n_y) 
+Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D, D2, Q, n_x, n_y) 
 # create the vectors holding the material data at each discretized point
 if method == "sp3":
-    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) 
-    # use the material data (like XSs) to make the A matrix for the equation being solved
+    A_mat_size = 2 * (n_x) * (n_y)
+    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) 
+elif method == "diffusion":
+    A_mat_size = (n_x) * (n_y)
+    A_matrix = Helpers.diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
+    b_vector = Q * delta_x * delta_y
 
+
+# use the material data (like XSs) to make the A matrix for the equation being solved
 '''print("A matrix:")
 print(A_matrix)
 print("\n b vector: ")
@@ -211,14 +220,15 @@ state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
 state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
-print(classical_sol_vec)
+#print(classical_sol_vec)
 
-# find scalar flux value from 0th and 2nd moments in SP3 equations
-for i in range(int(len(state_vec)/2)):
-    state_vec[i] -= 2 * state_vec[int(i + len(state_vec)/2)]
-    classical_sol_vec[i] -= 2 * classical_sol_vec[int(i + len(classical_sol_vec)/2)]
-state_vec = state_vec[:int(len(state_vec)/2)]
-classical_sol_vec = classical_sol_vec[:int(len(classical_sol_vec)/2)]
+if method == "sp3":
+    # find scalar flux value from 0th and 2nd moments in SP3 equations
+    for i in range(int(len(state_vec)/2)):
+        state_vec[i] -= 2 * state_vec[int(i + len(state_vec)/2)]
+        classical_sol_vec[i] -= 2 * classical_sol_vec[int(i + len(classical_sol_vec)/2)]
+    state_vec = state_vec[:int(len(state_vec)/2)]
+    classical_sol_vec = classical_sol_vec[:int(len(classical_sol_vec)/2)]
 
 state_vec = state_vec * np.linalg.norm(classical_sol_vec) / np.linalg.norm(state_vec) # scale result to match true answer
 

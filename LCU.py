@@ -20,8 +20,8 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 # number of variable points in each direction
-n_x = 16
-n_y = 16
+n_x = 8
+n_y = 8
 
 # number of points (including boundary values) in each direction
 n_pts_x = n_x + 2

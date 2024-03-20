@@ -1,6 +1,5 @@
-n_x and n_y
 8
-delta_x and delta_y
+8
 0.5
-diffusion or sp3
-sp3
+0.5
+diffusion

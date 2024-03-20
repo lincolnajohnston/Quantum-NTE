@@ -45,17 +45,17 @@ def roll_index(index, n_y):
     return np.array([math.floor(index/n_y), index % n_y])
 
 
-def get_I_1_value(index, n_x, n_y, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1):
+def get_BC_value(index, n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
     i = index[0]
     j = index[1]
     if (i == 0):
-        return left_y_I_1[j]
+        return left_y_BCs[j]
     if (i == n_x-1):
-        return right_y_I_1[j]
+        return right_y_BCs[j]
     if (j == 0):
-        return bottom_x_I_1[i]
+        return bottom_x_BCs[i]
     if (j == n_y-1):
-        return top_x_I_1[i]
+        return top_x_BCs[i]
     raise Exception("tried to get BC on non-boundary node")
 
 
@@ -75,7 +75,7 @@ def get_I_3_value(index, n_x, n_y, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_
 
 
 # Set material data at each finite difference point, O(N)
-def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D0, D2, Q, n_x, n_y):
+def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D, D2, Q, n_x, n_y):
     x_range = (n_pts_x - 1) * delta_x
     y_range = (n_pts_y - 1) * delta_y
 
@@ -90,38 +90,47 @@ def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_t, sigma_s0, sigma_
             # fuel at center
             '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                 # use fuel XSs
+                sigma_a[i * n_y + j] = 4
+                nu_sigma_f[i * n_y + j] = 3
+                D[i * n_y + j] = 1
+                Q[i * n_y + j] = 5
+                #for sp3 only below
                 sigma_t[i * n_y + j] = 5
                 sigma_s0[i * n_y + j] = 4
                 sigma_s2[i * n_y + j] = 0.1
-                nu_sigma_f[i * n_y + j] = 3
-                D0[i * n_y + j] = 1
                 D2[i * n_y + j] = 2
-                Q[i * n_y + j] = 5
+                
             else:
                 # use moderator XSs
+                sigma_a[i * n_y + j] = 2
+                D[i * n_y + j] = 1
+                #for sp3 only below
                 sigma_t[i * n_y + j] = 5
                 sigma_s0[i * n_y + j] = 5
                 sigma_s2[i * n_y + j] = 2
-                D0[i * n_y + j] = 1
                 D2[i * n_y + j] = 2'''
 
             # 4 fuel pins
             if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                 # use fuel XSs
-
+                sigma_a[i * n_y + j] = 4
+                D[i * n_y + j] = 1
+                Q[i * n_y + j] = 5
+                nu_sigma_f[i * n_y + j] = 3 #sp3 looks better when this is 0
+                #for sp3 only below
                 sigma_t[i * n_y + j] = 5
                 sigma_s0[i * n_y + j] = 4
                 sigma_s2[i * n_y + j] = 0.1
-                nu_sigma_f[i * n_y + j] = 0
-                D0[i * n_y + j] = 1
                 D2[i * n_y + j] = 2
-                Q[i * n_y + j] = 5
+                
             else:
                 # use moderator XSs
+                sigma_a[i * n_y + j] = 2
+                D[i * n_y + j] = 1
+                #for sp3 only below
                 sigma_t[i * n_y + j] = 5
                 sigma_s0[i * n_y + j] = 5
-                sigma_s2[i * n_y + j] = 2
-                D0[i * n_y + j] = 1
+                sigma_s2[i * n_y + j] = 2 
                 D2[i * n_y + j] = 2
 
 
@@ -159,14 +168,14 @@ def is_unitary(matrix):
 # get averaged diffusion coefficient in either the "x" or "y" direction for interior points
 # lower_index is lower index in the direction of the averaged diffusion coefficient
 # set_index is the other dimension index
-def get_av_D0(direction, lower_index, set_index, D0, delta_x, delta_y, n_y):
+def get_av_D(direction, lower_index, set_index, D, delta_x, delta_y, n_y):
     if direction == "x":
-        D_lower = D0[unroll_index([lower_index, set_index], n_y)]
-        D_upper = D0[unroll_index([lower_index+1, set_index], n_y)]
+        D_lower = D[unroll_index([lower_index, set_index], n_y)]
+        D_upper = D[unroll_index([lower_index+1, set_index], n_y)]
         delta = delta_x
     elif direction == "y":
-        D_lower = D0[unroll_index([set_index, lower_index], n_y)]
-        D_upper = D0[unroll_index([set_index, lower_index+1], n_y)]
+        D_lower = D[unroll_index([set_index, lower_index], n_y)]
+        D_upper = D[unroll_index([set_index, lower_index+1], n_y)]
         delta = delta_y
     return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
 
@@ -183,8 +192,43 @@ def get_av_D2(direction, lower_index, set_index, D2, delta_x, delta_y, n_y):
     return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
 
 
-# use finite volume method to contruct the A matrix reprenting the diffusion equation in the form Ax=b, O(N)
-def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3):
+def get_edge_D(beta, x_i, y_i, delta, n_y, D):
+    return 2 * (beta/2) * (D[unroll_index([x_i, y_i], n_y)]/delta) / (beta/2 + (D[unroll_index([x_i, y_i], n_y)]/delta))
+
+
+# use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
+def diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
+    fd_order = 2
+    A_matrix = np.zeros((A_mat_size, A_mat_size))
+    for x_i in range(n_x):
+        for y_i in range(n_y):
+            i = unroll_index([x_i, y_i], n_y)
+            if(x_i == 0): # left BC, normal vector = (-1,0)
+                J_x_minus = get_edge_D(0.5, x_i ,y_i,delta_x, n_y, D) * delta_y
+            else:
+                J_x_minus = get_av_D("x",x_i-1,y_i, D, delta_x, delta_y, n_y) * delta_y
+                A_matrix[i,unroll_index([x_i-1, y_i], n_y)] =  -J_x_minus # (i-1,j) terms
+            if(x_i == n_x - 1): # right BC, normal vector = (1,0)
+                J_x_plus = get_edge_D(0.5, x_i ,y_i,delta_x, n_y, D) * delta_y
+            else:
+                J_x_plus = get_av_D("x",x_i,y_i, D, delta_x, delta_y, n_y) * delta_y
+                A_matrix[i,unroll_index([x_i+1, y_i], n_y)] =  -J_x_plus # (i+1,j) terms
+            if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                J_y_minus = get_edge_D(0.5, x_i ,y_i,delta_y, n_y, D)* delta_x
+            else:
+                J_y_minus = get_av_D("y",y_i-1,x_i, D, delta_x, delta_y, n_y) * delta_x
+                A_matrix[i,unroll_index([x_i, y_i-1], n_y)] =  -J_y_minus # (i,j-1) terms
+            if(y_i == n_y - 1): # right BC, normal vector = (0,1)
+                J_y_plus = get_edge_D(0.5, x_i ,y_i,delta_y, n_y, D) * delta_x
+            else:
+                J_y_plus = get_av_D("x",y_i,x_i, D, delta_x, delta_y, n_y) * delta_x
+                A_matrix[i,unroll_index([x_i, y_i+1], n_y)] =  -J_y_plus # (i,j+1) terms
+            A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (sigma_a[i] - nu_sigma_f[i]) * delta_x * delta_y
+    return A_matrix
+
+
+
+def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3):
     fd_order = 2
     beta = 0.5
     phi_2_offset = n_x * n_y
@@ -196,14 +240,14 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
             if(x_i == 0): # left BC, normal vector = (-1,0)
                 # these coefficients will be the same for all cells with the same material and mesh size so
                 # need to imporove efficiency of this by storing these values beforehand instead of recalculating for each B.C. cell
-                a1 = (1 + 4 * D0[unroll_index([x_i, y_i], n_y)]/delta_x)
-                a2 = (-3/4) * D0[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
-                a3 = 2 * D0[unroll_index([x_i, y_i], n_y)]/delta_x
-                a4 = (-3/4) * 2 * D0[unroll_index([x_i, y_i], n_y)] / delta_x
-                a5 =  4 * D0[unroll_index([x_i, y_i], n_y)]/delta_x * 2 * get_I_1_value([x_i,y_i], n_x, n_y, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1)
+                a1 = (1 + 4 * D[unroll_index([x_i, y_i], n_y)]/delta_x)
+                a2 = (-3/4) * D[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
+                a3 = 2 * D[unroll_index([x_i, y_i], n_y)]/delta_x
+                a4 = (-3/4) * 2 * D[unroll_index([x_i, y_i], n_y)] / delta_x
+                a5 =  4 * D[unroll_index([x_i, y_i], n_y)]/delta_x * 2 * get_BC_value([x_i,y_i], n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
 
                 b2 = (1 + (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_x)
-                b1 = (-1/7) * D2[unroll_index([x_i, y_i], n_y)]/D0[unroll_index([x_i, y_i], n_y)]
+                b1 = (-1/7) * D2[unroll_index([x_i, y_i], n_y)]/D[unroll_index([x_i, y_i], n_y)]
                 b4 = 2 * D2[unroll_index([x_i, y_i], n_y)]/delta_x
                 b3 = (-2/7) * D2[unroll_index([x_i, y_i], n_y)] / delta_x
                 b5 =  (6/5) * (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_x * get_I_3_value([x_i,y_i], n_x, n_y, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3)
@@ -222,7 +266,7 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4) / b2 * delta_y
             else:
                 # Phi_0 equations
-                x_minus_term_0 = get_av_D0("x",x_i-1,y_i, D0, delta_x, delta_y, n_y) * delta_y
+                x_minus_term_0 = get_av_D("x",x_i-1,y_i, D, delta_x, delta_y, n_y) * delta_y
                 A_matrix[i,unroll_index([x_i-1, y_i], n_y)] =  -x_minus_term_0 # phi_0, (i-1,j) term
                 A_matrix[i,i] +=  x_minus_term_0 # phi_0, (i,j) term
 
@@ -231,14 +275,14 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,unroll_index([x_i-1, y_i], n_y) + phi_2_offset] =  -x_minus_term_2 # phi_2, (i-1,j) term
                 A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_minus_term_2 # phi_2, (i,j) term
             if(x_i == n_x - 1): # right BC, normal vector = (1,0)
-                d1 = (-1 - 4 * D0[unroll_index([x_i, y_i], n_y)]/delta_x)
-                d2 = (3/4) * D0[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
-                d3 = 2 * D0[unroll_index([x_i, y_i], n_y)]/delta_x
-                d4 = (-3/4) * 2 * D0[unroll_index([x_i, y_i], n_y)] / delta_x
-                d5 =  4 * D0[unroll_index([x_i, y_i], n_y)]/delta_x * 2 * get_I_1_value([x_i,y_i], n_x, n_y, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1)
+                d1 = (-1 - 4 * D[unroll_index([x_i, y_i], n_y)]/delta_x)
+                d2 = (3/4) * D[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
+                d3 = 2 * D[unroll_index([x_i, y_i], n_y)]/delta_x
+                d4 = (-3/4) * 2 * D[unroll_index([x_i, y_i], n_y)] / delta_x
+                d5 =  4 * D[unroll_index([x_i, y_i], n_y)]/delta_x * 2 * get_BC_value([x_i,y_i], n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
 
                 e2 = (-1 - (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_x)
-                e1 = (1/7) * D2[unroll_index([x_i, y_i], n_y)]/D0[unroll_index([x_i, y_i], n_y)]
+                e1 = (1/7) * D2[unroll_index([x_i, y_i], n_y)]/D[unroll_index([x_i, y_i], n_y)]
                 e4 = 2 * D2[unroll_index([x_i, y_i], n_y)]/delta_x
                 e3 = (-2/7) * D2[unroll_index([x_i, y_i], n_y)] / delta_x
                 e5 =  (6/5) * (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_x * get_I_3_value([x_i,y_i], n_x, n_y, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3)
@@ -257,7 +301,7 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,i+phi_2_offset] += (-e1 * f3 - e4) / e2 * delta_y
             else:
                 # Phi_0 equations
-                x_plus_term_0 = get_av_D0("x",x_i,y_i, D0, delta_x, delta_y, n_y) * delta_y
+                x_plus_term_0 = get_av_D("x",x_i,y_i, D, delta_x, delta_y, n_y) * delta_y
                 A_matrix[i,unroll_index([x_i+1, y_i], n_y)] =  -x_plus_term_0 # phi_0, (i+1,j) term
                 A_matrix[i,i] +=  x_plus_term_0 # phi_0, (i,j) term
 
@@ -266,14 +310,14 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,unroll_index([x_i+1, y_i], n_y) + phi_2_offset] =  -x_plus_term_2 # phi_2, (i+1,j) term
                 A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_plus_term_2 # phi_2, (i,j) term
             if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                a1 = (1 + 4 * D0[unroll_index([x_i, y_i], n_y)]/delta_y)
-                a2 = (-3/4) * D0[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
-                a3 = 2 * D0[unroll_index([x_i, y_i], n_y)]/delta_y
-                a4 = (-3/4) * 2 * D0[unroll_index([x_i, y_i], n_y)] / delta_y
-                a5 =  4 * D0[unroll_index([x_i, y_i], n_y)]/delta_y * 2 * get_I_1_value([x_i,y_i], n_x, n_y, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1)
+                a1 = (1 + 4 * D[unroll_index([x_i, y_i], n_y)]/delta_y)
+                a2 = (-3/4) * D[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
+                a3 = 2 * D[unroll_index([x_i, y_i], n_y)]/delta_y
+                a4 = (-3/4) * 2 * D[unroll_index([x_i, y_i], n_y)] / delta_y
+                a5 =  4 * D[unroll_index([x_i, y_i], n_y)]/delta_y * 2 * get_BC_value([x_i,y_i], n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
 
                 b2 = (1 + (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_y)
-                b1 = (-1/7) * D2[unroll_index([x_i, y_i], n_y)]/D0[unroll_index([x_i, y_i], n_y)]
+                b1 = (-1/7) * D2[unroll_index([x_i, y_i], n_y)]/D[unroll_index([x_i, y_i], n_y)]
                 b4 = 2 * D2[unroll_index([x_i, y_i], n_y)]/delta_y
                 b3 = (-2/7) * D2[unroll_index([x_i, y_i], n_y)] / delta_y
                 b5 =  (6/5) * (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_y * 2 * get_I_3_value([x_i,y_i], n_x, n_y, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3)
@@ -292,7 +336,7 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4) / b2 * delta_x
             else:
                 # Phi_0 equations
-                y_minus_term_0 = get_av_D0("y",x_i,y_i-1, D0, delta_x, delta_y, n_y) * delta_x
+                y_minus_term_0 = get_av_D("y",x_i,y_i-1, D, delta_x, delta_y, n_y) * delta_x
                 A_matrix[i,unroll_index([x_i, y_i-1], n_y)] =  -y_minus_term_0 # phi_0, (i,j-1) term
                 A_matrix[i,i] +=  y_minus_term_0 # phi_0, (i,j) term
 
@@ -301,14 +345,14 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,unroll_index([x_i, y_i-1], n_y) + phi_2_offset] =  -y_minus_term_2 # phi_2, (i,j-1) term
                 A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_minus_term_2 # phi_2, (i,j) term
             if(y_i == n_y - 1): # right BC, normal vector = (0,1)
-                d1 = (-1 - 4 * D0[unroll_index([x_i, y_i], n_y)]/delta_y)
-                d2 = (3/4) * D0[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
-                d3 = 2 * D0[unroll_index([x_i, y_i], n_y)]/delta_y
-                d4 = (-3/4) * 2 * D0[unroll_index([x_i, y_i], n_y)] / delta_y
-                d5 =  4 * D0[unroll_index([x_i, y_i], n_y)]/delta_y * 2 * get_I_1_value([x_i,y_i], n_x, n_y, left_y_I_1, right_y_I_1, bottom_x_I_1, top_x_I_1)
+                d1 = (-1 - 4 * D[unroll_index([x_i, y_i], n_y)]/delta_y)
+                d2 = (3/4) * D[unroll_index([x_i, y_i], n_y)]/D2[unroll_index([x_i, y_i], n_y)]
+                d3 = 2 * D[unroll_index([x_i, y_i], n_y)]/delta_y
+                d4 = (-3/4) * 2 * D[unroll_index([x_i, y_i], n_y)] / delta_y
+                d5 =  4 * D[unroll_index([x_i, y_i], n_y)]/delta_y * 2 * get_BC_value([x_i,y_i], n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
 
                 e2 = (-1 - (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_y)
-                e1 = (1/7) * D2[unroll_index([x_i, y_i], n_y)]/D0[unroll_index([x_i, y_i], n_y)]
+                e1 = (1/7) * D2[unroll_index([x_i, y_i], n_y)]/D[unroll_index([x_i, y_i], n_y)]
                 e4 = 2 * D2[unroll_index([x_i, y_i], n_y)]/delta_y
                 e3 = (-2/7) * D2[unroll_index([x_i, y_i], n_y)] / delta_y
                 e5 =  (6/5) * (80/21) * D2[unroll_index([x_i, y_i], n_y)]/delta_y * get_I_3_value([x_i,y_i], n_x, n_y, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3)
@@ -327,7 +371,7 @@ def sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D0, D2, sigma
                 A_matrix[i+phi_2_offset,i+phi_2_offset] += (-e1 * f3 - e4) / e2 * delta_x
             else:
                 # Phi_0 equations
-                y_plus_term_0 = get_av_D0("y",x_i,y_i, D0, delta_x, delta_y, n_y) * delta_x
+                y_plus_term_0 = get_av_D("y",x_i,y_i, D, delta_x, delta_y, n_y) * delta_x
                 A_matrix[i,unroll_index([x_i, y_i+1], n_y)] =  -y_plus_term_0 # phi_0, (i,j+1) term
                 A_matrix[i,i] +=  y_plus_term_0 # phi_0, (i,j) term
 
