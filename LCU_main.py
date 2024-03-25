@@ -1,79 +1,34 @@
 import numpy as np
-from qiskit.quantum_info import Statevector
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
-import math
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.linalg import ishermitian, expm
+from scipy.linalg import ishermitian
 import time
-import Helpers
+import ProblemData
+import LcuFunctions
 
-from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
+from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 np.set_printoptions(threshold=np.inf)
 
-# code to implement the Linear Combination of Unitaries method described in the link below
-# https://arxiv.org/pdf/1511.02306.pdf
 
 start = time.perf_counter()
-# number of variable points in each direction
-n_x = int(Helpers.input_variable('input.txt', 1))
-n_y = int(Helpers.input_variable('input.txt', 2))
 
-# number of points (including boundary values) in each direction
-n_pts_x = n_x + 2
-n_pts_y = n_y + 2
+data = ProblemData.ProblemData("input.txt")
 
-# distance between finite difference points
-delta_x = float(Helpers.input_variable('input.txt', 3))
-delta_y = float(Helpers.input_variable('input.txt', 4))
-
-# create boundary conditions
-'''top_J_minus = 0
-bottom_J_minus = 0
-right_J_minus = 0
-left_J_minus = 0
-top_x_BCs = np.ones(n_pts_x) * top_J_minus
-bottom_x_BCs = np.zeros(n_pts_x) * bottom_J_minus
-right_y_BCs = np.zeros(n_pts_y) * right_J_minus
-left_y_BCs = np.zeros(n_pts_y) * left_J_minus'''
-#for sp3 only below
-top_I_3 = 0
-bottom_I_3 = 0
-right_I_3 = 0
-left_I_3 = 0
-top_x_I_3 = np.ones(n_pts_x) * top_I_3
-bottom_x_I_3 = np.zeros(n_pts_x) * bottom_I_3
-right_y_I_3 = np.zeros(n_pts_y) * right_I_3
-left_y_I_3 = np.zeros(n_pts_y) * left_I_3
-
-# material data initialization, O(N)
-sigma_a = np.zeros(n_x*n_y)
-nu_sigma_f = np.zeros(n_x*n_y)
-D = np.zeros(n_x*n_y)
-Q = np.zeros(n_x*n_y)
-#for sp3 only below
-sigma_t = np.zeros(n_x*n_y)
-sigma_s0 = np.zeros(n_x*n_y)
-sigma_s2 = np.zeros(n_x*n_y)
-D2 = np.zeros(n_x*n_y)
-
-A_mat_size = None
-b_vector = None
-
-#Choose method, either diffusion or sp3
-method = Helpers.input_variable('input.txt', 5)
 # create the vectors holding the material data at each discretized point
-Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D, D2, Q, n_x, n_y) 
-# make A matrix
-if method == "sp3":
-    A_mat_size = 2 * (n_x) * (n_y)
-    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) 
-elif method == "diffusion":
-    A_mat_size = (n_x) * (n_y)
-    A_matrix = Helpers.diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f)
-    b_vector = Q * delta_x * delta_y
+data.read_input("input.txt")
+data.initialize_BC()
+data.initialize_XSs() 
+# make A matrix and b vector
+if data.sim_method == "sp3":
+    A_mat_size = 2 * (data.n_x) * (data.n_y)
+    A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
+elif data.sim_method == "diffusion":
+    A_mat_size = (data.n_x) * (data.n_y)
+    A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
+    
 
 
 # use the material data (like XSs) to make the A matrix for the equation being solved
@@ -116,7 +71,7 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     K = pow(2,num_LCU_bits-j-1)
     for y_max in np.linspace(0.5,5,10):
         for z_max in np.linspace(0.5,5,10):
-            U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
+            U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
             print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
@@ -139,7 +94,7 @@ best_error_norm = np.inf
 J = pow(2, best_j)
 K = pow(2,num_LCU_bits-best_j-1)
 for y_max in np.linspace(0.1,6,30):
-    U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size)
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size)
     print("y_max: ", y_max)
     print("Error: ", error_norm)
     if error_norm < best_error_norm:
@@ -149,7 +104,7 @@ for y_max in np.linspace(0.1,6,30):
         break
 best_error_norm = np.inf
 for z_max in np.linspace(0.1,5,30):
-    U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size)
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size)
     print("z_max: ", z_max)
     print("Error: ", error_norm)
     if(last_error_norm < error_norm):
@@ -166,7 +121,7 @@ best_j = 1
 best_y_max = 1
 best_z_max = 1
 
-U, alphas, error_norm = Helpers.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True, A_mat_size)
+U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True, A_mat_size)
 print("Error Norm: ", error_norm)
 
 unitary_construction_time = time.perf_counter()
@@ -181,14 +136,14 @@ cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
 qc = QuantumCircuit(qb, ql)
 
 # b vector State preparation
-qc.append(Helpers.get_b_setup_gate(quantum_b_vector, nb), qb[:])
+qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
 
 circuit_setup_time = time.perf_counter()
 print("Circuit Setup Time: ", circuit_setup_time - unitary_construction_time)
 
 alpha = np.sum(alphas)
 
-V = Helpers.gram_schmidt_ortho(np.sqrt(alphas))
+V = LcuFunctions.gram_schmidt_ortho(np.sqrt(alphas))
 v_mat_time = time.perf_counter()
 print("Construction of V matrix time: ", v_mat_time - circuit_setup_time)
 
@@ -220,7 +175,7 @@ state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 #print(classical_sol_vec)
 
-if method == "sp3":
+if data.sim_method == "sp3":
     # find scalar flux value from 0th and 2nd moments in SP3 equations
     for i in range(int(len(state_vec)/2)):
         state_vec[i] -= 2 * state_vec[int(i + len(state_vec)/2)]
@@ -249,25 +204,25 @@ print("Total time: ", solve_time - start)
 
 
 # Make graphs of results
-state_vec.resize((n_x,n_y))
+state_vec.resize((data.n_x,data.n_y))
 ax = sns.heatmap(state_vec, linewidth=0.5)
 plt.title("Quantum Solution")
 plt.savefig('q_sol.png')
 plt.figure()
 
-classical_sol_vec.resize((n_x,n_y))
+classical_sol_vec.resize((data.n_x,data.n_y))
 ax = sns.heatmap(classical_sol_vec, linewidth=0.5)
 plt.title("Real Solution")
 plt.savefig('real_sol.png')
 plt.figure()
 
-sol_rel_error.resize((n_x,n_y))
+sol_rel_error.resize((data.n_x,data.n_y))
 ax = sns.heatmap(sol_rel_error, linewidth=0.5)
 plt.title("Relative error between quantum and real solution")
 plt.savefig('rel_error.png')
 plt.figure()
 
-sol_error.resize((n_x,n_y))
+sol_error.resize((data.n_x,data.n_y))
 ax = sns.heatmap(sol_error, linewidth=0.5)
 plt.title("Actual error between quantum and real solution")
 plt.savefig('error.png')
