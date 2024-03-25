@@ -1,16 +1,13 @@
 import numpy as np
 from qiskit.quantum_info import Statevector
-from qiskit import transpile, execute
-from qiskit.providers.aer import QasmSimulator
-from linear_solvers.matrices.tridiagonal_toeplitz import TridiagonalToeplitz
+from qiskit import transpile
+from qiskit_aer.aerprovider import QasmSimulator
 import math
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, expm
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
-from qiskit.quantum_info.operators import Operator
-from linear_solvers.matrices.numpy_matrix import NumPyMatrix
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 np.set_printoptions(threshold=np.inf)
 
@@ -45,7 +42,7 @@ def roll_index(index, n_y):
     return np.array([math.floor(index/n_y), index % n_y])
 
 
-def get_BC_value(index, n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
+'''def get_BC_value(index, n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
     i = index[0]
     j = index[1]
     if (i == 0):
@@ -56,7 +53,7 @@ def get_BC_value(index, n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_B
         return bottom_x_BCs[i]
     if (j == n_y-1):
         return top_x_BCs[i]
-    raise Exception("tried to get BC on non-boundary node")
+    raise Exception("tried to get BC on non-boundary node")'''
 
 
 # return flux at B.C.s at edge of problem domain
@@ -88,9 +85,9 @@ def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s
             y_val = (j + 1) * delta_y - y_range/2
 
             # fuel at center
-            '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+            if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                 # use fuel XSs
-                sigma_a[i * n_y + j] = 4
+                sigma_a[i * n_y + j] = 1
                 nu_sigma_f[i * n_y + j] = 3
                 D[i * n_y + j] = 1
                 Q[i * n_y + j] = 5
@@ -106,17 +103,17 @@ def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s
                 D[i * n_y + j] = 1
                 #for sp3 only below
                 sigma_t[i * n_y + j] = 5
-                sigma_s0[i * n_y + j] = 5
-                sigma_s2[i * n_y + j] = 2
-                D2[i * n_y + j] = 2'''
+                sigma_s0[i * n_y + j] = 3
+                sigma_s2[i * n_y + j] = 1
+                D2[i * n_y + j] = 2
 
             # 4 fuel pins
-            if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+            '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                 # use fuel XSs
-                sigma_a[i * n_y + j] = 4
+                sigma_a[i * n_y + j] = 1
                 D[i * n_y + j] = 1
                 Q[i * n_y + j] = 5
-                nu_sigma_f[i * n_y + j] = 3 #sp3 looks better when this is 0
+                nu_sigma_f[i * n_y + j] = 0 #sp3 looks better when this is 0
                 #for sp3 only below
                 sigma_t[i * n_y + j] = 5
                 sigma_s0[i * n_y + j] = 4
@@ -125,13 +122,13 @@ def initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s
                 
             else:
                 # use moderator XSs
-                sigma_a[i * n_y + j] = 2
+                sigma_a[i * n_y + j] = 1
                 D[i * n_y + j] = 1
                 #for sp3 only below
                 sigma_t[i * n_y + j] = 5
-                sigma_s0[i * n_y + j] = 5
+                sigma_s0[i * n_y + j] = 4
                 sigma_s2[i * n_y + j] = 2 
-                D2[i * n_y + j] = 2
+                D2[i * n_y + j] = 2'''
 
 
 # Perform Gram-Schmidt orthogonalization to return V vector from LCU paper.
@@ -197,7 +194,7 @@ def get_edge_D(beta, x_i, y_i, delta, n_y, D):
 
 
 # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
-def diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
+def diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f):
     fd_order = 2
     A_matrix = np.zeros((A_mat_size, A_mat_size))
     for x_i in range(n_x):

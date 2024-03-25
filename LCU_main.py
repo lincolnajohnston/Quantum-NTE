@@ -1,8 +1,7 @@
 import numpy as np
 from qiskit.quantum_info import Statevector
-from qiskit import transpile, execute
-from qiskit.providers.aer import QasmSimulator
-from linear_solvers.matrices.tridiagonal_toeplitz import TridiagonalToeplitz
+from qiskit import transpile
+from qiskit_aer.aerprovider import QasmSimulator
 import math
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -11,8 +10,6 @@ import time
 import Helpers
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRegister
-from qiskit.quantum_info.operators import Operator
-from linear_solvers.matrices.numpy_matrix import NumPyMatrix
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 np.set_printoptions(threshold=np.inf)
 
@@ -33,14 +30,14 @@ delta_x = float(Helpers.input_variable('input.txt', 3))
 delta_y = float(Helpers.input_variable('input.txt', 4))
 
 # create boundary conditions
-top_J_minus = 0
+'''top_J_minus = 0
 bottom_J_minus = 0
 right_J_minus = 0
 left_J_minus = 0
 top_x_BCs = np.ones(n_pts_x) * top_J_minus
 bottom_x_BCs = np.zeros(n_pts_x) * bottom_J_minus
 right_y_BCs = np.zeros(n_pts_y) * right_J_minus
-left_y_BCs = np.zeros(n_pts_y) * left_J_minus
+left_y_BCs = np.zeros(n_pts_y) * left_J_minus'''
 #for sp3 only below
 top_I_3 = 0
 bottom_I_3 = 0
@@ -67,15 +64,15 @@ b_vector = None
 
 #Choose method, either diffusion or sp3
 method = Helpers.input_variable('input.txt', 5)
-# make A matrix
-Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D, D2, Q, n_x, n_y) 
 # create the vectors holding the material data at each discretized point
+Helpers.initialize_XSs(n_pts_x, n_pts_y, delta_x, delta_y, sigma_a, sigma_t, sigma_s0, sigma_s2, nu_sigma_f, D, D2, Q, n_x, n_y) 
+# make A matrix
 if method == "sp3":
     A_mat_size = 2 * (n_x) * (n_y)
-    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) 
+    A_matrix, b_vector = Helpers.sp3_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, D2, sigma_t, nu_sigma_f, sigma_s0, sigma_s2, Q, left_y_I_3, right_y_I_3, bottom_x_I_3, top_x_I_3) 
 elif method == "diffusion":
     A_mat_size = (n_x) * (n_y)
-    A_matrix = Helpers.diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs)
+    A_matrix = Helpers.diffusion_construct_A_matrix(n_x, n_y, A_mat_size, delta_x, delta_y, D, Q, sigma_a, nu_sigma_f)
     b_vector = Q * delta_x * delta_y
 
 
@@ -119,7 +116,7 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     K = pow(2,num_LCU_bits-j-1)
     for y_max in np.linspace(0.5,5,10):
         for z_max in np.linspace(0.5,5,10):
-            U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size, delta_x, delta_y, delta_z)
+            U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
             print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
@@ -142,7 +139,7 @@ best_error_norm = np.inf
 J = pow(2, best_j)
 K = pow(2,num_LCU_bits-best_j-1)
 for y_max in np.linspace(0.1,6,30):
-    U, alphas, error_norm = get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size, delta_x, delta_y, delta_z)
+    U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size)
     print("y_max: ", y_max)
     print("Error: ", error_norm)
     if error_norm < best_error_norm:
@@ -152,7 +149,7 @@ for y_max in np.linspace(0.1,6,30):
         break
 best_error_norm = np.inf
 for z_max in np.linspace(0.1,5,30):
-    U, alphas, error_norm = get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size, delta_x, delta_y, delta_z)
+    U, alphas, error_norm = Helpers.get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size)
     print("z_max: ", z_max)
     print("Error: ", error_norm)
     if(last_error_norm < error_norm):
@@ -164,7 +161,7 @@ for z_max in np.linspace(0.1,5,30):
         break'''
 
 
-# manually input paremters for LCU
+# manually input parameters for LCU
 best_j = 1
 best_y_max = 1
 best_z_max = 1
@@ -214,7 +211,8 @@ qc.save_statevector()
 
 # Run quantum algorithm
 backend = QasmSimulator(method="statevector")
-job = execute(qc, backend)
+new_circuit = transpile(qc, backend)
+job = backend.run(new_circuit)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
