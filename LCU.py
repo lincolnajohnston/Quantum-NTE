@@ -96,13 +96,13 @@ def initialize_XSs():
 
     # store fuel xs_data
     f_fuel = open("Quantum-NTE/XS/fuel/xs.txt", "r")
-    fuel_xs_data = np.zeros((G,21))
+    fuel_xs_data = np.zeros((G,5+2*G))
     for g in range(G):
         fuel_xs_data[g,:] = [float(numeric_string) for numeric_string in f_fuel.readline().split()]
 
     # store water xs_data
     f_water = open("Quantum-NTE/XS/water/xs.txt", "r")
-    water_xs_data = np.zeros((G,21))
+    water_xs_data = np.zeros((G,5+2*G))
     for g in range(G):
         water_xs_data[g,:] = [float(numeric_string) for numeric_string in f_water.readline().split()]
     #fuel_radius = 9999
@@ -114,13 +114,13 @@ def initialize_XSs():
 
             # homogeneous fuel
             for g_p in range(G):
-                sigma_a[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,1] - fuel_xs_data[g,2] # TODO: find out what XSs actually mean, make sure this is fixed
+                sigma_a[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,1] - fuel_xs_data[g,2]
                 nu_sigma_f[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,3]
                 sigma_s[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,2]
                 for g in range(G):
                     sigma_sgg[g * (n_x * n_y * G) +  g_p * (n_x * n_y)  + i * (n_y) + j] = fuel_xs_data[g_p,4+g]
-                chi[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,20]
-                D[g_p * n_x * n_y + i * n_y + j] = 1 / (3 * (fuel_xs_data[g_p,1] - fuel_xs_data[g_p,12 + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+                chi[g_p * n_x * n_y + i * n_y + j] = fuel_xs_data[g_p,4+2*G]
+                D[g_p * n_x * n_y + i * n_y + j] = 1 / (3 * (fuel_xs_data[g_p,1] - fuel_xs_data[g_p,4 + G + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
                 Q[g_p * n_x * n_y + i * n_y + j] = 1
 
             # homogeneous water
