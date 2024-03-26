@@ -70,6 +70,7 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     J = pow(2,j)
     K = pow(2,num_LCU_bits-j-1)
     for y_max in np.linspace(0.5,5,10):
+        last_error_norm = 9999999
         for z_max in np.linspace(0.5,5,10):
             U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
             print("J: ", J)
@@ -116,10 +117,24 @@ for z_max in np.linspace(0.1,5,30):
         break'''
 
 
-# manually input parameters for LCU
-best_j = 1
-best_y_max = 1
-best_z_max = 1
+# manually input parameters for LCU (16x16 diffusion, dx=0.5, dy=0.5, 5 LCU bits)
+'''best_j = 3
+best_y_max = 4.0
+best_z_max = 2.0'''
+
+# manually input parameters for LCU (32x32 diffusion, dx=0.5, dy=0.5, 3 LCU bits) (does not work well)
+'''best_j = 1
+best_y_max = 1.0
+best_z_max = 2.0'''
+
+# manually input parameters for LCU (16x16 sp3, dx=0.5, dy=0.5, 4 LCU bits)
+best_j = 2
+best_y_max = 1.5
+best_z_max = 1.5
+
+print("Best J: ", best_j)
+print("Best y_max: ", best_y_max)
+print("Best z_max: ", best_z_max)
 
 U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True, A_mat_size)
 print("Error Norm: ", error_norm)
