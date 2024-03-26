@@ -303,8 +303,8 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
             print("y_max: ", y_max)
             print("z_max: ", z_max)
             print("Error: ", error_norm)
-            if(last_error_norm < error_norm):
-                break
+            #if(last_error_norm < error_norm):
+                #break
             if error_norm < best_error_norm:
                 best_j = j
                 best_y_max = y_max
@@ -343,9 +343,9 @@ for z_max in np.linspace(0.1,5,30):
 
 
 # manually input paremters for LCU
-best_j = 1
-best_y_max = 1
-best_z_max = 1
+best_j = 2
+best_y_max = 3.0
+best_z_max = 1.5
 
 
 U, alphas, error_norm = get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True)
