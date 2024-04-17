@@ -95,7 +95,7 @@ def initialize_XSs():
     fuel_radius = min(x_range,y_range)/8
 
     # store fuel xs_data
-    f_fuel = open("Quantum-NTE/XS/fuel/xs.txt", "r")
+    f_fuel = open("Quantum-NTE/XS/fuel_no_fission/xs.txt", "r")
     fuel_xs_data = np.zeros((G,5+2*G))
     for g in range(G):
         fuel_xs_data[g,:] = [float(numeric_string) for numeric_string in f_fuel.readline().split()]
@@ -318,6 +318,9 @@ ax = sns.heatmap(A_plot, linewidth=0)
 plt.title("A_matrix")
 plt.savefig('A_mat.png')
 plt.figure()
+
+print("end")
+exit()
 
 # make b vector
 b_vector = Q * delta_x * delta_y
