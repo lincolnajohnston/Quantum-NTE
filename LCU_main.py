@@ -7,6 +7,10 @@ from scipy.linalg import ishermitian
 import time
 import ProblemData
 import LcuFunctions
+from skopt import gp_minimize
+from skopt.space import Real, Integer
+from skopt.utils import use_named_args
+from skopt.callbacks import DeltaYStopper
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -61,61 +65,26 @@ else:
     quantum_mat = A_matrix
     quantum_b_vector = b_vector
 
-# select optimal J, K, y_max, and z_max in just about the least efficient way possible
-'''best_j = 0
-best_y_max = 0
-best_z_max = 0
-best_error_norm = np.inf
-for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
-    J = pow(2,j)
-    K = pow(2,num_LCU_bits-j-1)
-    for y_max in np.linspace(0.5,5,10):
-        last_error_norm = 9999999
-        for z_max in np.linspace(0.5,5,10):
-            U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
-            print("J: ", J)
-            print("K: ", K)
-            print("y_max: ", y_max)
-            print("z_max: ", z_max)
-            print("Error: ", error_norm)
-            if(last_error_norm < error_norm):
-                break
-            if error_norm < best_error_norm:
-                best_j = j
-                best_y_max = y_max
-                best_z_max = z_max
-                best_error_norm = error_norm
-            last_error_norm = error_norm'''
 
-# a little quicker way to get best parameters for LCU, but gets worse answers
-'''best_j = math.floor(num_LCU_bits/2)
-best_y_max = 4
-best_z_max = 3
-best_error_norm = np.inf
-J = pow(2, best_j)
-K = pow(2,num_LCU_bits-best_j-1)
-for y_max in np.linspace(0.1,6,30):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size)
-    print("y_max: ", y_max)
-    print("Error: ", error_norm)
-    if error_norm < best_error_norm:
-        best_y_max = y_max
-        best_error_norm = error_norm
-    else:
-        break
-best_error_norm = np.inf
-for z_max in np.linspace(0.1,5,30):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size)
-    print("z_max: ", z_max)
-    print("Error: ", error_norm)
-    if(last_error_norm < error_norm):
-        break
-    if error_norm < best_error_norm:
-        best_z_max = z_max
-        best_error_norm = error_norm
-    else:
-        break'''
+#utilizing bayesian 
+def objective_function(params):
+    j, y_max, z_max = params
+    J = pow(2, j)
+    K = pow(2, num_LCU_bits - j - 1)
+    _, _, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
+    return error_norm
 
+#define search space (lower, upper bound)
+space = [Integer(int(num_LCU_bits/4), num_LCU_bits - int(num_LCU_bits/4), name='j'),
+        Real(0.5, 5, name='y_max'), Real(0.5, 5, name='z_max')]
+
+#stop if no improvement in the best value for 2 consecutive iterations
+stopper = DeltaYStopper(delta=0.001, n_best=2)
+
+result = gp_minimize(objective_function, space, n_calls=50, random_state=42, callback=[stopper])
+
+best_j, best_y_max, best_z_max = result.x
+best_error_norm = result.fun
 
 # manually input parameters for LCU (16x16 diffusion, dx=0.5, dy=0.5, 5 LCU bits)
 '''best_j = 3
@@ -128,11 +97,12 @@ best_y_max = 1.0
 best_z_max = 2.0'''
 
 # manually input parameters for LCU (16x16 sp3, dx=0.5, dy=0.5, 4 LCU bits)
-best_j = 2
+'''best_j = 2
 best_y_max = 1.5
-best_z_max = 1.5
+best_z_max = 1.5'''
 
-print("Best J: ", best_j)
+print("Best J: ", pow(2, best_j))
+print("Best K: ", pow(2, num_LCU_bits - best_j - 1))
 print("Best y_max: ", best_y_max)
 print("Best z_max: ", best_z_max)
 
