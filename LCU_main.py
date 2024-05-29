@@ -66,25 +66,37 @@ else:
     quantum_b_vector = b_vector
 
 
-#utilizing bayesian 
+
+#optimizing LCU params
+### 1.0 utilizing bayesian ###
 def objective_function(params):
     j, y_max, z_max = params
     J = pow(2, j)
     K = pow(2, num_LCU_bits - j - 1)
     _, _, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
     return error_norm
-
+###refine search space to be sufficiently but realistic ###
 #define search space (lower, upper bound)
 space = [Integer(int(num_LCU_bits/4), num_LCU_bits - int(num_LCU_bits/4), name='j'),
-        Real(0.5, 5, name='y_max'), Real(0.5, 5, name='z_max')]
-
+        Real(0.5, 5, name='y_max'), 
+        Real(0.5, 4, name='z_max')]
+###adjust stopping criteria to allow optimizer to explore parameter space ###
 #stop if no improvement in the best value for 2 consecutive iterations
-stopper = DeltaYStopper(delta=0.001, n_best=2)
+stopper = DeltaYStopper(delta=0.001, n_best=10)
 
-result = gp_minimize(objective_function, space, n_calls=50, random_state=42, callback=[stopper])
+first_result = gp_minimize(objective_function, space, n_calls=50, random_state=42, callback=[stopper])
 
+best_j, best_y_max, best_z_max = first_result.x
+'best_error_norm = result.fun'
+
+#refine params again
+refined_space = [Integer(max(best_j-1, int(num_LCU_bits/4)), min(best_j+1, num_LCU_bits-int(num_LCU_bits/4)), name='j'),
+        Real(max(0.5, best_y_max-0.5), min(5, best_y_max+0.5), name='y_max'), 
+        Real(max(0.5, best_z_max-0.5), min(5, best_z_max+0.5), name='z_max')]
+
+result = gp_minimize(objective_function, refined_space, n_calls=50, random_state=42, callback=[stopper])
 best_j, best_y_max, best_z_max = result.x
-best_error_norm = result.fun
+
 
 # manually input parameters for LCU (16x16 diffusion, dx=0.5, dy=0.5, 5 LCU bits)
 '''best_j = 3
@@ -101,13 +113,14 @@ best_z_max = 2.0'''
 best_y_max = 1.5
 best_z_max = 1.5'''
 
-print("Best J: ", pow(2, best_j))
+print("best_j: ", best_j)
+#print("Best J: ", pow(2, best_j))
 print("Best K: ", pow(2, num_LCU_bits - best_j - 1))
 print("Best y_max: ", best_y_max)
 print("Best z_max: ", best_z_max)
-
 U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True, A_mat_size)
 print("Error Norm: ", error_norm)
+
 
 unitary_construction_time = time.perf_counter()
 print("Unitary Construction Time: ", unitary_construction_time - material_initialization_time)
