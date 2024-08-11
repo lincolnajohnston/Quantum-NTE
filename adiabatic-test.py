@@ -19,18 +19,20 @@ def getU(l, T, M, dH):
     assert(l<=M)
     dt = T/M
     
-n_bits = 1 
+n_bits = 1
 T = 100
-M = 10000
+M = 1000
 dt = T/M
 X = np.array([[0, 1],[1, 0]])
 H_B = np.array([[1/2, -1/2],[-1/2, 1/2]]) # one qubit case
 #H_B = np.array(np.eye(4) - (1/2) * np.kron(X, np.eye(2))- (1/2) * np.kron(np.eye(2), X)) # two qubit case
+print("H_B", H_B)
 H_B_eigenvalues, H_B_eigenvectors = np.linalg.eig(H_B)
 print("H_B eigenvalues: ", H_B_eigenvalues)
 print("H_B eigenvectors: ", H_B_eigenvectors)
 H_P = np.array([[1, 0],[0, 0]]) # one qubit case
 #H_P = np.array([[1,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,1]]) # 2 qubit case
+print("H_P", H_P)
 H_P_eigenvalues, H_P_eigenvectors = np.linalg.eig(H_P)
 print("H_P eigenvalues: ", H_P_eigenvalues)
 print("H_P eigenvectors: ", H_P_eigenvectors)
@@ -49,6 +51,8 @@ U_T = np.eye(2)
 for l in range(M):
     s = l/M
     H = (1-s) * H_B + s * H_P
+
+    # using equation 5.4 in Farhi
     U = expm(-(1j) * dt * H)
     U_T = np.matmul(U,U_T)
     psi = U.dot(psi)
@@ -57,7 +61,26 @@ for l in range(M):
     expected_state_evolution[l,:] /= np.linalg.norm(expected_state_evolution[l,:])
     print(", delta-t * delta-H = ", np.linalg.norm(dt * (lastH - H)), ", 1/M = ", 1/M)
     print("l = ", l, " psi = ", np.round(psi, decimals=8))
+    print("expectec psi: ", expected_state_evolution[l,:])
+
     lastH = H
+
+    # using equation 5.7 in Farhi, will allow for faster process when more qubits are used, but needs more work
+    '''v = l*dt/T
+    u = 1-v
+    K_min = M * math.pow((1 + dt*np.linalg.norm(H_B) + dt*np.linalg.norm(H_P)), 2)
+    K = int(100 * K_min)
+    H_B_exponent = expm(-(1j) * dt * u * H_B / K)
+    H_P_exponent = expm(-(1j) * dt * v * H_P / K)
+    for i in range(K):
+        psi = H_P_exponent.dot(psi)
+        psi = H_B_exponent.dot(psi)'''
+
+    state_evolution[l,:] = psi
+    #expected_state_evolution[l,:] = [1,-s/(s-1)-math.sqrt(1-2*s*(1-s))/(s-1)]
+    #expected_state_evolution[l,:] /= np.linalg.norm(expected_state_evolution[l,:])
+    print(", delta-t * delta-H = ", np.linalg.norm(dt * (lastH - H)), ", 1/M = ", 1/M)    
+    print("l = ", l, " psi = ", np.round(psi, decimals=8))
 
 print("U_T", U_T)
 
@@ -72,19 +95,38 @@ print("zero state: ", cmath.exp(1j*gamma)*math.cos(theta/2))
 print("one state: ", cmath.exp(1j*gamma_plus_phi)*math.sin(theta/2))
 
 start_index = 0
-end_index = 1000
+end_index = 10000
 colors = ['-.r','-.b','-.g','-.c','-.m','-.y','-.k','-.w',]
 
 for i in range(int(math.pow(2,n_bits))):
     x = state_evolution[start_index:end_index,i].real
     y = state_evolution[start_index:end_index,i].imag
     plt.plot(x,y,colors[i])
+plt.legend(['0 state', '1 state'])
 plt.title('actual state evolution')
+plt.figure()
+
+for i in range(int(math.pow(2,n_bits))):
+    x = np.abs(state_evolution[start_index:end_index,i])
+    y = state_evolution[start_index:end_index,i] * 0
+    plt.plot(x,y,colors[i])
+plt.legend(['0 state', '1 state'])
+plt.title('magnitude of actual state evolution')
 plt.figure()
 
 for i in range(int(math.pow(2,n_bits))):
     x = expected_state_evolution[start_index:end_index,i].real
     y = expected_state_evolution[start_index:end_index,i].imag
     plt.plot(x,y,colors[i])
+plt.legend(['0 state', '1 state'])
 plt.title('expected state evolution')
+plt.figure()
+
+for i in range(int(math.pow(2,n_bits))):
+    x = np.abs(state_evolution[start_index:end_index,i]) - np.abs(expected_state_evolution[start_index:end_index,i])
+    plt.plot(x,colors[i])
+plt.legend(['0 state', '1 state'])
+plt.title('difference between magnitude of actual state evolution and expected')
 plt.show()
+
+
