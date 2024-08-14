@@ -61,11 +61,6 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     print("H_P eigenvectors: ", H_P_eigenvectors)
     H_B_eig, eigenvectors = np.linalg.eig(H_B)'''
 
-    '''# put psi in the ground state of H_B
-    min_eig_id = H_B_eig.tolist().index(min(H_B_eig))
-    psi = eigenvectors[:,min_eig_id] # put this in the ground state
-    #psi = np.array(np.ones(int(math.pow(2,n_bits)))) * 1/math.sqrt(math.pow(2,n_bits))'''
-
     dt = T/M
     dH = H_P - H_B
     #print("psi = ", psi)
@@ -78,10 +73,14 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
     lastH = H_B
     U_T = np.eye(int(math.pow(2,n_bits)))
+    A0 = get_A_s(0,A_matrix)
+    A1 = get_A_s(1,A_matrix)
+    dAds = (A1 - A0)/M
+    A = A0
     eigenvalue_evolution = np.zeros((2*len(A_matrix),M))
     for l in range(M):
         s = l/M
-        A = get_A_s(s,A_matrix)
+        A = A + dAds
         H = np.matmul(np.matmul(A, P_b), A)
 
         # using equation 5.4 in Farhi
@@ -192,27 +191,42 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
     return psi
 
-
-
-# input section
+# input section for parametric simulations
 A_matrix = np.array([[-1, -4,  0,  3], [-4, -1,  0,  0],  [0,  0,  2,  0], [ 3,  0,  0, -1]])
 b_vec = np.array([5,6,7,8])
-T = 10000
-M = 10000
+T_vec = np.power(10,range(11))
+M_vec = np.power(10,range(2,6))
 n_bits = 1 + int(math.log2(len(A_matrix)))
-
-# run solver
-time1 = time.perf_counter()
-psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
-time2 = time.perf_counter()
-print("solver run time: ", time2 - time1)
 
 # real answer to linear system
 print("real answer (scaled):")
-real_answer = np.linalg.inv(A_matrix).dot(b_vec)
-print(real_answer/np.linalg.norm(real_answer))
+real_psi_solution = np.linalg.inv(A_matrix).dot(b_vec)
+real_psi_solution = real_psi_solution/np.linalg.norm(real_psi_solution)
+print(real_psi_solution)
 
-psi = psi[0:int(len(psi)/2)]
-psi = psi / np.linalg.norm(psi)
-print("psi without ancilla, renormalized: ", psi)
+# parametric solutions, run solver for many M and T values
+psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+time1 = time.perf_counter()
+for i, T in enumerate(T_vec):
+    for j, M in enumerate(M_vec):
+        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
+        psi = psi[0:int(len(psi)/2)]
+        psi = psi / np.linalg.norm(psi)
+        psi_solutions[i,j,:] = psi
+        psi_error[i,j,:] = psi - real_psi_solution
+
+        print("T: ", T)
+        print("M: ", M)
+        print("psi: ", psi)
+        print("psi error: ", psi - real_psi_solution)
+time2 = time.perf_counter()
+print("solver run time: ", time2 - time1)
+
+# plot parametric results
+for i,M in enumerate(M_vec):
+    plt.loglog(T_vec, np.linalg.norm(psi_error,axis=2)[:,i])
+    plt.title("norm of error in psi vs. time T with M=" + str(M))
+    plt.figure()
+plt.show()
 
