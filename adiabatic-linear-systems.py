@@ -13,8 +13,11 @@ import ProblemData
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 
-# Testing the QLSP solver from https://arxiv.org/pdf/1805.10549
+# References:
+# [1] https://arxiv.org/pdf/1805.10549
+# [2] https://arxiv.org/pdf/quant-ph/0001106
 
+# Return the A(s) operator from equation 3 of [1]
 def get_A_s(s, A):
     X = np.array([[0, 1],[1, 0]])
     Z = np.array([[1, 0],[0, -1]])
@@ -25,18 +28,18 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     # setup sections
     X = np.array([[0, 1],[1, 0]])
     Z = np.array([[1, 0],[0, -1]])
-    n_bits = 1 + int(math.log2(len(A_matrix)))
-    A_matrix = A_matrix / np.linalg.norm(A_matrix)
+    n_bits = 1 + int(math.log2(len(A_matrix))) # total number of bits necessary to represent the state of the system
+    A_matrix = A_matrix / np.linalg.norm(A_matrix) 
     b_vec = b_vec / np.linalg.norm(b_vec)
 
     # set up matrices for Hamiltonian
-    b_bar_plus = np.kron(np.array([1/math.sqrt(2), 1/math.sqrt(2)]), b_vec)
-    psi = np.kron(np.array([1/math.sqrt(2), -1/math.sqrt(2)]), b_vec)
-    P_b = np.eye(len(A_matrix) * 2) - np.outer(b_bar_plus, b_bar_plus)
-    A_B = get_A_s(0,A_matrix)
-    A_P = get_A_s(1,A_matrix)
-    H_B = np.matmul(np.matmul(A_B, P_b), A_B)
-    H_P = np.matmul(np.matmul(A_P, P_b), A_P)
+    b_bar_plus = np.kron(np.array([1/math.sqrt(2), 1/math.sqrt(2)]), b_vec) # b vector with ancilla "+" qubit inserted at the beginning
+    psi = np.kron(np.array([1/math.sqrt(2), -1/math.sqrt(2)]), b_vec) # set the initial state to be a "-" qubit and the b vector state, which is the eigenvector corresponding to the 0-eigenvalue of H(s) from equation 3 of [1] 
+    P_b = np.eye(len(A_matrix) * 2) - np.outer(b_bar_plus, b_bar_plus) # the P_b operator from equation 3 of [1]
+    A_B = get_A_s(0,A_matrix) # initial A(s) when s=0
+    A_P = get_A_s(1,A_matrix) # final A(s) when s=1
+    H_B = np.matmul(np.matmul(A_B, P_b), A_B) # initial Hamiltonian matrix
+    H_P = np.matmul(np.matmul(A_P, P_b), A_P) # final Hamiltonian matrix
 
     # print eigenvalues of H_B and H_P
     '''print("A: ", A_matrix)
@@ -63,10 +66,12 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     H_B_eig, eigenvectors = np.linalg.eig(H_B)'''
 
     dt = T/M
-    dH = H_P - H_B
+    
+    # check if timestep is large enough
     #print("psi = ", psi)
     #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B)))
 
+    # initialize data structures to store the system state as evolution progresses
     state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
     expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
     eigenvector_error = np.zeros((M,1),dtype=np.complex_)
@@ -74,10 +79,8 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
     lastH = H_B
     U_T = np.eye(int(math.pow(2,n_bits)))
-    A0 = get_A_s(0,A_matrix)
-    A1 = get_A_s(1,A_matrix)
-    dAds = (A1 - A0)/M
-    A = A0
+    dAds = (A_P - A_B)/M
+    A = A_B
     eigenvalue_evolution = np.zeros((2*len(A_matrix),M))
 
     # logarithmic f values so timestep gets smaller as evolution progresses
@@ -90,10 +93,10 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     l = 0
     while l < M:
         s = f_vals[l]/M
-        A = A0 + s * (A1- A0)
+        A = A_B + s * (A_P- A_B)
         H = np.matmul(np.matmul(A, P_b), A)
 
-        # using equation 5.4 in Farhi
+        # using equation 5.4 in [2]
         U = expm(-(1j) * dt * H)
         U_T = np.matmul(U,U_T)
         psi = U.dot(psi)
@@ -110,6 +113,7 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
             eigenvalue_evolution[:,l] = np.sort(H_eig)
             eigenvector_error[l] = np.linalg.norm(psi - expected_state_evolution[l,:])
             eigenvector_error_abs[l] = np.linalg.norm(abs(psi) - abs(expected_state_evolution[l,:]))
+        # keep real part of first element of the eigenvector positive as convention to avoid it flipping signs randomly
         if(psi[0].real < 0):
             psi = psi * -1
         if(l % 100 == 0):
@@ -206,11 +210,12 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
     return psi
 
-# input section for parametric simulations
+# manually input linear system
 #A_matrix = np.array([[-1, -4,  0,  3], [-4, -1,  0,  0],  [0,  0,  2,  0], [ 3,  0,  0, -1]])
 #b_vec = np.array([5,6,7,8])
-data = ProblemData.ProblemData("input.txt")
 
+# Use PrpblemData class to create a linear system corresponding to a neutron transport equation discretization
+data = ProblemData.ProblemData("input.txt")
 # create the vectors holding the material data at each discretized point
 data.read_input("input.txt")
 data.initialize_BC()
@@ -223,6 +228,7 @@ elif data.sim_method == "diffusion":
     A_mat_size = (data.n_x) * (data.n_y)
     A_matrix, b_vec = data.diffusion_construct_A_matrix(A_mat_size)
 
+# Input which T and M values to test
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
 T_vec = [1000000]
