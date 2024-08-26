@@ -194,7 +194,7 @@ elif data.sim_method == "diffusion":
 #b_vec = np.array([5,6,7,8])
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
-T_vec = [1000]
+T_vec = [100000]
 M_vec = [1000]
 n_bits = 1 + int(math.log2(len(A_matrix)))
 

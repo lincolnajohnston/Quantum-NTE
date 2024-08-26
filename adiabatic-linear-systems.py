@@ -79,9 +79,18 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     dAds = (A1 - A0)/M
     A = A0
     eigenvalue_evolution = np.zeros((2*len(A_matrix),M))
-    for l in range(M):
-        s = l/M
-        A = A + dAds
+
+    # logarithmic f values so timestep gets smaller as evolution progresses
+    f_vals = np.flip(M - np.logspace(0,math.log10(M),num=M))
+    f_vals[M-1] = M
+
+    # linear f values
+    #f_vals = np.linspace(0,M,num=M)
+
+    l = 0
+    while l < M:
+        s = f_vals[l]/M
+        A = A0 + s * (A1- A0)
         H = np.matmul(np.matmul(A, P_b), A)
 
         # using equation 5.4 in Farhi
@@ -92,14 +101,15 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
         #expected_state_evolution[l,:] = [1,-s/(s-1)-math.sqrt(1-2*s*(1-s))/(s-1)] # one qubit case
 
         # expected state evolution to check answers
-        H_eig, eigenvectors = np.linalg.eig(H)
-        min_eig_id = H_eig.tolist().index(min(H_eig))
-        if(eigenvectors[0,min_eig_id].real < 0):
-            eigenvectors = eigenvectors * -1
-        expected_state_evolution[l,:] =  eigenvectors[:,min_eig_id]
-        eigenvalue_evolution[:,l] = H_eig
-        eigenvector_error[l] = np.linalg.norm(psi - expected_state_evolution[l,:])
-        eigenvector_error_abs[l] = np.linalg.norm(abs(psi) - abs(expected_state_evolution[l,:]))
+        if(plot_evolution):
+            H_eig, eigenvectors = np.linalg.eig(H)
+            min_eig_id = np.argmin(H_eig)
+            if(eigenvectors[0,min_eig_id].real < 0): # ensure real part of first element in eigenvector is positive to have consistent eigenvectors between iterations
+                eigenvectors = eigenvectors * -1
+            expected_state_evolution[l,:] =  eigenvectors[:,min_eig_id]
+            eigenvalue_evolution[:,l] = np.sort(H_eig)
+            eigenvector_error[l] = np.linalg.norm(psi - expected_state_evolution[l,:])
+            eigenvector_error_abs[l] = np.linalg.norm(abs(psi) - abs(expected_state_evolution[l,:]))
         if(psi[0].real < 0):
             psi = psi * -1
         if(l % 100 == 0):
@@ -125,6 +135,8 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
         state_evolution[l,:] = psi
 
+        l += 1
+
     # PLOTTING RESULTS
     if(plot_evolution):
         start_index = 0
@@ -144,7 +156,7 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
                 axs[i].set_title(legend_vec[i] + " state")
             else:
                 axs[i % n_plots_x, math.floor(i/n_plots_x)].plot(x,y,colors[i%len(colors)])
-                axs[i % n_plots_x, math.floor(i/n_plots_x)].set_title(legend_vec[i%len(colors)] + " state")
+                axs[i % n_plots_x, math.floor(i/n_plots_x)].set_title(legend_vec[i] + " state")
 
 
         # plot the eigenvalues of H(s) for each s
@@ -153,7 +165,7 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
             x = range(M)
             y = eigenvalue_evolution[i,:]
             plt.plot(x,y,'.')
-        plt.legend(["eig 1", "eig 2", "eig 3", "eig 4", "eig 5", "eig 6", "eig 7", "eig 8"])
+        #plt.legend(("eig " + str(i)) for i in range(int(math.pow(2,n_bits))))
         plt.title('eigenvalues of H(s)')
 
         # plot the error betwee psi and the actual base eigenvector for all s
@@ -163,9 +175,8 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
         plt.figure()
         plt.plot(range(M),eigenvector_error_abs,'.')
-        plt.title('error on psi')
+        plt.title('absolute value of error on psi')
 
-        # 
         '''plt.figure()
         for i in range(int(math.pow(2,n_bits))):
             x = np.abs(state_evolution[start_index:end_index,i])
@@ -183,12 +194,14 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
         plt.legend(legend_vec)
         plt.title('expected state evolution')'''
 
-        plt.figure()
+        '''plt.figure()
         for i in range(int(math.pow(2,n_bits))):
             x = np.abs(state_evolution[start_index:end_index,i]) - np.abs(expected_state_evolution[start_index:end_index,i])
             plt.plot(x,colors[i%len(colors)])
         plt.legend(['0 state', '1 state'])
-        plt.title('difference between magnitude of actual state evolution and expected')
+        plt.title('difference between magnitude of actual state evolution and expected')'''
+
+        plt.figure()
 
 
     return psi
@@ -212,7 +225,7 @@ elif data.sim_method == "diffusion":
 
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
-T_vec = [10000]
+T_vec = [1000000]
 M_vec = [1000]
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
@@ -228,7 +241,7 @@ psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
 time1 = time.perf_counter()
 for i, T in enumerate(T_vec):
     for j, M in enumerate(M_vec):
-        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=True, verbose=False)
+        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
         psi = psi[0:int(len(psi)/2)]
         psi = psi / np.linalg.norm(psi)
         psi_solutions[i,j,:] = psi
@@ -250,14 +263,17 @@ print("solver run time: ", time2 - time1)
     plt.figure()
 plt.show()'''
 
+min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
+max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
+
 psi.resize((data.n_x,data.n_y))
-ax = sns.heatmap(np.abs(psi), linewidth=0.5)
+ax = sns.heatmap(np.abs(psi), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
 plt.title("Quantum Solution")
 plt.savefig('q_sol.png')
 plt.figure()
 
 real_psi_solution.resize((data.n_x,data.n_y))
-ax = sns.heatmap(real_psi_solution, linewidth=0.5)
+ax = sns.heatmap(real_psi_solution, linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
 plt.title("Real Solution")
 plt.savefig('real_sol.png')
 plt.figure()
