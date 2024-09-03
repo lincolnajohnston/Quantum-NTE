@@ -16,44 +16,56 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 
 # Use AQC methods to evolve a quantum state from the fundamental eigenvalue of an initial to a final Hamiltonian
-def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False):
+def adiabatic_solver(L_matrix, F_matrix, b_vec, T, M, plot_evolution=False, verbose=False):
     # setup sections
     X = np.array([[0, 1],[1, 0]])
     Z = np.array([[1, 0],[0, -1]])
     n_bits = int(math.log2(len(A_matrix)))
+    num_LCU_bits = 2
     b_vec = b_vec / np.linalg.norm(b_vec)
 
     # set up matrices for Hamiltonian
     P_b = np.eye(len(A_matrix)) - np.outer(b_vec, b_vec)
     #H_B = np.matmul(np.matmul(np.eye(len(A_matrix)), P_b), np.eye(len(A_matrix)))
-    H_B = P_b
-    H_P = A_matrix
+    L_B = P_b
+    L_P = L_matrix
+
+    U_B = np.eye(int(math.pow(2,n_bits + num_LCU_bits)))
+    best_j = 1
+    best_y_max = 1.5
+    best_z_max = 1.5
+    U_P, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, F_matrix, True, len(F_matrix))
     psi = b_vec
+    V = LcuFunctions.gram_schmidt_ortho(np.sqrt(alphas))
+
+    F_inv_B = np.kron(V,np.eye(int(math.pow(2,n_bits)))) @ U_B @ np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits))))
+    F_inv_P = np.kron(V,np.eye(int(math.pow(2,n_bits)))) @ U_P @ np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits))))
+    H_B = F_inv_B @ np.kron(np.eye(int(math.pow(2,num_LCU_bits))), L_B)
+    H_P = F_inv_P @ np.kron(np.eye(int(math.pow(2,num_LCU_bits))), L_P)
 
     # print eigenvalues of H_B and H_P
-    if(verbose):
-        print("H_B", H_B)
+    '''if(verbose):
+        print("H_B", U_B)
         H_B_eigenvalues, H_B_eigenvectors = np.linalg.eig(H_B)
         print("H_B eigenvalues: ", H_B_eigenvalues)
         print("H_B eigenvectors: ", H_B_eigenvectors)
-        print("H_P", H_P)
+        print("H_P", U_P)
         H_P_eigenvalues, H_P_eigenvectors = np.linalg.eig(H_P)
         print("H_P eigenvalues: ", H_P_eigenvalues)
-        print("H_P eigenvectors: ", H_P_eigenvectors)
+        print("H_P eigenvectors: ", H_P_eigenvectors)'''
 
     dt = T/M
     #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B))) # test whether time steps are small enough
 
     # initialize vectors containing the evolution of the state over time
-    state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
-    expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
+    state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex_)
+    expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex_)
     eigenvector_error = np.zeros((M,1),dtype=np.complex_)
     eigenvector_error_abs = np.zeros((M,1),dtype=np.complex_)
     eigenvalue_evolution = np.zeros((len(A_matrix),M))
 
-    lastH = H_B
+    #lastH = H_B
     U_T = np.eye(int(math.pow(2,n_bits))) # matrix representing the multiplication of all other matrices applied in the evolution process
-    num_LCU_bits = 2
     qb = QuantumRegister(n_bits)  # right hand side and solution
     ql = QuantumRegister(num_LCU_bits)  # LCU ancilla zero bits
     qc = QuantumCircuit(qb, ql)
@@ -67,12 +79,12 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
         # using equation 5.4 in Farhi
         U = expm(-(1j) * dt * H)
         U_gate = UnitaryGate(U, 'U', False)
-        qc.append(U_gate, qb[:])
-        U_T = np.matmul(U,U_T)
+        qc.append(U_gate, qb[:] + ql[:])
+        #U_T = np.matmul(U,U_T)
         #n[l,:] = psi
 
         # expected state evolution to check answers
-        H_eig, eigenvectors = np.linalg.eig(H)
+        '''H_eig, eigenvectors = np.linalg.eig(H)
         min_eig_id = H_eig.tolist().index(min(H_eig))
         if(eigenvectors[0,min_eig_id].real < 0):
             eigenvectors = eigenvectors * -1
@@ -88,7 +100,7 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
             print("expected psi: ", expected_state_evolution[l,:])
             print("psi error: ", psi - expected_state_evolution[l,:])
 
-        lastH = H
+        lastH = H'''
 
         # using equation 5.7 in Farhi, will allow for faster process when more qubits are used, but needs more work
         '''v = l*dt/T
@@ -244,7 +256,7 @@ psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
 time1 = time.perf_counter()
 for i, T in enumerate(T_vec):
     for j, M in enumerate(M_vec):
-        psi = adiabatic_solver(A_matrix, psi_initial, T, M, plot_evolution=True, verbose=False)
+        psi = adiabatic_solver(L_matrix, F_matrix, psi_initial, T, M, plot_evolution=False, verbose=False)
         psi_solutions[i,j,:] = psi
         psi_error[i,j,:] = psi - real_psi_solution
 
