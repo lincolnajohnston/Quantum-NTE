@@ -7,26 +7,19 @@ from qiskit_aer.aerprovider import QasmSimulator
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
+from scipy.linalg import eigh
 import time
 import ProblemData
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 
-# Solve for eigenvalue and eigenvector of linear system of equations
-
-def get_A_s(s, A):
-    X = np.array([[0, 1],[1, 0]])
-    Z = np.array([[1, 0],[0, -1]])
-    return np.kron((1-s) * Z, np.eye(len(A))) + np.kron(s * X, A)
-    
-
+# Use AQC methods to evolve a quantum state from the fundamental eigenvalue of an initial to a final Hamiltonian
 def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False):
     # setup sections
     X = np.array([[0, 1],[1, 0]])
     Z = np.array([[1, 0],[0, -1]])
     n_bits = int(math.log2(len(A_matrix)))
-    A_matrix = A_matrix / np.linalg.norm(A_matrix)
     b_vec = b_vec / np.linalg.norm(b_vec)
 
     # set up matrices for Hamiltonian
@@ -37,54 +30,49 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
     psi = b_vec
 
     # print eigenvalues of H_B and H_P
-    print("H_B", H_B)
-    H_B_eigenvalues, H_B_eigenvectors = np.linalg.eig(H_B)
-    print("H_B eigenvalues: ", H_B_eigenvalues)
-    print("H_B eigenvectors: ", H_B_eigenvectors)
-    print("H_P", H_P)
-    H_P_eigenvalues, H_P_eigenvectors = np.linalg.eig(H_P)
-    print("H_P eigenvalues: ", H_P_eigenvalues)
-    print("H_P eigenvectors: ", H_P_eigenvectors)
-    H_B_eig, eigenvectors = np.linalg.eig(H_B)
+    if(verbose):
+        print("H_B", H_B)
+        H_B_eigenvalues, H_B_eigenvectors = np.linalg.eig(H_B)
+        print("H_B eigenvalues: ", H_B_eigenvalues)
+        print("H_B eigenvectors: ", H_B_eigenvectors)
+        print("H_P", H_P)
+        H_P_eigenvalues, H_P_eigenvectors = np.linalg.eig(H_P)
+        print("H_P eigenvalues: ", H_P_eigenvalues)
+        print("H_P eigenvectors: ", H_P_eigenvectors)
 
     dt = T/M
-    dH = H_P - H_B
-    #print("psi = ", psi)
-    #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B)))
+    #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B))) # test whether time steps are small enough
 
+    # initialize vectors containing the evolution of the state over time
     state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
     expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
     eigenvector_error = np.zeros((M,1),dtype=np.complex_)
     eigenvector_error_abs = np.zeros((M,1),dtype=np.complex_)
+    eigenvalue_evolution = np.zeros((len(A_matrix),M))
 
     lastH = H_B
-    U_T = np.eye(int(math.pow(2,n_bits)))
-    dHds = (H_P - H_B)/M
-    eigenvalue_evolution = np.zeros((len(A_matrix),M))
+    U_T = np.eye(int(math.pow(2,n_bits))) # matrix representing the multiplication of all other matrices applied in the evolution process
     for l in range(M):
         s = l/M
-        #A = A + dAds
-        #H = np.matmul(np.matmul(A, P_b), A)
-        H = H_B + (H_P - H_B) * s
+        H = H_B + (H_P - H_B) * s # slowly change Hamiltonian
 
         # using equation 5.4 in Farhi
         U = expm(-(1j) * dt * H)
         U_T = np.matmul(U,U_T)
         psi = U.dot(psi)
         state_evolution[l,:] = psi
-        #expected_state_evolution[l,:] = [1,-s/(s-1)-math.sqrt(1-2*s*(1-s))/(s-1)] # one qubit case
 
         # expected state evolution to check answers
         H_eig, eigenvectors = np.linalg.eig(H)
         min_eig_id = H_eig.tolist().index(min(H_eig))
         if(eigenvectors[0,min_eig_id].real < 0):
             eigenvectors = eigenvectors * -1
+        if(psi[0].real < 0):
+            psi = psi * -1
         expected_state_evolution[l,:] =  eigenvectors[:,min_eig_id]
         eigenvalue_evolution[:,l] = H_eig
         eigenvector_error[l] = np.linalg.norm(psi - expected_state_evolution[l,:])
         eigenvector_error_abs[l] = np.linalg.norm(abs(psi) - abs(expected_state_evolution[l,:]))
-        if(psi[0].real < 0):
-            psi = psi * -1
         if (verbose and l % 100 == 0):
             print(", delta-t * delta-H = ", np.linalg.norm(dt * (lastH - H)), ", 1/M = ", 1/M)
             print("l = ", l, " psi = ", np.round(psi, decimals=8))
@@ -184,11 +172,16 @@ data.initialize_BC()
 data.initialize_XSs() 
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y)
-    A_matrix, b_vec = data.sp3_construct_A_matrix(A_mat_size) 
+    print("aaaa noooo I didn't implement this :(")
+    #A_mat_size = 2 * (data.n_x) * (data.n_y)
+    #A_matrix, b_vec = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
     A_mat_size = (data.n_x) * (data.n_y)
-    A_matrix, b_vec = data.diffusion_construct_A_matrix(A_mat_size)
+    L_matrix, F_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
+
+eigvals, eigvecs = eigh(L_matrix, F_matrix, eigvals_only=False)
+F_inv = np.linalg.inv(F_matrix) # Can't actually do this matrix inversion in the quantum algorithm, can replace this with LCU method for approximating the inverse of an operator
+A_matrix = F_inv @ L_matrix
 
 #A_matrix = np.array([[-1, -4,  0,  3], [-4, -1,  0,  0],  [0,  0,  2,  0], [ 3,  0,  0, -1]])
 #b_vec = np.array([5,6,7,8])
@@ -203,7 +196,11 @@ print("real answer (scaled):")
 A_eigenvalues, A_eigenvectors = np.linalg.eig(A_matrix)
 real_psi_solution = A_eigenvectors[:,np.argmin(A_eigenvalues)]
 real_psi_solution = real_psi_solution/np.linalg.norm(real_psi_solution)
+if(real_psi_solution[0].real < 0):
+    real_psi_solution = real_psi_solution * -1
 print(real_psi_solution)
+
+psi_initial = np.ones(A_mat_size) / math.sqrt(A_mat_size)
 
 # parametric solutions, run solver for many M and T values
 psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
@@ -211,7 +208,7 @@ psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
 time1 = time.perf_counter()
 for i, T in enumerate(T_vec):
     for j, M in enumerate(M_vec):
-        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=True, verbose=True)
+        psi = adiabatic_solver(A_matrix, psi_initial, T, M, plot_evolution=False, verbose=False)
         psi_solutions[i,j,:] = psi
         psi_error[i,j,:] = psi - real_psi_solution
 
@@ -223,6 +220,22 @@ for i, T in enumerate(T_vec):
         print("psi error: ", psi - real_psi_solution)
 time2 = time.perf_counter()
 print("solver run time: ", time2 - time1)
+
+min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
+max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
+
+psi.resize((data.n_x,data.n_y))
+ax = sns.heatmap(np.abs(psi), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
+plt.title("Quantum Solution")
+plt.savefig('q_sol.png')
+plt.figure()
+
+real_psi_solution.resize((data.n_x,data.n_y))
+ax = sns.heatmap(real_psi_solution, linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
+plt.title("Real Solution")
+plt.savefig('real_sol.png')
+plt.figure()
+plt.show()
 
 # plot parametric results
 '''for i,M in enumerate(M_vec):

@@ -147,12 +147,12 @@ class ProblemData:
                     self.D2[i * self.n_y + j] = 2'''
 
                 # 4 fuel pins
-                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+                '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                     # use fuel XSs
                     self.sigma_a[i * self.n_y + j] = 1
                     self.D[i * self.n_y + j] = 1
                     self.Q[i * self.n_y + j] = 5
-                    self.nu_sigma_f[i * self.n_y + j] = 0 #sp3 looks better when this is 0
+                    self.nu_sigma_f[i * self.n_y + j] = 1 #sp3 looks better when this is 0
                     #for sp3 only below
                     self.sigma_t[i * self.n_y + j] = 5
                     self.sigma_s0[i * self.n_y + j] = 4
@@ -167,7 +167,19 @@ class ProblemData:
                     self.sigma_t[i * self.n_y + j] = 5
                     self.sigma_s0[i * self.n_y + j] = 4
                     self.sigma_s2[i * self.n_y + j] = 2 
-                    self.D2[i * self.n_y + j] = 2
+                    self.D2[i * self.n_y + j] = 2'''
+
+                # homogeneous fuel
+                # use fuel XSs
+                self.sigma_a[i * self.n_y + j] = 1
+                self.D[i * self.n_y + j] = 1
+                self.Q[i * self.n_y + j] = 5
+                self.nu_sigma_f[i * self.n_y + j] = 0.35 #sp3 looks better when this is 0
+                #for sp3 only below
+                self.sigma_t[i * self.n_y + j] = 5
+                self.sigma_s0[i * self.n_y + j] = 4
+                self.sigma_s2[i * self.n_y + j] = 0.1
+                self.D2[i * self.n_y + j] = 2
                 
     # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
     def diffusion_construct_A_matrix(self, A_mat_size):
@@ -199,6 +211,39 @@ class ProblemData:
                 A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (self.sigma_a[i] - self.nu_sigma_f[i]) * self.delta_x * self.delta_y
         b_vector = self.Q * self.delta_x * self.delta_y
         return A_matrix, b_vector
+    
+    # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
+    def diffusion_construct_L_F_matrices(self, A_mat_size):
+        fd_order = 2
+        L_matrix = np.zeros((A_mat_size, A_mat_size))
+        F_matrix = np.zeros((A_mat_size, A_mat_size))
+        for x_i in range(self.n_x):
+            for y_i in range(self.n_y):
+                i = unroll_index([x_i, y_i], self.n_y)
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    J_x_minus = self.get_edge_D(x_i ,y_i,self.delta_x) * self.delta_y
+                else:
+                    J_x_minus = self.get_av_D("x",x_i-1,y_i) * self.delta_y
+                    L_matrix[i,unroll_index([x_i-1, y_i], self.n_y)] =  -J_x_minus # (i-1,j) terms
+                if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
+                    J_x_plus = self.get_edge_D(x_i ,y_i,self.delta_x) * self.delta_y
+                else:
+                    J_x_plus = self.get_av_D("x",x_i,y_i) * self.delta_y
+                    L_matrix[i,unroll_index([x_i+1, y_i], self.n_y)] =  -J_x_plus # (i+1,j) terms
+                if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                    J_y_minus = self.get_edge_D(x_i ,y_i,self.delta_y)* self.delta_x
+                else:
+                    J_y_minus = self.get_av_D("y",y_i-1,x_i) * self.delta_x
+                    L_matrix[i,unroll_index([x_i, y_i-1], self.n_y)] =  -J_y_minus # (i,j-1) terms
+                if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
+                    J_y_plus = self.get_edge_D(x_i ,y_i,self.delta_y) * self.delta_x
+                else:
+                    J_y_plus = self.get_av_D("x",y_i,x_i) * self.delta_x
+                    L_matrix[i,unroll_index([x_i, y_i+1], self.n_y)] =  -J_y_plus # (i,j+1) terms
+                L_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (self.sigma_a[i]) * self.delta_x * self.delta_y
+                F_matrix[i,i] = self.nu_sigma_f[i]
+        b_vector = self.Q * self.delta_x * self.delta_y
+        return L_matrix, F_matrix
 
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2
