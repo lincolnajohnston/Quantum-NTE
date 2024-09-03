@@ -10,6 +10,7 @@ from scipy.linalg import ishermitian
 from scipy.linalg import eigh
 import time
 import ProblemData
+import LcuFunctions
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -52,15 +53,23 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
     lastH = H_B
     U_T = np.eye(int(math.pow(2,n_bits))) # matrix representing the multiplication of all other matrices applied in the evolution process
+    num_LCU_bits = 2
+    qb = QuantumRegister(n_bits)  # right hand side and solution
+    ql = QuantumRegister(num_LCU_bits)  # LCU ancilla zero bits
+    qc = QuantumCircuit(qb, ql)
+
+    qc.append(LcuFunctions.get_b_setup_gate(psi, n_bits), qb[:])
+
     for l in range(M):
         s = l/M
         H = H_B + (H_P - H_B) * s # slowly change Hamiltonian
 
         # using equation 5.4 in Farhi
         U = expm(-(1j) * dt * H)
+        U_gate = UnitaryGate(U, 'U', False)
+        qc.append(U_gate, qb[:])
         U_T = np.matmul(U,U_T)
-        psi = U.dot(psi)
-        state_evolution[l,:] = psi
+        #n[l,:] = psi
 
         # expected state evolution to check answers
         H_eig, eigenvectors = np.linalg.eig(H)
@@ -92,7 +101,15 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
             psi = H_P_exponent.dot(psi)
             psi = H_B_exponent.dot(psi)'''
 
-        state_evolution[l,:] = psi
+    qc.save_statevector()
+
+
+    # Run quantum algorithm
+    backend = QasmSimulator(method="statevector")
+    new_circuit = transpile(qc, backend)
+    job = backend.run(new_circuit)
+    job_result = job.result()
+    state_vec = job_result.get_statevector(qc).data
 
     # PLOTTING RESULTS
     if(plot_evolution):
@@ -115,6 +132,24 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
                 axs[i % n_plots_x, math.floor(i/n_plots_x)].plot(x,y,colors[i%len(colors)])
                 axs[i % n_plots_x, math.floor(i/n_plots_x)].set_title(legend_vec[i] + " state")
 
+
+        # plot the evolved states of H(s) for each s
+        plt.figure()
+        for i in range(M):
+            x = np.array(range(int(math.pow(2,n_bits)))) * 0 + i
+            y = abs(state_evolution[i,:])
+            plt.plot(x,y,'.')
+        plt.legend(["eig 1", "eig 2", "eig 3", "eig 4", "eig 5", "eig 6", "eig 7", "eig 8"])
+        plt.title('state magnitudes of H(s)')
+
+        # plot the actual eigenvectors of H(s) for each s
+        plt.figure()
+        for i in range(M):
+            x = np.array(range(int(math.pow(2,n_bits)))) * 0 + i
+            y = abs(state_evolution[i,:])
+            plt.plot(x,y,'.')
+        plt.legend(["eig 1", "eig 2", "eig 3", "eig 4", "eig 5", "eig 6", "eig 7", "eig 8"])
+        plt.title('eigenvector magnitudes of H(s)')
 
         # plot the eigenvalues of H(s) for each s
         plt.figure()
@@ -161,7 +196,8 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
 
         plt.show()
 
-    return psi
+    state_vec = state_vec[0:len(b_vec)]
+    return state_vec
 
 # input section for parametric simulations
 data = ProblemData.ProblemData("input.txt")
@@ -208,7 +244,7 @@ psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
 time1 = time.perf_counter()
 for i, T in enumerate(T_vec):
     for j, M in enumerate(M_vec):
-        psi = adiabatic_solver(A_matrix, psi_initial, T, M, plot_evolution=False, verbose=False)
+        psi = adiabatic_solver(A_matrix, psi_initial, T, M, plot_evolution=True, verbose=False)
         psi_solutions[i,j,:] = psi
         psi_error[i,j,:] = psi - real_psi_solution
 
