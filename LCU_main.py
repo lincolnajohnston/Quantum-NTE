@@ -17,16 +17,12 @@ start = time.perf_counter()
 
 data = ProblemData.ProblemData("input.txt")
 
-# create the vectors holding the material data at each discretized point
-data.read_input("input.txt")
-data.initialize_BC()
-data.initialize_XSs() 
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y)
+    A_mat_size = 2 * (data.n_x) * (data.n_y) * data.G
     A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y)
+    A_mat_size = (data.n_x) * (data.n_y) * data.G
     A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
     
 
@@ -44,7 +40,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 5
+num_LCU_bits = 4
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -60,6 +56,15 @@ if(not ishermitian(A_matrix)): # make sure the matrix is hermitian
 else:
     quantum_mat = A_matrix
     quantum_b_vector = b_vector
+
+classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
+
+classical_sol_vec.resize((data.G, data.n_x,data.n_y))
+for g in range(data.G):
+    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
+    plt.title("Real Solution, Group " + str(g))
+    plt.figure()
+plt.show()
 
 # select optimal J, K, y_max, and z_max in just about the least efficient way possible
 '''best_j = 0
@@ -130,7 +135,7 @@ best_z_max = 2.0'''
 # manually input parameters for LCU (16x16 sp3, dx=0.5, dy=0.5, 4 LCU bits)
 '''best_j = 2
 best_y_max = 1.5
-best_z_max = 1.5'''
+best_z_max = 1.5
 
 print("Best J: ", best_j)
 print("Best y_max: ", best_y_max)
@@ -241,4 +246,4 @@ sol_error.resize((data.n_x,data.n_y))
 ax = sns.heatmap(sol_error, linewidth=0.5)
 plt.title("Actual error between quantum and real solution")
 plt.savefig('error.png')
-plt.show()
+plt.show()'''
