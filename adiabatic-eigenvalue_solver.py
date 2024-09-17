@@ -21,7 +21,7 @@ def adiabatic_solver(L_matrix, F_matrix, b_vec, T, M, plot_evolution=False, verb
     X = np.array([[0, 1],[1, 0]])
     Z = np.array([[1, 0],[0, -1]])
     n_bits = int(math.log2(len(A_matrix)))
-    num_LCU_bits = 2
+    num_LCU_bits = 6
     b_vec = b_vec / np.linalg.norm(b_vec)
 
     # set up matrices for Hamiltonian
@@ -38,8 +38,20 @@ def adiabatic_solver(L_matrix, F_matrix, b_vec, T, M, plot_evolution=False, verb
     psi = b_vec
     V = LcuFunctions.gram_schmidt_ortho(np.sqrt(alphas))
 
-    F_inv_B = np.kron(V,np.eye(int(math.pow(2,n_bits)))) @ U_B @ np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits))))
-    F_inv_P = np.kron(V,np.eye(int(math.pow(2,n_bits)))) @ U_P @ np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits))))
+    F_inv_B = np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits)))) @ U_B @ np.kron(V,np.eye(int(math.pow(2,n_bits))))
+    F_inv_P = np.kron(np.conj(V).T,np.eye(int(math.pow(2,n_bits)))) @ U_P @ np.kron(V,np.eye(int(math.pow(2,n_bits))))
+
+    # testing the LCU inverse matrix
+    F_inv = np.linalg.inv(F_matrix)
+    real_F_inv_P = np.kron(np.eye(int(math.pow(2,num_LCU_bits))), F_inv)
+    test_phi = np.ones(len(F_inv_P)) / math.sqrt(len(F_inv_P))
+
+    real_F_inv_phi = real_F_inv_P @ test_phi
+    LCU_F_inv_phi = F_inv_P @ test_phi
+
+    print("real: ", real_F_inv_phi)
+    print("LCU: ", LCU_F_inv_phi)
+
     H_B = F_inv_B @ np.kron(np.eye(int(math.pow(2,num_LCU_bits))), L_B)
     H_P = F_inv_P @ np.kron(np.eye(int(math.pow(2,num_LCU_bits))), L_P)
 
@@ -235,8 +247,8 @@ A_matrix = F_inv @ L_matrix
 #b_vec = np.array([5,6,7,8])
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
-T_vec = [100000]
-M_vec = [1000]
+T_vec = [100]
+M_vec = [10]
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
 # real answer to linear system
