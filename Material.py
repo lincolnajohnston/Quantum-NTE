@@ -10,7 +10,7 @@ class Material:
         self.sigma_t = np.zeros(G)
         self.sigma_s0 = np.zeros(G)
         self.sigma_s2 = np.zeros(G)
-        self.sigma_sgg = np.zeros((G,G))
+        self.sigma_sgg = np.zeros((G,G)) # first index is incoming group, second index is outgoing group
         self.chi = np.zeros(G)
         self.D2 = np.zeros(G)
     
@@ -20,6 +20,7 @@ class Material:
         for g in range(G):
             xs_data[g,:] = [float(numeric_string) for numeric_string in file.readline().split()]
         for g_p in range(G):
+            self.sigma_t[g_p] = xs_data[g_p,1] 
             self.sigma_a[g_p] = xs_data[g_p,1] - xs_data[g_p,2]
             self.nu_sigma_f[g_p] = xs_data[g_p,3]
             self.sigma_s0[g_p] = xs_data[g_p,2]

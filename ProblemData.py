@@ -221,35 +221,37 @@ class ProblemData:
         fd_order = 2
         A_matrix = np.zeros((A_mat_size, A_mat_size))
         b_vector = np.zeros(A_mat_size)
-        for x_i in range(self.n_x):
-            for y_i in range(self.n_y):
-                for g in range(self.G):
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                for y_i in range(self.n_y):
                     mat = self.materials[self.material_matrix[x_i,y_i]]
-                    i = g * self.n_x * self.n_y + unroll_index([x_i, y_i], self.n_y)
+                    i = self.unroll_index([g, x_i, y_i])
                     if(x_i == 0): # left BC, normal vector = (-1,0)
                         J_x_minus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
                     else:
                         J_x_minus = self.get_av_D("x",x_i-1,y_i, g) * self.delta_y
-                        A_matrix[i,g * self.n_x * self.n_y + unroll_index([x_i-1, y_i], self.n_y)] =  -J_x_minus # (i-1,j) terms
+                        A_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
                     if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
                         J_x_plus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
                     else:
                         J_x_plus = self.get_av_D("x",x_i,y_i, g) * self.delta_y
-                        A_matrix[i,g * self.n_x * self.n_y + unroll_index([x_i+1, y_i], self.n_y)] =  -J_x_plus # (i+1,j) terms
+                        A_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
                     if(y_i == 0): # bottom BC, normal vector = (0,-1)
                         J_y_minus = self.get_edge_D(x_i ,y_i, g,self.delta_y)* self.delta_x
                     else:
                         J_y_minus = self.get_av_D("y",y_i-1,x_i, g) * self.delta_x
-                        A_matrix[i,g * self.n_x * self.n_y + unroll_index([x_i, y_i-1], self.n_y)] =  -J_y_minus # (i,j-1) terms
+                        A_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
                     if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
                         J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
                     else:
                         J_y_plus = self.get_av_D("x",y_i,x_i, g) * self.delta_x
-                        A_matrix[i,g * self.n_x * self.n_y + unroll_index([x_i, y_i+1], self.n_y)] =  -J_y_plus # (i,j+1) terms
-                    A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_a[g] - mat.nu_sigma_f[g]) * self.delta_x * self.delta_y
+                        A_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
+                    A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
+                    for g_p in range(self.G): # group to group scattering and fission terms
+                        A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
                     b_vector[i] = mat.Q[g] * self.delta_x * self.delta_y
-        for row in range(len(A_matrix)):
-            print("row: ", A_matrix[row])
+        #for row in range(len(A_matrix)):
+        #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
 
     def sp3_construct_A_matrix(self, A_mat_size):
@@ -414,13 +416,16 @@ class ProblemData:
 
 
 
-# convert 2D (x,y) index to 1D index
-def unroll_index(index_vec, n_y):
-    return index_vec[0]*n_y + index_vec[1]
+    # convert 3D (g,x,y) index to 1D index
+    def unroll_index(self, index_vec):
+        return index_vec[0]*self.n_x*self.n_y + index_vec[1]*self.n_y + index_vec[2]
 
-# convert 1D index to 2D (x,y) index
-def roll_index(index, n_y):
-    return np.array([math.floor(index/n_y), index % n_y])
+    # convert 1D index to 3D (g,x,y) index
+    def roll_index(self, index):
+        g = math.floor(index/(self.n_x * self.n_y))
+        x = math.floor((index % (self.n_x * self.n_y))/(self.n_y))
+        y = index % self.n_y
+        return np.array([g,x,y])
 
 
 # old function to set BC flux in diffusion problems instead of using an albedo BC
