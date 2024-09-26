@@ -122,6 +122,9 @@ class ProblemData:
                 x_val = (i + 1) * self.delta_x - x_range/2
                 y_val = (j + 1) * self.delta_y - y_range/2
 
+                # homogeneous fuel
+                #self.material_matrix[i,j] = "fuel"
+                
                 # fuel at center
                 '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                     # use fuel XSs
@@ -244,7 +247,7 @@ class ProblemData:
                     if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
                         J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
                     else:
-                        J_y_plus = self.get_av_D("x",y_i,x_i, g) * self.delta_x
+                        J_y_plus = self.get_av_D("y",y_i,x_i, g) * self.delta_x
                         A_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
                     A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
                     for g_p in range(self.G): # group to group scattering and fission terms
@@ -257,161 +260,177 @@ class ProblemData:
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2
         beta = 0.5
-        phi_2_offset = self.n_x * self.n_y
+        phi_2_offset = self.G * self.n_x * self.n_y
         A_matrix = np.zeros((A_mat_size, A_mat_size))
         b_vector = np.zeros((A_mat_size))
-        for x_i in range(self.n_x):
-            for y_i in range(self.n_y):
-                i = unroll_index([x_i, y_i], self.n_y)
-                if(x_i == 0): # left BC, normal vector = (-1,0)
-                    # these coefficients will be the same for all cells with the same material and mesh size so
-                    # need to imporove efficiency of this by storing these values beforehand instead of recalculating for each B.C. cell
-                    a1 = (1 + 4 * self.D[unroll_index([x_i, y_i], self.n_y)]/self.delta_x)
-                    a2 = (-3/4) * self.D[unroll_index([x_i, y_i], self.n_y)]/self.D2[unroll_index([x_i, y_i], self.n_y)]
-                    a3 = 2 * self.D[unroll_index([x_i, y_i], self.n_y)]/self.delta_x
-                    a4 = (-3/4) * 2 * self.D[unroll_index([x_i, y_i], self.n_y)] / self.delta_x
-                    a5 =  4 * self.D[unroll_index([x_i, y_i], self.n_y)]/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                for y_i in range(self.n_y):
+                    i = self.unroll_index([g, x_i, y_i])
+                    mat = self.materials[self.material_matrix[x_i,y_i]]
+                    D = mat.D[g]
+                    D2 = mat.D2[g]
+                    if(x_i == 0): # left BC, normal vector = (-1,0)
+                        # these coefficients will be the same for all cells with the same material and mesh size so
+                        # need to improve efficiency of this by storing these values beforehand instead of recalculating for each B.C. cell
+                        a1 = (1 + 4 * D/self.delta_x)
+                        a2 = (-3/4) * D/D2
+                        a3 = 2 * D/self.delta_x
+                        a4 = (-3/4) * 2 * D / self.delta_x
+                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
 
-                    b2 = (1 + (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.delta_x)
-                    b1 = (-1/7) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.D[unroll_index([x_i, y_i], self.n_y)]
-                    b4 = 2 * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.delta_x
-                    b3 = (-2/7) * self.D2[unroll_index([x_i, y_i], self.n_y)] / self.delta_x
-                    b5 =  (6/5) * (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.delta_x * self.get_I_3_value([x_i,y_i])
+                        b2 = (1 + (80/21) * D2/self.delta_x)
+                        b1 = (-1/7) * D2/D
+                        b4 = 2 * D2/self.delta_x
+                        b3 = (-2/7) * D2 / self.delta_x
+                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
 
-                    denom = (a1 - a2 * b1 / b2)
-                    c1 = (a5 - a2 * b5 / b2) / denom
-                    c2 = (a2 * b3 / b2 - a3) / denom
-                    c3 = (a2 * b4 / b2 - a4) / denom
+                        denom = (a1 - a2 * b1 / b2)
+                        c1 = (a5 - a2 * b5 / b2) / denom
+                        c2 = (a2 * b3 / b2 - a3) / denom
+                        c3 = (a2 * b4 / b2 - a4) / denom
 
-                    b_vector[i] += c1 *  self.delta_y
-                    A_matrix[i,i] -= c2 *  self.delta_y
-                    A_matrix[i,i+phi_2_offset] -= c3 *  self.delta_y
+                        b_vector[i] -= c1 *  self.delta_y
+                        A_matrix[i,i] += c2 *  self.delta_y
+                        A_matrix[i,i+phi_2_offset] += (2*c2 + c3) *  self.delta_y
 
-                    b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_y
-                    A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_y
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4) / b2 *  self.delta_y
-                else:
-                    # Phi_0 equations
-                    x_minus_term_0 = self.get_av_D("x",x_i-1,y_i) *  self.delta_y
-                    A_matrix[i,unroll_index([x_i-1, y_i], self.n_y)] =  -x_minus_term_0 # phi_0, (i-1,j) term
-                    A_matrix[i,i] +=  x_minus_term_0 # phi_0, (i,j) term
+                        b_vector[i + phi_2_offset] -= (b5 - b1 * c1) / b2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i] += (-b1 * c2 - b3) / b2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] += (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_y
+                    else:
+                        # Phi_0 equations
+                        x_minus_term_0 = self.get_av_D("x",x_i-1,y_i,g) *  self.delta_y
+                        A_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -x_minus_term_0 # phi_0, (i-1,j) term
+                        A_matrix[i,self.unroll_index([g, x_i-1, y_i]) + phi_2_offset] =  -2 * x_minus_term_0 # phi_0, (i-1,j) term
+                        A_matrix[i,i] +=  x_minus_term_0 # phi_0, (i,j) term
+                        A_matrix[i,i+phi_2_offset] +=  2 * x_minus_term_0 # phi_0, (i,j) term
 
-                    # Phi_2 equations
-                    x_minus_term_2 = self.get_av_D2("x",x_i-1,y_i) *  self.delta_y
-                    A_matrix[i+phi_2_offset,unroll_index([x_i-1, y_i], self.n_y) + phi_2_offset] =  -x_minus_term_2 # phi_2, (i-1,j) term
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_minus_term_2 # phi_2, (i,j) term
-                if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                    d1 = (-1 - 4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x)
-                    d2 = (3/4) * self.D[unroll_index([x_i, y_i], self.n_y)]/self.D2[unroll_index([x_i, y_i], self.n_y)]
-                    d3 = 2 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x
-                    d4 = (-3/4) * 2 * self.D[unroll_index([x_i, y_i], self.n_y)] /  self.delta_x
-                    d5 =  4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
+                        # Phi_2 equations
+                        x_minus_term_2 = self.get_av_D2("x",x_i-1,y_i,g) *  self.delta_y
+                        A_matrix[i+phi_2_offset,self.unroll_index([g, x_i-1, y_i]) + phi_2_offset] =  -x_minus_term_2 # phi_2, (i-1,j) term
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_minus_term_2 # phi_2, (i,j) term
+                    if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
+                        a1 = (1 + 4 * D/self.delta_x)
+                        a2 = (-3/4) * D/D2
+                        a3 = 2 * D/self.delta_x
+                        a4 = (-3/4) * 2 * D / self.delta_x
+                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
 
-                    e2 = (-1 - (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x)
-                    e1 = (1/7) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.D[unroll_index([x_i, y_i], self.n_y)]
-                    e4 = 2 * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x
-                    e3 = (-2/7) * self.D2[unroll_index([x_i, y_i], self.n_y)] /  self.delta_x
-                    e5 =  (6/5) * (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_x * self.get_I_3_value([x_i,y_i])
+                        b2 = (1 + (80/21) * D2/self.delta_x)
+                        b1 = (-1/7) * D2/D
+                        b4 = 2 * D2/self.delta_x
+                        b3 = (-2/7) * D2 / self.delta_x
+                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
 
-                    denom = (d1 - d2 * e1 / e2)
-                    f1 = (d5 - d2 * e5 / e2) / denom
-                    f2 = (d2 * e3 / e2 - d3) / denom
-                    f3 = (d2 * e4 / e2 - d4) / denom
+                        denom = (a1 - a2 * b1 / b2)
+                        c1 = (a5 - a2 * b5 / b2) / denom
+                        c2 = (a2 * b3 / b2 - a3) / denom
+                        c3 = (a2 * b4 / b2 - a4) / denom
 
-                    b_vector[i] -= f1 *  self.delta_y
-                    A_matrix[i,i] += f2 *  self.delta_y
-                    A_matrix[i,i+phi_2_offset] += f3 *  self.delta_y
+                        b_vector[i] += c1 *  self.delta_y
+                        A_matrix[i,i] -= c2 *  self.delta_y
+                        A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_y
 
-                    b_vector[i + phi_2_offset] -= (e5 - e1 * f1) / e2 *  self.delta_y
-                    A_matrix[i+phi_2_offset,i] += (-e1 * f2 - e3) / e2 *  self.delta_y
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] += (-e1 * f3 - e4) / e2 *  self.delta_y
-                else:
-                    # Phi_0 equations
-                    x_plus_term_0 = self.get_av_D("x",x_i,y_i) *  self.delta_y
-                    A_matrix[i,unroll_index([x_i+1, y_i], self.n_y)] =  -x_plus_term_0 # phi_0, (i+1,j) term
-                    A_matrix[i,i] +=  x_plus_term_0 # phi_0, (i,j) term
+                        b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_y
+                    else:
+                        # Phi_0 equations
+                        x_plus_term_0 = self.get_av_D("x",x_i,y_i,g) *  self.delta_y
+                        A_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -x_plus_term_0 # phi_0, (i+1,j) term
+                        A_matrix[i,self.unroll_index([g, x_i+1, y_i]) + phi_2_offset] =  -2 * x_plus_term_0 # phi_0, (i+1,j) term
+                        A_matrix[i,i] +=  x_plus_term_0 # phi_0, (i,j) term
+                        A_matrix[i,i+phi_2_offset] +=  2 * x_plus_term_0 # phi_0, (i,j) term
 
-                    # Phi_2 equations
-                    x_plus_term_2 = self.get_av_D2("x",x_i,y_i) *  self.delta_y
-                    A_matrix[i+phi_2_offset,unroll_index([x_i+1, y_i], self.n_y) + phi_2_offset] =  -x_plus_term_2 # phi_2, (i+1,j) term
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_plus_term_2 # phi_2, (i,j) term
-                if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                    a1 = (1 + 4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y)
-                    a2 = (-3/4) * self.D[unroll_index([x_i, y_i], self.n_y)]/self.D2[unroll_index([x_i, y_i], self.n_y)]
-                    a3 = 2 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y
-                    a4 = (-3/4) * 2 * self.D[unroll_index([x_i, y_i], self.n_y)] /  self.delta_y
-                    a5 =  4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y * 2 * self.get_I_1_value([x_i,y_i])
+                        # Phi_2 equations
+                        x_plus_term_2 = self.get_av_D2("x",x_i,y_i,g) *  self.delta_y
+                        A_matrix[i+phi_2_offset,self.unroll_index([g, x_i+1, y_i]) + phi_2_offset] =  -x_plus_term_2 # phi_2, (i+1,j) term
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_plus_term_2 # phi_2, (i,j) term
+                    if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                        a1 = (1 + 4 * D/self.delta_x)
+                        a2 = (-3/4) * D/D2
+                        a3 = 2 * D/self.delta_x
+                        a4 = (-3/4) * 2 * D / self.delta_x
+                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
 
-                    b2 = (1 + (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y)
-                    b1 = (-1/7) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.D[unroll_index([x_i, y_i], self.n_y)]
-                    b4 = 2 * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y
-                    b3 = (-2/7) * self.D2[unroll_index([x_i, y_i], self.n_y)] /  self.delta_y
-                    b5 =  (6/5) * (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y * 2 * self.get_I_3_value([x_i,y_i])
+                        b2 = (1 + (80/21) * D2/self.delta_x)
+                        b1 = (-1/7) * D2/D
+                        b4 = 2 * D2/self.delta_x
+                        b3 = (-2/7) * D2 / self.delta_x
+                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
 
-                    denom = (a1 - a2 * b1 / b2)
-                    c1 = (a5 - a2 * b5 / b2) / denom
-                    c2 = (a2 * b3 / b2 - a3) / denom
-                    c3 = (a2 * b4 / b2 - a4) / denom
+                        denom = (a1 - a2 * b1 / b2)
+                        c1 = (a5 - a2 * b5 / b2) / denom
+                        c2 = (a2 * b3 / b2 - a3) / denom
+                        c3 = (a2 * b4 / b2 - a4) / denom
 
-                    b_vector[i] += c1 *  self.delta_x
-                    A_matrix[i,i] -= c2 *  self.delta_x
-                    A_matrix[i,i+phi_2_offset] -= c3 *  self.delta_x
+                        b_vector[i] -= c1 *  self.delta_x
+                        A_matrix[i,i] += c2 *  self.delta_x
+                        A_matrix[i,i+phi_2_offset] += (2*c2 + c3) *  self.delta_x
 
-                    b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_x
-                    A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_x
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4) / b2 *  self.delta_x
-                else:
-                    # Phi_0 equations
-                    y_minus_term_0 = self.get_av_D("y",x_i,y_i-1) *  self.delta_x
-                    A_matrix[i,unroll_index([x_i, y_i-1], self.n_y)] =  -y_minus_term_0 # phi_0, (i,j-1) term
-                    A_matrix[i,i] +=  y_minus_term_0 # phi_0, (i,j) term
+                        b_vector[i + phi_2_offset] -= (b5 - b1 * c1) / b2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i] += (-b1 * c2 - b3) / b2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] += (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_x
+                    else:
+                        # Phi_0 equations
+                        y_minus_term_0 = self.get_av_D("y",y_i-1,x_i,g) *  self.delta_x
+                        A_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -y_minus_term_0 # phi_0, (i,j-1) term
+                        A_matrix[i,self.unroll_index([g, x_i, y_i-1]) + phi_2_offset] =  -2 * y_minus_term_0 # phi_0, (i,j-1) term
+                        A_matrix[i,i] +=  y_minus_term_0 # phi_0, (i,j) term
+                        A_matrix[i,i+phi_2_offset] +=  2 * y_minus_term_0 # phi_0, (i,j) term
 
-                    # Phi_2 equations
-                    y_minus_term_2 = self.get_av_D2("y",x_i,y_i-1) *  self.delta_x
-                    A_matrix[i+phi_2_offset,unroll_index([x_i, y_i-1], self.n_y) + phi_2_offset] =  -y_minus_term_2 # phi_2, (i,j-1) term
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_minus_term_2 # phi_2, (i,j) term
-                if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
-                    d1 = (-1 - 4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y)
-                    d2 = (3/4) * self.D[unroll_index([x_i, y_i], self.n_y)]/self.D2[unroll_index([x_i, y_i], self.n_y)]
-                    d3 = 2 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y
-                    d4 = (-3/4) * 2 * self.D[unroll_index([x_i, y_i], self.n_y)] /  self.delta_y
-                    d5 =  4 * self.D[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y * 2 * self.get_I_1_value([x_i,y_i])
+                        # Phi_2 equations
+                        y_minus_term_2 = self.get_av_D2("y",y_i-1,x_i,g) *  self.delta_x
+                        A_matrix[i+phi_2_offset,self.unroll_index([g,x_i, y_i-1]) + phi_2_offset] =  -y_minus_term_2 # phi_2, (i,j-1) term
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_minus_term_2 # phi_2, (i,j) term
+                    if(y_i == self.n_y - 1): # top BC, normal vector = (0,1)
+                        a1 = (1 + 4 * D/self.delta_x)
+                        a2 = (-3/4) * D/D2
+                        a3 = 2 * D/self.delta_x
+                        a4 = (-3/4) * 2 * D / self.delta_x
+                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
 
-                    e2 = (-1 - (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y)
-                    e1 = (1/7) * self.D2[unroll_index([x_i, y_i], self.n_y)]/self.D[unroll_index([x_i, y_i], self.n_y)]
-                    e4 = 2 * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y
-                    e3 = (-2/7) * self.D2[unroll_index([x_i, y_i], self.n_y)] /  self.delta_y
-                    e5 =  (6/5) * (80/21) * self.D2[unroll_index([x_i, y_i], self.n_y)]/ self.delta_y * self.get_I_3_value([x_i,y_i])
+                        b2 = (1 + (80/21) * D2/self.delta_x)
+                        b1 = (-1/7) * D2/D
+                        b4 = 2 * D2/self.delta_x
+                        b3 = (-2/7) * D2 / self.delta_x
+                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
 
-                    denom = (d1 - d2 * e1 / e2)
-                    f1 = (d5 - d2 * e5 / e2) / denom
-                    f2 = (d2 * e3 / e2 - d3) / denom
-                    f3 = (d2 * e4 / e2 - d4) / denom
+                        denom = (a1 - a2 * b1 / b2)
+                        c1 = (a5 - a2 * b5 / b2) / denom
+                        c2 = (a2 * b3 / b2 - a3) / denom
+                        c3 = (a2 * b4 / b2 - a4) / denom
 
-                    b_vector[i] -= f1 *  self.delta_x
-                    A_matrix[i,i] += f2 *  self.delta_x
-                    A_matrix[i,i+phi_2_offset] += f3 *  self.delta_x
+                        b_vector[i] += c1 *  self.delta_x
+                        A_matrix[i,i] -= c2 *  self.delta_x
+                        A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_x
 
-                    b_vector[i + phi_2_offset] -= (e5 - e1 * f1) / e2 *  self.delta_x
-                    A_matrix[i+phi_2_offset,i] += (-e1 * f2 - e3) / e2 *  self.delta_x
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] += (-e1 * f3 - e4) / e2 *  self.delta_x
-                else:
-                    # Phi_0 equations
-                    y_plus_term_0 = self.get_av_D("y",x_i,y_i) *  self.delta_x
-                    A_matrix[i,unroll_index([x_i, y_i+1], self.n_y)] =  -y_plus_term_0 # phi_0, (i,j+1) term
-                    A_matrix[i,i] +=  y_plus_term_0 # phi_0, (i,j) term
+                        b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_x
+                    else:
+                        # Phi_0 equations
+                        y_plus_term_0 = self.get_av_D("y",y_i,x_i,g) *  self.delta_x
+                        A_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -y_plus_term_0 # phi_0, (i,j+1) term
+                        A_matrix[i,self.unroll_index([g, x_i, y_i+1])+phi_2_offset] =  -2 * y_plus_term_0 # phi_0, (i,j+1) term
+                        A_matrix[i,i] +=  y_plus_term_0 # phi_0, (i,j) term
+                        A_matrix[i,i+phi_2_offset] +=  2*y_plus_term_0 # phi_0, (i,j) term
 
-                    # Phi_2 equations
-                    y_plus_term_2 = self.get_av_D2("y",x_i,y_i) *  self.delta_x
-                    A_matrix[i+phi_2_offset,unroll_index([x_i, y_i+1], self.n_y) + phi_2_offset] =  -y_plus_term_2 # phi_2, (i,j+1) term
-                    A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_plus_term_2 # phi_2, (i,j) term
-                A_matrix[i,i] += (self.sigma_t[i] - self.nu_sigma_f[i] - self.sigma_s0[i]) *  self.delta_x *  self.delta_y
-                A_matrix[i,i + phi_2_offset] += (-2) * (self.sigma_t[i] - self.nu_sigma_f[i] - self.sigma_s0[i]) *  self.delta_x *  self.delta_y
-                b_vector[i] += self.Q[i] *  self.delta_x *  self.delta_y
+                        # Phi_2 equations
+                        y_plus_term_2 = self.get_av_D2("y",y_i,x_i,g) *  self.delta_x
+                        A_matrix[i+phi_2_offset,self.unroll_index([g, x_i, y_i+1]) + phi_2_offset] =  -y_plus_term_2 # phi_2, (i,j+1) term
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_plus_term_2 # phi_2, (i,j) term
+                    A_matrix[i,i] += (mat.sigma_t[g]) *  self.delta_x *  self.delta_y
+                    #A_matrix[i,i + phi_2_offset] += (-2) * (mat.sigma_t[g]) *  self.delta_x *  self.delta_y
+                    for g_p in range(self.G):
+                        A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += (- mat.chi[g] * mat.nu_sigma_f[g_p] - mat.sigma_sgg[g_p,g]) *  self.delta_x *  self.delta_y
+                    b_vector[i] += mat.Q[g] *  self.delta_x *  self.delta_y
 
-                A_matrix[i+phi_2_offset,i] += (-2/5) * (self.sigma_t[i] - self.nu_sigma_f[i] - self.sigma_s0[i]) *  self.delta_x *  self.delta_y
-                A_matrix[i+phi_2_offset,i + phi_2_offset] += ((self.sigma_t[i] - self.nu_sigma_f[i] - self.sigma_s2[i]) + (4/5) * (self.sigma_t[i] - self.nu_sigma_f[i] - self.sigma_s0[i])) *  self.delta_x *  self.delta_y
-                b_vector[i+phi_2_offset] += (-2/5) * self.Q[i] *  self.delta_x *  self.delta_y
+                    A_matrix[i+phi_2_offset,i] += (-2/5) * (mat.sigma_t[g]) *  self.delta_x *  self.delta_y
+                    A_matrix[i+phi_2_offset,i + phi_2_offset] += (mat.sigma_t[g] - mat.sigma_s2[g]) *  self.delta_x *  self.delta_y
+                    for g_p in range(self.G):
+                        A_matrix[i+phi_2_offset,self.unroll_index([g_p, x_i, y_i])] = (2/5) * (mat.chi[g] * mat.nu_sigma_f[g_p] + mat.sigma_sgg[g_p,g]) *  self.delta_x *  self.delta_y
+                    b_vector[i+phi_2_offset] += (-2/5) * mat.Q[g] *  self.delta_x *  self.delta_y
         return A_matrix, b_vector
 
 

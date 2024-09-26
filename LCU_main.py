@@ -59,7 +59,7 @@ else:
 
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 
-classical_sol_vec.resize((data.G, data.n_x,data.n_y))
+classical_sol_vec.resize((data.G, data.n_x,data.n_y), refcheck=False)
 for g in range(data.G):
     ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
     plt.title("Real Solution, Group " + str(g))

@@ -27,6 +27,7 @@ class Material:
             for g in range(G):
                 self.sigma_sgg[g_p, g] = xs_data[g_p,4+g]
             self.chi[g_p] = xs_data[g_p,4+2*G]
-            self.D[g_p] = 1 / (3 * (xs_data[g_p,1] - xs_data[g_p,4 + G + g_p])) # TODO: how to get sigma_s1,g from sigma_s,gg'
+            self.D[g_p] = 1 / (3 * (xs_data[g_p,1] - np.sum(xs_data[g_p,4 + G:4 + 2*G]))) 
+            self.D2[g_p] = 1 / (3 * (xs_data[g_p,1] - np.sum(np.zeros(8)))) # TODO: Add 3rd oder scattering cross sections in to the data file so D2 can be created, sigma_s3 is set to 0 temporarily here
             self.Q[g_p] = xs_data[g_p,5+2*G]
         print("loaded cross sections")
