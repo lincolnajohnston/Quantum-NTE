@@ -59,12 +59,12 @@ else:
 
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 
-classical_sol_vec.resize((data.G, data.n_x,data.n_y), refcheck=False)
+'''classical_sol_vec.resize((data.G, data.n_x,data.n_y), refcheck=False)
 for g in range(data.G):
     ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
     plt.title("Real Solution, Group " + str(g))
     plt.figure()
-plt.show()
+plt.show()'''
 
 # select optimal J, K, y_max, and z_max in just about the least efficient way possible
 '''best_j = 0
@@ -124,8 +124,13 @@ for z_max in np.linspace(0.1,5,30):
 
 # manually input parameters for LCU (16x16 diffusion, dx=0.5, dy=0.5, 5 LCU bits)
 '''best_j = 3
-best_y_max = 4.0
-best_z_max = 2.0'''
+best_y_max = 5.0
+best_z_max = 3.0'''
+
+# manually input parameters for LCU (8x8 diffusion, G=8, dx=0.5, dy=0.5, 4 LCU bits)
+best_j = 3
+best_y_max = 5.0
+best_z_max = 3.0
 
 # manually input parameters for LCU (32x32 diffusion, dx=0.5, dy=0.5, 3 LCU bits) (does not work well)
 '''best_j = 1
@@ -133,9 +138,9 @@ best_y_max = 1.0
 best_z_max = 2.0'''
 
 # manually input parameters for LCU (16x16 sp3, dx=0.5, dy=0.5, 4 LCU bits)
-'''best_j = 2
+'''best_j = 3
 best_y_max = 1.5
-best_z_max = 1.5
+best_z_max = 1.5'''
 
 print("Best J: ", best_j)
 print("Best y_max: ", best_y_max)
@@ -222,28 +227,29 @@ solve_time = time.perf_counter()
 print("Circuit Solve Time: ", solve_time - gate_time)
 print("Total time: ", solve_time - start)
 
-
 # Make graphs of results
-state_vec.resize((data.n_x,data.n_y))
-ax = sns.heatmap(state_vec, linewidth=0.5)
-plt.title("Quantum Solution")
-plt.savefig('q_sol.png')
-plt.figure()
+state_vec.resize((data.G, data.n_x,data.n_y))
+for g in range(data.G):
+    ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5)
+    plt.title("Quantum Solution, Group " + str(g))
+    plt.savefig('quantum_sol_g' + str(g) + '.png')
+    plt.figure()
 
-classical_sol_vec.resize((data.n_x,data.n_y))
-ax = sns.heatmap(classical_sol_vec, linewidth=0.5)
-plt.title("Real Solution")
-plt.savefig('real_sol.png')
-plt.figure()
+classical_sol_vec.resize((data.G, data.n_x,data.n_y))
+for g in range(data.G):
+    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
+    plt.title("Real Solution, Group " + str(g))
+    plt.savefig('real_sol_g' + str(g) + '.png')
+    plt.figure()
 
-sol_rel_error.resize((data.n_x,data.n_y))
-ax = sns.heatmap(sol_rel_error, linewidth=0.5)
-plt.title("Relative error between quantum and real solution")
-plt.savefig('rel_error.png')
-plt.figure()
+'''sol_rel_error.resize((data.G, data.n_x,data.n_y))
+for g in range(data.G):
+    ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5)
+    plt.title("Relative error between quantum and real solution, Group " + str(g))
+    plt.figure()
 
-sol_error.resize((data.n_x,data.n_y))
-ax = sns.heatmap(sol_error, linewidth=0.5)
-plt.title("Actual error between quantum and real solution")
-plt.savefig('error.png')
-plt.show()'''
+for g in range(data.G):
+    ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
+    plt.title("Actual error between quantum and real solution, Group " + str(g))
+    plt.figure()'''
+plt.show()
