@@ -1,5 +1,7 @@
-16
-16
+8
+8
 0.5
 0.5
-sp3
+diffusion
+1
+XS-1group
