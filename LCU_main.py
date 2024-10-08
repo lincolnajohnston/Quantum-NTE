@@ -232,7 +232,7 @@ state_vec.resize((data.G, data.n_x,data.n_y))
 for g in range(data.G):
     ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5)
     plt.title("Quantum Solution, Group " + str(g))
-    plt.savefig('quantum_sol_g' + str(g) + '.png')
+    #plt.savefig('quantum_sol_g' + str(g) + '.png')
     plt.figure()
 
 classical_sol_vec = classical_sol_vec[:int(data.G * data.n_x * data.n_y)]
@@ -240,7 +240,7 @@ classical_sol_vec.resize((data.G, data.n_x,data.n_y))
 for g in range(data.G):
     ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
     plt.title("Real Solution, Group " + str(g))
-    plt.savefig('real_sol_g' + str(g) + '.png')
+    #plt.savefig('real_sol_g' + str(g) + '.png')
     plt.figure()
 
 '''sol_rel_error.resize((data.G, data.n_x,data.n_y))
