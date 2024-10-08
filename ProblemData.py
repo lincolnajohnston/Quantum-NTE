@@ -270,9 +270,9 @@ class ProblemData:
                     mat = self.materials[self.material_matrix[x_i,y_i]]
                     D = mat.D[g]
                     D2 = mat.D2[g]
-                    if(x_i == 0): # left BC, normal vector = (-1,0)
-                        # these coefficients will be the same for all cells with the same material and mesh size so
-                        # need to improve efficiency of this by storing these values beforehand instead of recalculating for each B.C. cell
+
+                    # set up some coefficients used by the neutron current variables in the sp3 equation
+                    if(x_i == 0 or x_i == self.n_x - 1 or y_i == 0 or y_i == self.n_y - 1):
                         a1 = (1 + 4 * D/self.delta_x)
                         a2 = (-3/4) * D/D2
                         a3 = 2 * D/self.delta_x
@@ -285,18 +285,25 @@ class ProblemData:
                         b3 = (-2/7) * D2 / self.delta_x
                         b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
 
-                        denom = (a1 - a2 * b1 / b2)
-                        c1 = (a5 - a2 * b5 / b2) / denom
-                        c2 = (a2 * b3 / b2 - a3) / denom
-                        c3 = (a2 * b4 / b2 - a4) / denom
+                        c_denom = (a1 - a2 * b1 / b2)
+                        c1 = (a5 - a2 * b5 / b2) / c_denom
+                        c2 = (a2 * b3 / b2 - a3) / c_denom
+                        c3 = (a2 * b4 / b2 - a4) / c_denom
 
-                        b_vector[i] -= c1 *  self.delta_y
-                        A_matrix[i,i] += c2 *  self.delta_y
-                        A_matrix[i,i+phi_2_offset] += (2*c2 + c3) *  self.delta_y
+                        d_denom = (a2 - a1 * b2 / b1)
+                        d1 = (a5 - a1 * b5 / b1) / d_denom
+                        d2 = (a1 * b3 / b1 - a3) / d_denom
+                        d3 = (a1 * b4 / b1 - a4) / d_denom
 
-                        b_vector[i + phi_2_offset] -= (b5 - b1 * c1) / b2 *  self.delta_y
-                        A_matrix[i+phi_2_offset,i] += (-b1 * c2 - b3) / b2 *  self.delta_y
-                        A_matrix[i+phi_2_offset,i+phi_2_offset] += (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_y
+                    # fill in neutron current terms
+                    if(x_i == 0): # left BC, normal vector = (-1,0)
+                        b_vector[i] += c1 *  self.delta_y
+                        A_matrix[i,i] -= c2 *  self.delta_y
+                        A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_y
+
+                        b_vector[i + phi_2_offset] += d1 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i] -= d2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (2*d2 + d3) *  self.delta_y
                     else:
                         # Phi_0 equations
                         x_minus_term_0 = self.get_av_D("x",x_i-1,y_i,g) *  self.delta_y
@@ -310,30 +317,13 @@ class ProblemData:
                         A_matrix[i+phi_2_offset,self.unroll_index([g, x_i-1, y_i]) + phi_2_offset] =  -x_minus_term_2 # phi_2, (i-1,j) term
                         A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_minus_term_2 # phi_2, (i,j) term
                     if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                        a1 = (1 + 4 * D/self.delta_x)
-                        a2 = (-3/4) * D/D2
-                        a3 = 2 * D/self.delta_x
-                        a4 = (-3/4) * 2 * D / self.delta_x
-                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
-
-                        b2 = (1 + (80/21) * D2/self.delta_x)
-                        b1 = (-1/7) * D2/D
-                        b4 = 2 * D2/self.delta_x
-                        b3 = (-2/7) * D2 / self.delta_x
-                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
-
-                        denom = (a1 - a2 * b1 / b2)
-                        c1 = (a5 - a2 * b5 / b2) / denom
-                        c2 = (a2 * b3 / b2 - a3) / denom
-                        c3 = (a2 * b4 / b2 - a4) / denom
-
                         b_vector[i] += c1 *  self.delta_y
                         A_matrix[i,i] -= c2 *  self.delta_y
                         A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_y
 
-                        b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_y
-                        A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_y
-                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_y
+                        b_vector[i + phi_2_offset] += d1 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i] -= d2 *  self.delta_y
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (2*d2 + d3) *  self.delta_y
                     else:
                         # Phi_0 equations
                         x_plus_term_0 = self.get_av_D("x",x_i,y_i,g) *  self.delta_y
@@ -347,30 +337,13 @@ class ProblemData:
                         A_matrix[i+phi_2_offset,self.unroll_index([g, x_i+1, y_i]) + phi_2_offset] =  -x_plus_term_2 # phi_2, (i+1,j) term
                         A_matrix[i+phi_2_offset,i+phi_2_offset] +=  x_plus_term_2 # phi_2, (i,j) term
                     if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                        a1 = (1 + 4 * D/self.delta_x)
-                        a2 = (-3/4) * D/D2
-                        a3 = 2 * D/self.delta_x
-                        a4 = (-3/4) * 2 * D / self.delta_x
-                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
+                        b_vector[i] += c1 *  self.delta_x
+                        A_matrix[i,i] -= c2 *  self.delta_x
+                        A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_x
 
-                        b2 = (1 + (80/21) * D2/self.delta_x)
-                        b1 = (-1/7) * D2/D
-                        b4 = 2 * D2/self.delta_x
-                        b3 = (-2/7) * D2 / self.delta_x
-                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
-
-                        denom = (a1 - a2 * b1 / b2)
-                        c1 = (a5 - a2 * b5 / b2) / denom
-                        c2 = (a2 * b3 / b2 - a3) / denom
-                        c3 = (a2 * b4 / b2 - a4) / denom
-
-                        b_vector[i] -= c1 *  self.delta_x
-                        A_matrix[i,i] += c2 *  self.delta_x
-                        A_matrix[i,i+phi_2_offset] += (2*c2 + c3) *  self.delta_x
-
-                        b_vector[i + phi_2_offset] -= (b5 - b1 * c1) / b2 *  self.delta_x
-                        A_matrix[i+phi_2_offset,i] += (-b1 * c2 - b3) / b2 *  self.delta_x
-                        A_matrix[i+phi_2_offset,i+phi_2_offset] += (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_x
+                        b_vector[i + phi_2_offset] += d1 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i] -= d2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (2*d2 + d3) *  self.delta_x
                     else:
                         # Phi_0 equations
                         y_minus_term_0 = self.get_av_D("y",y_i-1,x_i,g) *  self.delta_x
@@ -384,30 +357,13 @@ class ProblemData:
                         A_matrix[i+phi_2_offset,self.unroll_index([g,x_i, y_i-1]) + phi_2_offset] =  -y_minus_term_2 # phi_2, (i,j-1) term
                         A_matrix[i+phi_2_offset,i+phi_2_offset] +=  y_minus_term_2 # phi_2, (i,j) term
                     if(y_i == self.n_y - 1): # top BC, normal vector = (0,1)
-                        a1 = (1 + 4 * D/self.delta_x)
-                        a2 = (-3/4) * D/D2
-                        a3 = 2 * D/self.delta_x
-                        a4 = (-3/4) * 2 * D / self.delta_x
-                        a5 =  4 * D/self.delta_x * 2 * self.get_I_1_value([x_i,y_i])
-
-                        b2 = (1 + (80/21) * D2/self.delta_x)
-                        b1 = (-1/7) * D2/D
-                        b4 = 2 * D2/self.delta_x
-                        b3 = (-2/7) * D2 / self.delta_x
-                        b5 =  (6/5) * (80/21) * D2/self.delta_x * self.get_I_3_value([x_i,y_i])
-
-                        denom = (a1 - a2 * b1 / b2)
-                        c1 = (a5 - a2 * b5 / b2) / denom
-                        c2 = (a2 * b3 / b2 - a3) / denom
-                        c3 = (a2 * b4 / b2 - a4) / denom
-
                         b_vector[i] += c1 *  self.delta_x
                         A_matrix[i,i] -= c2 *  self.delta_x
                         A_matrix[i,i+phi_2_offset] -= (2*c2 + c3) *  self.delta_x
 
-                        b_vector[i + phi_2_offset] += (b5 - b1 * c1) / b2 *  self.delta_x
-                        A_matrix[i+phi_2_offset,i] -= (-b1 * c2 - b3) / b2 *  self.delta_x
-                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (-b1 * c3 - b4 - 2 * b1 * c2 - 2 * b3) / b2 *  self.delta_x
+                        b_vector[i + phi_2_offset] += d1 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i] -= d2 *  self.delta_x
+                        A_matrix[i+phi_2_offset,i+phi_2_offset] -= (2*d2 + d3) *  self.delta_x
                     else:
                         # Phi_0 equations
                         y_plus_term_0 = self.get_av_D("y",y_i,x_i,g) *  self.delta_x
