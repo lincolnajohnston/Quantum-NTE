@@ -115,7 +115,6 @@ class ProblemData:
         y_range = (self.n_pts_y - 1) * self.delta_y
 
         fuel_radius = min(x_range,y_range)/8
-        #fuel_radius = 9999
 
         for i in range(self.n_x):
             for j in range(self.n_y):
@@ -149,75 +148,6 @@ class ProblemData:
             for mat in dirs:
                 xs_file = self.xs_folder + "/" + mat + "/xs.txt"
                 self.materials[mat] = Material(mat, xs_file, self.G, self.n_x, self.n_y)
-
-    '''def initialize_XSs(self):
-        A_mat_size = self.G*self.n_x*self.n_y
-        x_range = (self.n_pts_x - 1) * self.delta_x
-        y_range = (self.n_pts_y - 1) * self.delta_y
-
-        self.sigma_a = np.zeros(A_mat_size)
-        self.nu_sigma_f = np.zeros(A_mat_size)
-        self.D = np.zeros(A_mat_size)
-        self.Q = np.zeros(A_mat_size)
-        #for sp3 only below
-        self.sigma_t = np.zeros(A_mat_size)
-        self.sigma_s0 = np.zeros(A_mat_size)
-        self.sigma_s2 = np.zeros(A_mat_size)
-        self.D2 = np.zeros(A_mat_size)
-
-        fuel_radius = min(x_range,y_range)/8
-        #fuel_radius = 9999
-
-        for i in range(self.n_x):
-            for j in range(self.n_y):
-                x_val = (i + 1) * self.delta_x - x_range/2
-                y_val = (j + 1) * self.delta_y - y_range/2
-
-                # fuel at center
-                if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
-                    # use fuel XSs
-                    self.sigma_a[i * self.n_y + j] = 1
-                    self.nu_sigma_f[i * self.n_y + j] = 3
-                    self.D[i * self.n_y + j] = 1
-                    self.Q[i * self.n_y + j] = 5
-                    #for sp3 only below
-                    self.sigma_t[i * self.n_y + j] = 5
-                    self.sigma_s0[i * self.n_y + j] = 4
-                    self.sigma_s2[i * self.n_y + j] = 0.1
-                    self.D2[i * self.n_y + j] = 2
-                    
-                else:
-                    # use moderator XSs
-                    self.sigma_a[i * self.n_y + j] = 2
-                    self.D[i * self.n_y + j] = 1
-                    #for sp3 only below
-                    self.sigma_t[i * self.n_y + j] = 5
-                    self.sigma_s0[i * self.n_y + j] = 3
-                    self.sigma_s2[i * self.n_y + j] = 1
-                    self.D2[i * self.n_y + j] = 2
-
-                # 4 fuel pins
-                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
-                    # use fuel XSs
-                    self.sigma_a[i * self.n_y + j] = 1
-                    self.D[i * self.n_y + j] = 1
-                    self.Q[i * self.n_y + j] = 5
-                    self.nu_sigma_f[i * self.n_y + j] = 0 #sp3 looks better when this is 0
-                    #for sp3 only below
-                    self.sigma_t[i * self.n_y + j] = 5
-                    self.sigma_s0[i * self.n_y + j] = 4
-                    self.sigma_s2[i * self.n_y + j] = 0.1
-                    self.D2[i * self.n_y + j] = 2
-                    
-                else:
-                    # use moderator XSs
-                    self.sigma_a[i * self.n_y + j] = 1
-                    self.D[i * self.n_y + j] = 1
-                    #for sp3 only below
-                    self.sigma_t[i * self.n_y + j] = 5
-                    self.sigma_s0[i * self.n_y + j] = 4
-                    self.sigma_s2[i * self.n_y + j] = 2 
-                    self.D2[i * self.n_y + j] = 2'''
                 
     # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
     def diffusion_construct_A_matrix(self, A_mat_size):
@@ -402,19 +332,5 @@ class ProblemData:
         y = index % self.n_y
         return np.array([g,x,y])
 
-
-# old function to set BC flux in diffusion problems instead of using an albedo BC
-'''def get_BC_value(index, n_x, n_y, left_y_BCs, right_y_BCs, bottom_x_BCs, top_x_BCs):
-    i = index[0]
-    j = index[1]
-    if (i == 0):
-        return left_y_BCs[j]
-    if (i == n_x-1):
-        return right_y_BCs[j]
-    if (j == 0):
-        return bottom_x_BCs[i]
-    if (j == n_y-1):
-        return top_x_BCs[i]
-    raise Exception("tried to get BC on non-boundary node")'''
 
 
