@@ -1,7 +1,7 @@
-8
-8
+4
+4
 0.5
 0.5
 diffusion
-1
-XS-1group
+4
+XS-4group

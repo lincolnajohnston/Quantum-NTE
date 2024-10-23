@@ -7,6 +7,7 @@ from scipy.linalg import ishermitian
 import time
 import ProblemData
 import LcuFunctions
+from sympy import *
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -23,8 +24,15 @@ if data.sim_method == "sp3":
     A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
     A_mat_size = (data.n_x) * (data.n_y) * data.G
-    A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
-    
+    L_matrix, F_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
+
+F_det = np.linalg.det(F_matrix)
+L_det = np.linalg.det(L_matrix)
+A = np.linalg.inv(L_matrix) @ F_matrix # inverse of A matrix times B matrix, then the eigenvalues of this equation should be the k-eigenvalues for the NTE
+#eigenvalues, eigenvectors = np.linalg.eig(A)
+#eigenvalues = np.sort(eigenvalues)
+M = Matrix(A)
+P, D = M.diagonalize()  
 
 
 # use the material data (like XSs) to make the A matrix for the equation being solved
