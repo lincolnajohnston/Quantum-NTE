@@ -6,10 +6,10 @@ from Material import Material
 
 
 class ProblemData:
-    def __init__(self, input_file):
+    def __init__(self, input_file, material_files):
         self.read_input(input_file)
         self.initialize_BC()
-        self.initialize_geometry()
+        self.initialize_geometry(material_files)
         self.initialize_materials()
 
     def read_input(self, filename):
@@ -109,7 +109,7 @@ class ProblemData:
         # Set material data at each finite difference point, O(N)
     
 
-    def initialize_geometry(self):
+    def initialize_geometry(self, material_files):
         self.material_matrix = np.empty((self.n_x, self.n_y), dtype=object)
         x_range = (self.n_pts_x - 1) * self.delta_x
         y_range = (self.n_pts_y - 1) * self.delta_y
@@ -136,10 +136,10 @@ class ProblemData:
                 # 4 fuel pins
                 if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                     # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
+                    self.material_matrix[i,j] = material_files.get("fuel")
                 else:
                     # use moderator XSs
-                    self.material_matrix[i,j] = "water"
+                    self.material_matrix[i,j] = material_files.get("moderator")
         return
 
     def initialize_materials(self):
