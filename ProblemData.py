@@ -111,15 +111,15 @@ class ProblemData:
 
     def initialize_geometry(self):
         self.material_matrix = np.empty((self.n_x, self.n_y), dtype=object)
-        x_range = (self.n_pts_x - 1) * self.delta_x
-        y_range = (self.n_pts_y - 1) * self.delta_y
+        x_range = self.n_x * self.delta_x
+        y_range = self.n_y * self.delta_y
 
         fuel_radius = min(x_range,y_range)/8
 
         for i in range(self.n_x):
             for j in range(self.n_y):
-                x_val = (i + 1) * self.delta_x - x_range/2
-                y_val = (j + 1) * self.delta_y - y_range/2
+                x_val = (i + 0.5) * self.delta_x - x_range/2
+                y_val = (j + 0.5) * self.delta_y - y_range/2
 
                 # homogeneous fuel
                 #self.material_matrix[i,j] = "fuel"

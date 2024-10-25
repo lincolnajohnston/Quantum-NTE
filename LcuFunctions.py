@@ -19,6 +19,7 @@ def gram_schmidt_ortho(vector):
     #print(ortho_basis)
 
     # Gram-Schmidt orthogonalization
+    np.random.seed(12476)
     for i in range(1, num_dimensions):
         ortho_vector = np.random.rand(num_dimensions)  # random initialization
         #if(abs(np.log2(i) - np.ceil(np.log2(i))) < 0.00001):
