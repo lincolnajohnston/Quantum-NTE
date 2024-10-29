@@ -147,7 +147,7 @@ class ProblemData:
                     self.D2[i * self.n_y + j] = 2'''
 
                 # 4 fuel pins
-                '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                     # use fuel XSs
                     self.sigma_a[i * self.n_y + j] = 1
                     self.D[i * self.n_y + j] = 1
@@ -167,11 +167,11 @@ class ProblemData:
                     self.sigma_t[i * self.n_y + j] = 5
                     self.sigma_s0[i * self.n_y + j] = 4
                     self.sigma_s2[i * self.n_y + j] = 2 
-                    self.D2[i * self.n_y + j] = 2'''
+                    self.D2[i * self.n_y + j] = 2
 
                 # homogeneous fuel
                 # use fuel XSs
-                self.sigma_a[i * self.n_y + j] = 1
+                '''self.sigma_a[i * self.n_y + j] = 1
                 self.D[i * self.n_y + j] = 1
                 self.Q[i * self.n_y + j] = 5
                 self.nu_sigma_f[i * self.n_y + j] = 0.35 #sp3 looks better when this is 0
@@ -179,7 +179,7 @@ class ProblemData:
                 self.sigma_t[i * self.n_y + j] = 5
                 self.sigma_s0[i * self.n_y + j] = 4
                 self.sigma_s2[i * self.n_y + j] = 0.1
-                self.D2[i * self.n_y + j] = 2
+                self.D2[i * self.n_y + j] = 2'''
                 
     # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
     def diffusion_construct_A_matrix(self, A_mat_size):
