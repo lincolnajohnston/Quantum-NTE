@@ -317,8 +317,6 @@ def adiabatic_solver_numpy(A_matrix, b_vec, T, M, plot_evolution=False, verbose=
 data = ProblemData.ProblemData("input.txt")
 # create the vectors holding the material data at each discretized point
 data.read_input("input.txt")
-data.initialize_BC()
-data.initialize_XSs() 
 # make A matrix and b vector
 if data.sim_method == "sp3":
     A_mat_size = 2 * (data.n_x) * (data.n_y)

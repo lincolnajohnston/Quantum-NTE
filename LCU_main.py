@@ -17,16 +17,12 @@ start = time.perf_counter()
 
 data = ProblemData.ProblemData("input.txt")
 
-# create the vectors holding the material data at each discretized point
-data.read_input("input.txt")
-data.initialize_BC()
-data.initialize_XSs() 
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y)
+    A_mat_size = 2 * (data.n_x) * (data.n_y) * data.G
     A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y)
+    A_mat_size = (data.n_x) * (data.n_y) * data.G
     A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
     
 
@@ -61,6 +57,15 @@ else:
     quantum_mat = A_matrix
     quantum_b_vector = b_vector
 
+classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
+
+'''classical_sol_vec.resize((data.G, data.n_x,data.n_y), refcheck=False)
+for g in range(data.G):
+    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5)
+    plt.title("Real Solution, Group " + str(g))
+    plt.figure()
+plt.show()'''
+
 # select optimal J, K, y_max, and z_max in just about the least efficient way possible
 '''best_j = 0
 best_y_max = 0
@@ -69,7 +74,7 @@ best_error_norm = np.inf
 for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     J = pow(2,j)
     K = pow(2,num_LCU_bits-j-1)
-    for y_max in np.linspace(0.5,5,10):
+    for y_max in np.linspace(3,25,10):
         last_error_norm = 9999999
         for z_max in np.linspace(0.5,5,10):
             U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
@@ -119,8 +124,18 @@ for z_max in np.linspace(0.1,5,30):
 
 # manually input parameters for LCU (16x16 diffusion, dx=0.5, dy=0.5, 5 LCU bits)
 '''best_j = 3
-best_y_max = 4.0
-best_z_max = 2.0'''
+best_y_max = 5.0
+best_z_max = 3.0'''
+
+# manually input parameters for LCU (16x16 diffusion, dx=0.15, dy=0.15, 5 LCU bits)
+'''best_j = 2
+best_y_max = 15.0
+best_z_max = 2.5'''
+
+# manually input parameters for LCU (8x8 diffusion, G=8, dx=0.5, dy=0.5, 4 LCU bits)
+best_j = 2
+best_y_max = 15.0
+best_z_max = 2.5
 
 # manually input parameters for LCU (32x32 diffusion, dx=0.5, dy=0.5, 3 LCU bits) (does not work well)
 '''best_j = 1
@@ -128,11 +143,21 @@ best_y_max = 1.0
 best_z_max = 2.0'''
 
 # manually input parameters for LCU (16x16 sp3, dx=0.5, dy=0.5, 4 LCU bits)
-best_j = 2
+'''best_j = 3
 best_y_max = 1.5
-best_z_max = 1.5
+best_z_max = 1.5'''
 
-print("Best J: ", best_j)
+# manually input parameters for LCU (16x16 sp3, dx=0.15, dy=0.15, 4 LCU bits)
+'''best_j = 2
+best_y_max = 20.0
+best_z_max = 3.0'''
+
+# manually input parameters for LCU (16x16 sp3, dx=0.2, dy=0.2, 4 LCU bits)
+'''best_j = 2
+best_y_max = 25.0
+best_z_max = 1.5'''
+
+print("Best j: ", best_j)
 print("Best y_max: ", best_y_max)
 print("Best z_max: ", best_z_max)
 
@@ -198,7 +223,8 @@ if data.sim_method == "sp3":
     state_vec = state_vec[:int(len(state_vec)/2)]
     classical_sol_vec = classical_sol_vec[:int(len(classical_sol_vec)/2)]
 
-state_vec = state_vec * np.linalg.norm(classical_sol_vec) / np.linalg.norm(state_vec) # scale result to match true answer
+state_vec = (np.sum(state_vec) / np.abs(np.sum(state_vec))) * state_vec / np.linalg.norm(state_vec) # scale quantum result to match true answer
+classical_sol_vec = classical_sol_vec / np.linalg.norm(classical_sol_vec) # scale result to match true answer and ensure positivity
 
 
 # Print results
@@ -217,28 +243,43 @@ solve_time = time.perf_counter()
 print("Circuit Solve Time: ", solve_time - gate_time)
 print("Total time: ", solve_time - start)
 
-
 # Make graphs of results
-state_vec.resize((data.n_x,data.n_y))
-ax = sns.heatmap(state_vec, linewidth=0.5)
-plt.title("Quantum Solution")
-plt.savefig('q_sol.png')
-plt.figure()
+state_vec.resize((data.G, data.n_x,data.n_y))
+classical_sol_vec = classical_sol_vec[:int(data.G * data.n_x * data.n_y)]
+classical_sol_vec.resize((data.G, data.n_x,data.n_y))
 
-classical_sol_vec.resize((data.n_x,data.n_y))
-ax = sns.heatmap(classical_sol_vec, linewidth=0.5)
-plt.title("Real Solution")
-plt.savefig('real_sol.png')
-plt.figure()
+xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
+yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
 
-sol_rel_error.resize((data.n_x,data.n_y))
-ax = sns.heatmap(sol_rel_error, linewidth=0.5)
-plt.title("Relative error between quantum and real solution")
-plt.savefig('rel_error.png')
-plt.figure()
+flux_mins = np.zeros((data.G,1))
+flux_maxes = np.zeros((data.G,1))
+for g in range(data.G):
+    flux_maxes[g] = max(np.max(state_vec[g,:,:]), np.max(classical_sol_vec[g,:,:]))
+    flux_mins[g] = min(np.min(state_vec[g,:,:]), np.min(classical_sol_vec[g,:,:]))
 
-sol_error.resize((data.n_x,data.n_y))
-ax = sns.heatmap(sol_error, linewidth=0.5)
-plt.title("Actual error between quantum and real solution")
-plt.savefig('error.png')
+for g in range(data.G):
+    ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+    ax.invert_yaxis()
+    plt.title("Quantum Solution, Group " + str(g))
+    #plt.savefig('quantum_sol_g' + str(g) + '.png')
+    plt.figure()
+
+for g in range(data.G):
+    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+    ax.invert_yaxis()
+    plt.title("Real Solution, Group " + str(g))
+    #plt.savefig('real_sol_g' + str(g) + '.png')
+    plt.figure()
+
+'''sol_rel_error.resize((data.G, data.n_x,data.n_y))
+for g in range(data.G):
+    ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
+    ax.invert_yaxis()
+    plt.title("Relative error between quantum and real solution, Group " + str(g))
+    plt.figure()'''
+
+'''for g in range(data.G):
+    ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
+    plt.title("Actual error between quantum and real solution, Group " + str(g))
+    plt.figure()'''
 plt.show()
