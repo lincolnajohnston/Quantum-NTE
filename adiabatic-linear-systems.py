@@ -9,6 +9,7 @@ import seaborn as sns
 from scipy.linalg import ishermitian
 import time
 import ProblemData
+import random
 
 #from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit import QuantumCircuit, transpile
@@ -27,7 +28,7 @@ def get_A_s(s, A):
     Z = np.array([[1, 0],[0, -1]])
     return np.kron((1-s) * Z, np.eye(len(A))) + np.kron(s * X, A)
     
-def adiabatic_solver_qiskit(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False):
+def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False, qiskit_solve=False):
     # Normalize
     A_matrix = A_matrix / np.linalg.norm(A_matrix)
     b_vec = b_vec / np.linalg.norm(b_vec)
@@ -44,276 +45,77 @@ def adiabatic_solver_qiskit(A_matrix, b_vec, T, M, plot_evolution=False, verbose
     # Initialize quantum circuit
     '''set the initial state to be a "-" qubit and the b vector state,
     which is the eigenvector corresponding to the 0-eigenvalue of H(s) from equation 3 of [1]'''
-    n_qubits = int(np.log2(len(A_matrix))) + 1
-    qc = QuantumCircuit(n_qubits)
-    qc.initialize(psi, qc.qubits)
-    
-    # Define the time step
-    dt = T / M
+    if(qiskit_solve):
+        n_qubits = int(np.log2(len(A_matrix))) + 1
+        qc = QuantumCircuit(n_qubits)
+        qc.initialize(psi, qc.qubits)
 
     # initialize data structures to store the system state as evolution progresses
-    state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
-    expected_state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
-    eigenvector_error = np.zeros((M, 1), dtype=np.complex_)
-    eigenvector_error_abs = np.zeros((M, 1), dtype=np.complex_)
+    #state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
+    #expected_state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
+    #eigenvector_error = np.zeros((M, 1), dtype=np.complex_)
+    #eigenvector_error_abs = np.zeros((M, 1), dtype=np.complex_)
+    #eigenvalue_evolution = np.zeros((2 * len(A_matrix), M))
 
     lastH = H_B
-    U_T = np.eye(2 ** n_bits)
     dAds = (A_P - A_B) / M
     A = A_B
-    eigenvalue_evolution = np.zeros((2 * len(A_matrix), M))
 
-    # logarithmic f values so timestep gets smaller as evolution progresses
-    f_vals = np.flip(M - np.logspace(0,math.log10(M),num=M))
-    f_vals[M-1] = M
-
-    psi = Statevector.from_label('0' * n_bits)
-
+    # Use randomization method from Subasi to get f_vals
+    kappa = np.linalg.cond(A_matrix)
+    v_a = math.sqrt(2)*kappa / math.sqrt(1+kappa**2) * math.log(kappa*math.sqrt(1+kappa**2) - kappa**2)
+    v_b = math.sqrt(2)*kappa / math.sqrt(1+kappa**2) * math.log(math.sqrt(1+kappa**2) + 1)
+    v = np.linspace(v_a,v_b,num=M)
+    f_vals = (np.exp(v * math.sqrt(1+kappa**2) / (math.sqrt(2)*kappa)) + 2*kappa**2 - kappa**2*np.exp(-v * math.sqrt(1+kappa**2) / (math.sqrt(2)*kappa))) / (2 * (1+kappa**2))
+    
     for l in range(M):
-        s = f_vals[l] / M
+        s = f_vals[l]
         A = A_B + s * (A_P - A_B)
         H = np.matmul(np.matmul(A, P_b), A)
+
+        #delta_prime = (1-s)**2 + (s/kappa)**2
+        #dt = random.random() * 2 * math.pi / delta_prime
+
+        dt = T/M
         
         # using equation 5.4 in [2]
         U = expm(-1j * dt * H)
-        U_T = np.matmul(U, U_T)
-        psi = Statevector(U.dot(psi.data))
-        state_evolution[l, :] = psi.data
 
-        # Add to circuit
-        U_gate = UnitaryGate(U)
-        qc.append(U_gate, qc.qubits)
+        if(qiskit_solve):
+            # Add to circuit
+            U_gate = UnitaryGate(U)
+            qc.append(U_gate, qc.qubits)
+        else:
+            psi = U.dot(psi)
 
-        # expected state evolution to check answers
-        if plot_evolution:
-            H_eig, eigenvectors = np.linalg.eig(H)
-            min_eig_id = np.argmin(H_eig)
-            if eigenvectors[0, min_eig_id].real < 0:
-                eigenvectors = eigenvectors * -1
-            expected_state_evolution[l, :] = eigenvectors[:, min_eig_id]
-            eigenvalue_evolution[:, l] = np.sort(H_eig)
-            eigenvector_error[l] = np.linalg.norm(psi.data - expected_state_evolution[l, :])
-            eigenvector_error_abs[l] = np.linalg.norm(np.abs(psi.data) - np.abs(expected_state_evolution[l, :]))
-
-        # keep real part of first element of the eigenvector positive as convention to avoid it flipping signs randomly
-        if psi.data[0].real < 0:
-            psi = psi * -1
         if(l % 100 == 0):
             print("l = ", l)
-        if (verbose and l % 100 == 0):
-            print(", delta-t * delta-H = ", np.linalg.norm(dt * (lastH - H)), ", 1/M = ", 1/M)
-            print(" psi = ", np.round(psi, decimals=8))
-            print("expected psi: ", expected_state_evolution[l,:])
-            print("psi error: ", psi - expected_state_evolution[l,:])
         
         lastH = H
-
-        state_evolution[l, :] = psi.data
     
-    # Simulate the circuit
-    simulator = Aer.get_backend('aer_simulator')
-    qc.save_statevector()
-    compiled_circuit = transpile(qc, simulator)
-    result = simulator.run(compiled_circuit).result()
-    final_state = result.get_statevector(qc)
+    if(qiskit_solve):
+        # Simulate the circuit
+        simulator = Aer.get_backend('aer_simulator')
+        qc.save_statevector()
+        compiled_circuit = transpile(qc, simulator)
+        result = simulator.run(compiled_circuit).result()
+        final_state = result.get_statevector(qc)
 
-    # Plotting the results
-    if plot_evolution:
-        plot_histogram(final_state.probabilities_dict())
+        # Plotting the results
+        if plot_evolution:
+            plot_histogram(final_state.probabilities_dict())
+            
+        return final_state.data
+    else:
+        return psi
 
-    return final_state
-
-def adiabatic_solver_numpy(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False):
-    # setup sections
-    X = np.array([[0, 1],[1, 0]])
-    Z = np.array([[1, 0],[0, -1]])
-    n_bits = 1 + int(math.log2(len(A_matrix))) # total number of bits necessary to represent the state of the system
-    A_matrix = A_matrix / np.linalg.norm(A_matrix) 
-    b_vec = b_vec / np.linalg.norm(b_vec)
-
-    # set up matrices for Hamiltonian
-    b_bar_plus = np.kron(np.array([1/math.sqrt(2), 1/math.sqrt(2)]), b_vec) # b vector with ancilla "+" qubit inserted at the beginning
-    psi = np.kron(np.array([1/math.sqrt(2), -1/math.sqrt(2)]), b_vec) # set the initial state to be a "-" qubit and the b vector state, which is the eigenvector corresponding to the 0-eigenvalue of H(s) from equation 3 of [1] 
-    P_b = np.eye(len(A_matrix) * 2) - np.outer(b_bar_plus, b_bar_plus) # the P_b operator from equation 3 of [1]
-    A_B = get_A_s(0,A_matrix) # initial A(s) when s=0
-    A_P = get_A_s(1,A_matrix) # final A(s) when s=1
-    H_B = np.matmul(np.matmul(A_B, P_b), A_B) # initial Hamiltonian matrix
-    H_P = np.matmul(np.matmul(A_P, P_b), A_P) # final Hamiltonian matrix
-
-    # print eigenvalues of H_B and H_P
-    '''print("A: ", A_matrix)
-    print("b_bar_plus: ", b_bar_plus)
-    A_eigenvalues, A_eigenvectors = np.linalg.eig(A_matrix)
-    print("A eigenvalues: ", A_eigenvalues)
-    print("A eigenvectors: ", A_eigenvectors)
-    print("A(0): ", get_A_s(0,A_matrix))
-    A_eigenvalues, A_eigenvectors = np.linalg.eig(get_A_s(0,A_matrix))
-    print("A(0) eigenvalues: ", A_eigenvalues)
-    print("A(0) eigenvectors: ", A_eigenvectors)
-    print("A(1): ", get_A_s(1,A_matrix))
-    A_eigenvalues, A_eigenvectors = np.linalg.eig(get_A_s(1,A_matrix))
-    print("A(1) eigenvalues: ", A_eigenvalues)
-    print("A(1) eigenvectors: ", A_eigenvectors)
-    print("H_B", H_B)
-    H_B_eigenvalues, H_B_eigenvectors = np.linalg.eig(H_B)
-    print("H_B eigenvalues: ", H_B_eigenvalues)
-    print("H_B eigenvectors: ", H_B_eigenvectors)
-    print("H_P", H_P)
-    H_P_eigenvalues, H_P_eigenvectors = np.linalg.eig(H_P)
-    print("H_P eigenvalues: ", H_P_eigenvalues)
-    print("H_P eigenvectors: ", H_P_eigenvectors)
-    H_B_eig, eigenvectors = np.linalg.eig(H_B)'''
-
-    dt = T/M
-    
-    # check if timestep is large enough
-    #print("psi = ", psi)
-    #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B)))
-
-    # initialize data structures to store the system state as evolution progresses
-    state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
-    expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
-    eigenvector_error = np.zeros((M,1),dtype=np.complex_)
-    eigenvector_error_abs = np.zeros((M,1),dtype=np.complex_)
-
-    lastH = H_B
-    U_T = np.eye(int(math.pow(2,n_bits)))
-    dAds = (A_P - A_B)/M
-    A = A_B
-    eigenvalue_evolution = np.zeros((2*len(A_matrix),M))
-
-    # logarithmic f values so timestep gets smaller as evolution progresses
-    f_vals = np.flip(M - np.logspace(0,math.log10(M),num=M))
-    f_vals[M-1] = M
-
-    # linear f values
-    #f_vals = np.linspace(0,M,num=M)
-
-    l = 0
-    while l < M:
-        s = f_vals[l]/M
-        A = A_B + s * (A_P- A_B)
-        H = np.matmul(np.matmul(A, P_b), A)
-
-        # using equation 5.4 in [2]
-        U = expm(-(1j) * dt * H)
-        U_T = np.matmul(U,U_T)
-        psi = U.dot(psi)
-        state_evolution[l,:] = psi
-        #expected_state_evolution[l,:] = [1,-s/(s-1)-math.sqrt(1-2*s*(1-s))/(s-1)] # one qubit case
-
-        # expected state evolution to check answers
-        if(plot_evolution):
-            H_eig, eigenvectors = np.linalg.eig(H)
-            min_eig_id = np.argmin(H_eig)
-            if(eigenvectors[0,min_eig_id].real < 0): # ensure real part of first element in eigenvector is positive to have consistent eigenvectors between iterations
-                eigenvectors = eigenvectors * -1
-            expected_state_evolution[l,:] =  eigenvectors[:,min_eig_id]
-            eigenvalue_evolution[:,l] = np.sort(H_eig)
-            eigenvector_error[l] = np.linalg.norm(psi - expected_state_evolution[l,:])
-            eigenvector_error_abs[l] = np.linalg.norm(abs(psi) - abs(expected_state_evolution[l,:]))
-        # keep real part of first element of the eigenvector positive as convention to avoid it flipping signs randomly
-        if(psi[0].real < 0):
-            psi = psi * -1
-        if(l % 10 == 0):
-            print("l = ", l)
-        if (verbose and l % 100 == 0):
-            print(", delta-t * delta-H = ", np.linalg.norm(dt * (lastH - H)), ", 1/M = ", 1/M)
-            print(" psi = ", np.round(psi, decimals=8))
-            print("expected psi: ", expected_state_evolution[l,:])
-            print("psi error: ", psi - expected_state_evolution[l,:])
-
-        lastH = H
-
-        # using equation 5.7 in Farhi, will allow for faster process when more qubits are used, but needs more work
-        '''v = l*dt/T
-        u = 1-v
-        K_min = M * math.pow((1 + dt*np.linalg.norm(H_B) + dt*np.linalg.norm(H_P)), 2)
-        K = int(100 * K_min)
-        H_B_exponent = expm(-(1j) * dt * u * H_B / K)
-        H_P_exponent = expm(-(1j) * dt * v * H_P / K)
-        for i in range(K):
-            psi = H_P_exponent.dot(psi)
-            psi = H_B_exponent.dot(psi)'''
-
-        state_evolution[l,:] = psi
-
-        l += 1
-
-    # PLOTTING RESULTS
-    if(plot_evolution):
-        start_index = 0
-        end_index = M
-        colors = ['-.r','-.b','-.g','-.c','-.m','-.y','-.k','-.w',]
-        legend_vec = [str(format(i,'b')) + " state" for i in range(int(math.pow(2,n_bits)))]
-
-        # plot the evolution of the magnitude of each of the possible states
-        n_plots_x = int(pow(2,math.floor(n_bits/2)))
-        n_plots_y = int(pow(2,math.ceil(n_bits/2)))
-        fig, axs = plt.subplots(n_plots_x, n_plots_y)
-        for i in range(int(math.pow(2,n_bits))):
-            x = state_evolution[start_index:end_index,i].real
-            y = state_evolution[start_index:end_index,i].imag
-            if (n_plots_x == 1):
-                axs[i].plot(x,y,colors[i])
-                axs[i].set_title(legend_vec[i] + " state")
-            else:
-                axs[i % n_plots_x, math.floor(i/n_plots_x)].plot(x,y,colors[i%len(colors)])
-                axs[i % n_plots_x, math.floor(i/n_plots_x)].set_title(legend_vec[i] + " state")
-
-
-        # plot the eigenvalues of H(s) for each s
-        plt.figure()
-        for i in range(int(math.pow(2,n_bits))):
-            x = range(M)
-            y = eigenvalue_evolution[i,:]
-            plt.plot(x,y,'.')
-        #plt.legend(("eig " + str(i)) for i in range(int(math.pow(2,n_bits))))
-        plt.title('eigenvalues of H(s)')
-
-        # plot the error betwee psi and the actual base eigenvector for all s
-        plt.figure()
-        plt.plot(range(M),eigenvector_error,'.')
-        plt.title('error on psi')
-
-        plt.figure()
-        plt.plot(range(M),eigenvector_error_abs,'.')
-        plt.title('absolute value of error on psi')
-
-        '''plt.figure()
-        for i in range(int(math.pow(2,n_bits))):
-            x = np.abs(state_evolution[start_index:end_index,i])
-            y = state_evolution[start_index:end_index,i] * 0
-            plt.plot(x,y,colors[i])
-        plt.legend(legend_vec)
-        plt.title('magnitude of actual state evolution')
-        plt.figure()
-
-        # plot expected eigenvectors throughout the evolution if that is known
-        for i in range(int(math.pow(2,n_bits))):
-            x = expected_state_evolution[start_index:end_index,i].real
-            y = expected_state_evolution[start_index:end_index,i].imag
-            plt.plot(x,y,colors[i])
-        plt.legend(legend_vec)
-        plt.title('expected state evolution')'''
-
-        '''plt.figure()
-        for i in range(int(math.pow(2,n_bits))):
-            x = np.abs(state_evolution[start_index:end_index,i]) - np.abs(expected_state_evolution[start_index:end_index,i])
-            plt.plot(x,colors[i%len(colors)])
-        plt.legend(['0 state', '1 state'])
-        plt.title('difference between magnitude of actual state evolution and expected')'''
-
-        plt.figure()
-
-
-    return psi
+    return false
 
 # manually input linear system
 #A_matrix = np.array([[-1, -4,  0,  3], [-4, -1,  0,  0],  [0,  0,  2,  0], [ 3,  0,  0, -1]])
 #b_vec = np.array([5,6,7,8])
 
-# Use PrpblemData class to create a linear system corresponding to a neutron transport equation discretization
+# Use ProblemData class to create a linear system corresponding to a neutron transport equation discretization
 data = ProblemData.ProblemData("input.txt")
 # create the vectors holding the material data at each discretized point
 data.read_input("input.txt")
@@ -349,7 +151,7 @@ for i, T in enumerate(T_vec):
         #psi = solution.data
 
         # just use numpy arrays for quantum states
-        psi = adiabatic_solver_numpy(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
+        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False, qiskit_solve=False)
 
         psi = psi[0:int(len(psi)/2)]
         psi = psi / np.linalg.norm(psi)
