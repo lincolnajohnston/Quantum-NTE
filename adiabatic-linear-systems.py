@@ -28,7 +28,7 @@ def get_A_s(s, A):
     Z = np.array([[1, 0],[0, -1]])
     return np.kron((1-s) * Z, np.eye(len(A))) + np.kron(s * X, A)
     
-def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False, qiskit_solve=False):
+def adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qiskit_solve=False):
     # Normalize
     A_matrix = A_matrix / np.linalg.norm(A_matrix)
     b_vec = b_vec / np.linalg.norm(b_vec)
@@ -67,18 +67,18 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False,
     v_b = math.sqrt(2)*kappa / math.sqrt(1+kappa**2) * math.log(math.sqrt(1+kappa**2) + 1)
     v = np.linspace(v_a,v_b,num=M)
     f_vals = (np.exp(v * math.sqrt(1+kappa**2) / (math.sqrt(2)*kappa)) + 2*kappa**2 - kappa**2*np.exp(-v * math.sqrt(1+kappa**2) / (math.sqrt(2)*kappa))) / (2 * (1+kappa**2))
-    
+    T = 0
+
     for l in range(M):
         s = f_vals[l]
         A = A_B + s * (A_P - A_B)
         H = np.matmul(np.matmul(A, P_b), A)
 
-        #delta_prime = (1-s)**2 + (s/kappa)**2
-        #dt = random.random() * 2 * math.pi / delta_prime
-
-        dt = T/M
+        delta_prime = (1-s)**2 + (s/kappa)**2
+        dt = random.random() * 2 * math.pi / delta_prime # sample dt uniformly from range of times
+        T += dt
         
-        # using equation 5.4 in [2]
+        # using equation 5.4 in [2], and from algorithm after eq. 9 in [1]
         U = expm(-1j * dt * H)
 
         if(qiskit_solve):
@@ -88,7 +88,7 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False,
         else:
             psi = U.dot(psi)
 
-        if(l % 100 == 0):
+        if(l % 100 == 0 and verbose):
             print("l = ", l)
         
         lastH = H
@@ -105,9 +105,9 @@ def adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False,
         if plot_evolution:
             plot_histogram(final_state.probabilities_dict())
             
-        return final_state.data
+        return final_state.data, T
     else:
-        return psi
+        return psi, T
 
     return false
 
@@ -130,8 +130,8 @@ elif data.sim_method == "diffusion":
 # Input which T and M values to test
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
-T_vec = [1000000]
-M_vec = [1000]
+#T_vec = [1000000]
+M_vec = [1000, 1000, 1000]
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
 # real answer to linear system
@@ -141,29 +141,34 @@ real_psi_solution = real_psi_solution/np.linalg.norm(real_psi_solution)
 print(real_psi_solution)
 
 # parametric solutions, run solver for many M and T values
-psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
-psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+#psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+#psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
 time1 = time.perf_counter()
-for i, T in enumerate(T_vec):
-    for j, M in enumerate(M_vec):
-        # Use Qiskit for updating state
-        #solution = adiabatic_solver_qiskit(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
-        #psi = solution.data
+for j, M in enumerate(M_vec):
+    # Use Qiskit for updating state
+    #solution = adiabatic_solver_qiskit(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False)
+    #psi = solution.data
 
-        # just use numpy arrays for quantum states
-        psi = adiabatic_solver(A_matrix, b_vec, T, M, plot_evolution=False, verbose=False, qiskit_solve=False)
+    # just use numpy arrays for quantum states
+    psi, T = adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qiskit_solve=False)
 
-        psi = psi[0:int(len(psi)/2)]
-        psi = psi / np.linalg.norm(psi)
-        psi_solutions[i,j,:] = psi
-        psi_error[i,j,:] = psi - real_psi_solution
+    # get state resulting from measuring 0 on ancilla qubit (first qubit)
+    psi = psi[0:int(len(psi)/2)]
+    psi = psi / np.linalg.norm(psi)
 
-        print("T: ", T)
-        print("M: ", M)
-        print("psi: ", psi)
-        print("psi absolute value: ", np.abs(psi))
-        print("real psi: ", real_psi_solution)
-        print("psi error: ", psi - real_psi_solution)
+    # just get magnitude of each variable by removing imaginary and negative parts, this part is hacky a little
+    #psi = np.abs(psi)
+
+    #psi_solutions[i,j,:] = psi
+    #psi_error[i,j,:] = psi - real_psi_solution
+
+    print("T: ", T)
+    print("M: ", M)
+    #print("psi: ", psi)
+    #print("psi absolute value: ", np.abs(psi))
+    #print("real psi: ", real_psi_solution)
+    #print("psi error: ", psi - real_psi_solution)
+    print("precision: ", np.linalg.norm(np.abs(psi)-real_psi_solution))
 time2 = time.perf_counter()
 print("solver run time: ", time2 - time1)
 
