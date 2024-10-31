@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ from scipy.linalg import ishermitian
 import time
 import ProblemData
 import LcuFunctions
+import math
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -15,7 +17,9 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 
-data = ProblemData.ProblemData("input.txt")
+sim_path = 'simulations/LCU_8G_diffusion/'
+input_file = 'input.txt'
+data = ProblemData.ProblemData(sim_path + input_file)
 
 # make A matrix and b vector
 if data.sim_method == "sp3":
@@ -40,7 +44,7 @@ material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
 
 # Do LCU routine (https://arxiv.org/pdf/1511.02306.pdf), equation 18
-num_LCU_bits = 4
+num_LCU_bits = 5
 num_unitaries = pow(2,num_LCU_bits)
 last_error_norm = np.inf
 
@@ -99,8 +103,8 @@ best_z_max = 3
 best_error_norm = np.inf
 J = pow(2, best_j)
 K = pow(2,num_LCU_bits-best_j-1)
-for y_max in np.linspace(0.1,6,30):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, A_matrix, False, A_mat_size)
+for y_max in np.linspace(5,25,10):
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, quantum_mat, False, A_mat_size)
     print("y_max: ", y_max)
     print("Error: ", error_norm)
     if error_norm < best_error_norm:
@@ -109,8 +113,8 @@ for y_max in np.linspace(0.1,6,30):
     else:
         break
 best_error_norm = np.inf
-for z_max in np.linspace(0.1,5,30):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, A_matrix, False, A_mat_size)
+for z_max in np.linspace(0.5,5,10):
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, quantum_mat, False, A_mat_size)
     print("z_max: ", z_max)
     print("Error: ", error_norm)
     if(last_error_norm < error_norm):
@@ -133,9 +137,14 @@ best_y_max = 15.0
 best_z_max = 2.5'''
 
 # manually input parameters for LCU (8x8 diffusion, G=8, dx=0.5, dy=0.5, 4 LCU bits)
-best_j = 2
+best_j = 3
 best_y_max = 15.0
 best_z_max = 2.5
+
+# manually input parameters for LCU (8x8 diffusion, G=8, dx=0.2, dy=0.2, 5 LCU bits)
+'''best_j = 2
+best_y_max = 10.0
+best_z_max = 2.0'''
 
 # manually input parameters for LCU (32x32 diffusion, dx=0.5, dy=0.5, 3 LCU bits) (does not work well)
 '''best_j = 1
@@ -157,6 +166,11 @@ best_z_max = 3.0'''
 best_y_max = 25.0
 best_z_max = 1.5'''
 
+# manually input parameters for LCU (16x16 sp3, dx=0.2, dy=0.2, 5 LCU bits)
+'''best_j = 2
+best_y_max = 21.0
+best_z_max = 2.5'''
+
 print("Best j: ", best_j)
 print("Best y_max: ", best_y_max)
 print("Best z_max: ", best_z_max)
@@ -175,9 +189,6 @@ cl = ClassicalRegister(num_LCU_bits)  # right hand side and solution
 
 qc = QuantumCircuit(qb, ql)
 
-# b vector State preparation
-qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
-
 circuit_setup_time = time.perf_counter()
 print("Circuit Setup Time: ", circuit_setup_time - unitary_construction_time)
 
@@ -190,27 +201,33 @@ print("Construction of V matrix time: ", v_mat_time - circuit_setup_time)
 op_time = time.perf_counter()
 print("Operator Construction Time: ", op_time - v_mat_time)
 
+# Run circuit using Numpy
+b_state = quantum_b_vector
+l_state = np.zeros(2**num_LCU_bits)
+l_state[0] = 1
+l_state = V @ l_state
+state_vec = np.kron(l_state, b_state)
+state_vec = U @ state_vec
+state_vec = (np.kron(np.conj(V).T,np.eye(2**nb))) @ state_vec
+
+# Run circuit sing Qiskit
+# b vector State preparation
+'''qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
 V_gate = UnitaryGate(V, 'V', False)
 U_gate = UnitaryGate(U, 'U', False)
 V_inv_gate = UnitaryGate(np.conj(V).T, 'V_inv', False)
-
 qc.append(V_gate, ql[:])
 qc.append(U_gate, qb[:] + ql[:])
 qc.append(V_inv_gate, ql[:])
-
-gate_time = time.perf_counter()
-print("Gate U and V Application Time: ", gate_time - op_time)
-
 qc.save_statevector()
-
-
 # Run quantum algorithm
 backend = QasmSimulator(method="statevector")
 new_circuit = transpile(qc, backend)
 job = backend.run(new_circuit)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
-#print(state_vec[0:A_mat_size])
+#print(state_vec[0:A_mat_size])'''
+
 state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
 #print(classical_sol_vec)
@@ -226,6 +243,18 @@ if data.sim_method == "sp3":
 state_vec = (np.sum(state_vec) / np.abs(np.sum(state_vec))) * state_vec / np.linalg.norm(state_vec) # scale quantum result to match true answer
 classical_sol_vec = classical_sol_vec / np.linalg.norm(classical_sol_vec) # scale result to match true answer and ensure positivity
 
+precision = np.linalg.norm(np.abs(state_vec)-classical_sol_vec)
+print("precision: ", precision)
+# save data vectors to files
+i = 0
+while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+    i += 1
+f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+f.write("precision: " +  str(precision))
+f.close()
+np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
+np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
+
 
 # Print results
 print("quantum solution estimate: ", state_vec)
@@ -240,7 +269,6 @@ sol_error = state_vec - classical_sol_vec
 #print("Solution error: ", sol_error)
 
 solve_time = time.perf_counter()
-print("Circuit Solve Time: ", solve_time - gate_time)
 print("Total time: ", solve_time - start)
 
 # Make graphs of results

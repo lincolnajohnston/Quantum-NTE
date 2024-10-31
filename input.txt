@@ -2,6 +2,6 @@
 8
 0.5
 0.5
-diffusion
-8
-XS-8group
+sp3
+1
+XS-1group
