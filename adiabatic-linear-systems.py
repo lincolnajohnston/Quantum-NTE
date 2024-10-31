@@ -10,6 +10,7 @@ from scipy.linalg import ishermitian
 import time
 import ProblemData
 import random
+import os
 
 #from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit import QuantumCircuit, transpile
@@ -116,22 +117,23 @@ def adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qi
 #b_vec = np.array([5,6,7,8])
 
 # Use ProblemData class to create a linear system corresponding to a neutron transport equation discretization
-data = ProblemData.ProblemData("input.txt")
-# create the vectors holding the material data at each discretized point
-data.read_input("input.txt")
+sim_path = 'simulations/1G_diffusion_small/'
+input_file = '1G_diffusion.txt'
+data = ProblemData.ProblemData(sim_path + input_file)
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y)
+    A_mat_size = 2 * data.G * (data.n_x) * (data.n_y)
     A_matrix, b_vec = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y)
+    A_mat_size = data.G * (data.n_x) * (data.n_y)
     A_matrix, b_vec = data.diffusion_construct_A_matrix(A_mat_size)
 
 # Input which T and M values to test
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
 #T_vec = [1000000]
-M_vec = [1000, 1000, 1000]
+M_vec = [1000]
+#M_vec = np.ones(40) * 500
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
 # real answer to linear system
@@ -150,7 +152,7 @@ for j, M in enumerate(M_vec):
     #psi = solution.data
 
     # just use numpy arrays for quantum states
-    psi, T = adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qiskit_solve=False)
+    psi, T = adiabatic_solver(A_matrix, b_vec, int(M), plot_evolution=False, verbose=True, qiskit_solve=False)
 
     # get state resulting from measuring 0 on ancilla qubit (first qubit)
     psi = psi[0:int(len(psi)/2)]
@@ -168,7 +170,18 @@ for j, M in enumerate(M_vec):
     #print("psi absolute value: ", np.abs(psi))
     #print("real psi: ", real_psi_solution)
     #print("psi error: ", psi - real_psi_solution)
-    print("precision: ", np.linalg.norm(np.abs(psi)-real_psi_solution))
+    precision = np.linalg.norm(np.abs(psi)-real_psi_solution)
+    print("precision: ", precision)
+
+    # save data vectors to files
+    i = 0
+    while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+        i += 1
+    f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+    f.write("precision: " +  str(precision))
+    f.close()
+    np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', psi)
+    np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', real_psi_solution)
 time2 = time.perf_counter()
 print("solver run time: ", time2 - time1)
 
@@ -179,29 +192,32 @@ print("solver run time: ", time2 - time1)
     plt.figure()
 plt.show()'''
 
+# get plotting ranges and tickmark locations
 min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
 max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
 xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
 yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
 
-psi.resize((data.n_x,data.n_y))
-ax = sns.heatmap(np.abs(psi), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
-ax.invert_yaxis()
-plt.title("Quantum Solution")
-plt.savefig('q_sol.png')
-plt.figure()
+for g in range(data.G):
+    psi.resize((data.G,data.n_x,data.n_y))
+    ax = sns.heatmap(np.abs(psi[g,:,:]), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
+    ax.invert_yaxis()
+    plt.title("Quantum Solution")
+    plt.savefig('q_sol.png')
+    plt.figure()
 
-real_psi_solution.resize((data.n_x,data.n_y))
-ax = sns.heatmap(real_psi_solution, linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
-ax.invert_yaxis()
-plt.title("Real Solution")
-plt.savefig('real_sol.png')
-plt.figure()
+    real_psi_solution.resize((data.G, data.n_x,data.n_y))
+    ax = sns.heatmap(real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
+    ax.invert_yaxis()
+    plt.title("Real Solution")
+    plt.savefig('real_sol.png')
+    plt.figure()
 
-ax = sns.heatmap(np.abs(psi) - real_psi_solution, linewidth=0.5, cmap="jet", xticklabels=xticks, yticklabels=yticks)
-ax.invert_yaxis()
-plt.title("Error Between Correct Psi and Quantum Solution of Psi")
-plt.savefig('sol_error.png')
-plt.figure()
+    ax = sns.heatmap(np.abs(psi[g,:,:]) - real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", xticklabels=xticks, yticklabels=yticks)
+    ax.invert_yaxis()
+    plt.title("Error Between Correct Psi and Quantum Solution of Psi")
+    plt.savefig('sol_error.png')
+    plt.figure()
+
 plt.show()
 
