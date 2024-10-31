@@ -1,8 +1,9 @@
 Quantum-NTE GitHub repository
 Branch: main
-commit: 27c1a08a733ecef8bf1f530392d0a6b40da78869
+Commit: 27c1a08a733ecef8bf1f530392d0a6b40da78869
 num_LCU_bits = 5
-best_j = 2
-best_y_max = 21.0
+best_j = 3
+best_y_max = 15.0
 best_z_max = 2.5
+
 

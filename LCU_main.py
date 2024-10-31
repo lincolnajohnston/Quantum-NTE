@@ -17,7 +17,7 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 
-sim_path = 'simulations/LCU_8G_diffusion/'
+sim_path = 'simulations/LCU_1G_sp3_small/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 
@@ -137,9 +137,9 @@ best_y_max = 15.0
 best_z_max = 2.5'''
 
 # manually input parameters for LCU (8x8 diffusion, G=8, dx=0.5, dy=0.5, 4 LCU bits)
-best_j = 3
+'''best_j = 3
 best_y_max = 15.0
-best_z_max = 2.5
+best_z_max = 2.5'''
 
 # manually input parameters for LCU (8x8 diffusion, G=8, dx=0.2, dy=0.2, 5 LCU bits)
 '''best_j = 2
@@ -167,9 +167,9 @@ best_y_max = 25.0
 best_z_max = 1.5'''
 
 # manually input parameters for LCU (16x16 sp3, dx=0.2, dy=0.2, 5 LCU bits)
-'''best_j = 2
+best_j = 2
 best_y_max = 21.0
-best_z_max = 2.5'''
+best_z_max = 2.5
 
 print("Best j: ", best_j)
 print("Best y_max: ", best_y_max)
