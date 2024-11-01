@@ -117,8 +117,8 @@ def adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qi
 #b_vec = np.array([5,6,7,8])
 
 # Use ProblemData class to create a linear system corresponding to a neutron transport equation discretization
-sim_path = 'simulations/1G_sp3_small/'
-input_file = '1G_sp3.txt'
+sim_path = 'simulations/AQC_1G_diffusion_small/'
+input_file = '1G_diffusion.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 # make A matrix and b vector
 if data.sim_method == "sp3":
@@ -132,7 +132,7 @@ elif data.sim_method == "diffusion":
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
 #T_vec = [1000000]
-M_vec = [1]
+M_vec = [1000]
 #M_vec = np.ones(40) * 500
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
