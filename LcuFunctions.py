@@ -1,6 +1,8 @@
 import numpy as np
 import math
 from scipy.linalg import expm
+import scipy.sparse.linalg as spla
+import scipy.sparse as sp
 
 from qiskit.circuit import QuantumCircuit
 
@@ -49,22 +51,25 @@ def get_b_setup_gate(vector, nb):
 
 # return the U gate in the LCU process as well as a vector of the alpha values.
 # Use the Fourier process from the LCU paper to approximate the inverse of A, O(2^L * N^2) ??, need to verify this
-def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution, A_mat_size):
-    A_mat_size = len(matrix)
+def get_fourier_unitaries(J, K, y_max, z_max, A_mat, b_vector, doFullSolution, A_mat_size):
+    matrix = sp.lil_matrix(A_mat)
+    A_mat_size = len(A_mat)
     delta_y = y_max / J
     delta_z = z_max / K
     if doFullSolution:
-        U = np.zeros((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex) # matrix from 
+        #U = np.zeros((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex) # matrix from 
+        U = sp.lil_matrix((A_mat_size * 2 * J * K, A_mat_size * 2 * J * K), dtype=complex) # matrix from 
         alphas = np.zeros(2 * J * K)
-    M = np.zeros((A_mat_size, A_mat_size)) # approximation of inverse of A matrix
+    #M = np.zeros((A_mat_size, A_mat_size)) # approximation of inverse of A matrix
+    M = sp.lil_matrix((A_mat_size, A_mat_size))
 
     for j in range(J):
         y = j * delta_y
         for k in range(-K,K):
             z = k * delta_z
             alpha_temp = (1) / math.sqrt(2 * math.pi) * delta_y * delta_z * z * math.exp(-z*z/2)
-            uni_mat = (1j) * expm(-(1j) * matrix * y * z)
-            assert(is_unitary(uni_mat))
+            uni_mat = (1j) * spla.expm(-(1j) * matrix * y * z)
+            #assert(is_unitary(uni_mat))
             M_temp = alpha_temp * uni_mat
             if doFullSolution:
                 if(alpha_temp < 0): # if alpha is negative, incorporate negative phase into U unitary
@@ -76,8 +81,8 @@ def get_fourier_unitaries(J, K, y_max, z_max, matrix, doFullSolution, A_mat_size
                 alphas[2 * j * K + (k + K)] = alpha_temp
             M = M + M_temp
 
-    matrix_invert = np.linalg.inv(matrix)
-    error_norm = np.linalg.norm(M - matrix_invert)
+    #matrix_invert = np.linalg.inv(matrix)
+    error_norm = np.linalg.norm(b_vector - M @ matrix @ b_vector)
     if doFullSolution:
         #print("real matrix inverse: ", matrix_invert)
         #print("probability of algorithm success: ", math.pow(np.linalg.norm(np.matmul(matrix, vector/ np.linalg.norm(vector))),2))

@@ -10,6 +10,7 @@ import ProblemData
 import LcuFunctions
 import math
 
+
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 np.set_printoptions(threshold=np.inf)
@@ -17,7 +18,7 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 
-sim_path = 'simulations/LCU_1G_sp3_small/'
+sim_path = 'simulations/LCU_1G_diffusion_simple/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 
@@ -81,7 +82,7 @@ for j in range(int(num_LCU_bits/4),num_LCU_bits - int(num_LCU_bits/4)):
     for y_max in np.linspace(3,25,10):
         last_error_norm = 9999999
         for z_max in np.linspace(0.5,5,10):
-            U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, False, A_mat_size)
+            U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, z_max, quantum_mat, quantum_b_vector, False, A_mat_size)
             print("J: ", J)
             print("K: ", K)
             print("y_max: ", y_max)
@@ -104,7 +105,7 @@ best_error_norm = np.inf
 J = pow(2, best_j)
 K = pow(2,num_LCU_bits-best_j-1)
 for y_max in np.linspace(5,25,10):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, quantum_mat, False, A_mat_size)
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, y_max, best_z_max, quantum_mat, quantum_b_vector, False, A_mat_size)
     print("y_max: ", y_max)
     print("Error: ", error_norm)
     if error_norm < best_error_norm:
@@ -114,7 +115,7 @@ for y_max in np.linspace(5,25,10):
         break
 best_error_norm = np.inf
 for z_max in np.linspace(0.5,5,10):
-    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, quantum_mat, False, A_mat_size)
+    U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(J, K, best_y_max, z_max, quantum_mat, quantum_b_vector, False, A_mat_size)
     print("z_max: ", z_max)
     print("Error: ", error_norm)
     if(last_error_norm < error_norm):
@@ -135,6 +136,11 @@ best_z_max = 3.0'''
 '''best_j = 2
 best_y_max = 15.0
 best_z_max = 2.5'''
+
+# manually input parameters for LCU (16x16 diffusion, dx=0.2, dy=0.2, 6 LCU bits)
+best_j = 2
+best_y_max = 25.0
+best_z_max = 2.5
 
 # manually input parameters for LCU (8x8 diffusion, G=8, dx=0.5, dy=0.5, 4 LCU bits)
 '''best_j = 3
@@ -167,15 +173,20 @@ best_y_max = 25.0
 best_z_max = 1.5'''
 
 # manually input parameters for LCU (16x16 sp3, dx=0.2, dy=0.2, 5 LCU bits)
-best_j = 2
+'''best_j = 2
 best_y_max = 21.0
-best_z_max = 2.5
+best_z_max = 2.5'''
+
+#manually input parameters, testing
+'''best_j = 2
+best_y_max = 25.0
+best_z_max = 3.0'''
 
 print("Best j: ", best_j)
 print("Best y_max: ", best_y_max)
 print("Best z_max: ", best_z_max)
 
-U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, True, A_mat_size)
+U, alphas, error_norm = LcuFunctions.get_fourier_unitaries(pow(2,best_j), pow(2,num_LCU_bits-best_j-1), best_y_max, best_z_max, quantum_mat, quantum_b_vector, True, A_mat_size)
 print("Error Norm: ", error_norm)
 
 unitary_construction_time = time.perf_counter()
