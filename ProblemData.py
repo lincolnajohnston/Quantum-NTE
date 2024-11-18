@@ -6,10 +6,10 @@ from Material import Material
 
 
 class ProblemData:
-    def __init__(self, input_file):
+    def __init__(self, input_file, geom_string='4_pin'):
         self.read_input(input_file)
         self.initialize_BC()
-        self.initialize_geometry()
+        self.initialize_geometry(geom_string)
         self.initialize_materials()
 
     def read_input(self, filename):
@@ -109,12 +109,12 @@ class ProblemData:
         # Set material data at each finite difference point, O(N)
     
 
-    def initialize_geometry(self):
+    def initialize_geometry(self, geom_string):
         self.material_matrix = np.empty((self.n_x, self.n_y), dtype=object)
         x_range = self.n_x * self.delta_x
         y_range = self.n_y * self.delta_y
 
-        fuel_radius = min(x_range,y_range)/8
+        fuel_radius = min(x_range,y_range)/4
 
         for i in range(self.n_x):
             for j in range(self.n_y):
@@ -122,24 +122,27 @@ class ProblemData:
                 y_val = (j + 0.5) * self.delta_y - y_range/2
 
                 # homogeneous fuel
-                #self.material_matrix[i,j] = "fuel"
+                if geom_string == 'homo':
+                    self.material_matrix[i,j] = "fuel"
                 
                 # fuel at center
-                '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
-                    # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
-                    
-                else:
-                    # use moderator XSs
-                    self.material_matrix[i,j] = "water"'''
+                elif geom_string == '1_pin':
+                    if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+                        # use fuel XSs
+                        self.material_matrix[i,j] = "fuel"
+                        
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[i,j] = "water"
 
-                # 4 fuel pins
-                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
-                    # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
-                else:
-                    # use moderator XSs
-                    self.material_matrix[i,j] = "water"
+                elif geom_string == '4_pin':
+                    # 4 fuel pins
+                    if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+                        # use fuel XSs
+                        self.material_matrix[i,j] = "fuel"
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[i,j] = "water"
         return
 
     def initialize_materials(self):
@@ -183,6 +186,65 @@ class ProblemData:
                     for g_p in range(self.G): # group to group scattering and fission terms
                         A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
                     b_vector[i] = mat.Q[g] * self.delta_x * self.delta_y
+        #for row in range(len(A_matrix)):
+        #    print("row: ", A_matrix[row])
+        return A_matrix, b_vector
+
+    # use finite difference method to construct the A matrix representing the diffusion equation in the form Ax=b, assume 0 flux at boundary conditions for simplicity
+    def diffusion_construct_FD_A_matrix(self, A_mat_size):
+        fd_order = 2
+        A_matrix = np.zeros((A_mat_size, A_mat_size))
+        b_vector = np.zeros(A_mat_size)
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                for y_i in range(self.n_y):
+                    mat = self.materials[self.material_matrix[x_i,y_i]]
+                    i = self.unroll_index([g, x_i, y_i])
+                    
+                    # combination of double derivative term on current element and total cross section term
+                    A_matrix[i,i] += 2 * mat.D / self.delta_x**2 + 2 * mat.D / self.delta_y**2 + mat.sigma_t[g]
+                    
+                    # double derivative term in x direction
+                    if(x_i > 0):
+                        A_matrix[i, self.unroll_index([g, x_i-1, y_i])] += -mat.D / self.delta_x**2
+                    if(x_i < self.n_x - 1):
+                        A_matrix[i, self.unroll_index([g, x_i+1, y_i])] += -mat.D / self.delta_x**2
+
+                    # double derivative term in y direction
+                    if(y_i > 0):
+                        A_matrix[i, self.unroll_index([g, x_i, y_i-1])] += -mat.D / self.delta_y**2
+                    if(y_i < self.n_y - 1):
+                        A_matrix[i, self.unroll_index([g, x_i, y_i+1])] += -mat.D / self.delta_y**2
+
+                    for g_p in range(self.G): # group to group scattering and fission terms
+                        A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p])
+                    b_vector[i] = mat.Q[g]
+        #for row in range(len(A_matrix)):
+        #    print("row: ", A_matrix[row])
+        return A_matrix, b_vector
+
+    # use finite difference method to construct the A matrix representing the 1D diffusion equation in the form Ax=b, assume 0 flux at boundary conditions for simplicity
+    def diffusion_construct_FD_A_matrix_1D(self, A_mat_size):
+        fd_order = 2
+        A_matrix = np.zeros((self.n_x, self.n_x))
+        b_vector = np.zeros(self.n_x)
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                mat = self.materials[self.material_matrix[x_i,0]]
+                i = self.unroll_index([g, x_i, 0])
+                
+                # combination of double derivative term on current element and total cross section term
+                A_matrix[i,i] += 2 * mat.D / self.delta_x**2 + mat.sigma_t[g]
+                
+                # double derivative term in x direction
+                if(x_i > 0):
+                    A_matrix[i, self.unroll_index([g, x_i-1, 0])] += -mat.D / self.delta_x**2
+                if(x_i < self.n_x - 1):
+                    A_matrix[i, self.unroll_index([g, x_i+1, 0])] += -mat.D / self.delta_x**2
+
+                for g_p in range(self.G): # group to group scattering and fission terms
+                    A_matrix[i,self.unroll_index([g_p, x_i, 0])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p])
+                b_vector[i] = mat.Q[g]
         #for row in range(len(A_matrix)):
         #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
