@@ -1,0 +1,7 @@
+80
+80
+0.04
+0.04
+diffusion
+1
+XS-1group

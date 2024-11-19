@@ -205,6 +205,12 @@ class ProblemData:
                     A_matrix[i,i] += 2 * mat.D / self.delta_x**2 + 2 * mat.D / self.delta_y**2 + mat.sigma_t[g]
                     
                     # double derivative term in x direction
+                    '''A_matrix[i, self.unroll_index([g, (x_i-1)%self.n_x, y_i])] += -mat.D / self.delta_x**2
+                    A_matrix[i, self.unroll_index([g, (x_i+1)%self.n_x, y_i])] += -mat.D / self.delta_x**2
+
+                    # double derivative term in y direction
+                    A_matrix[i, self.unroll_index([g, x_i, (y_i-1)%self.n_y])] += -mat.D / self.delta_y**2
+                    A_matrix[i, self.unroll_index([g, x_i, (y_i+1)%self.n_y])] += -mat.D / self.delta_y**2'''
                     if(x_i > 0):
                         A_matrix[i, self.unroll_index([g, x_i-1, y_i])] += -mat.D / self.delta_x**2
                     if(x_i < self.n_x - 1):
