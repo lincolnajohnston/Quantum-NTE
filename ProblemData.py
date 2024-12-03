@@ -2,12 +2,24 @@ import numpy as np
 import math
 import os
 from Material import Material
+import scipy.sparse as sp
 
 
 
 class ProblemData:
-    def __init__(self, input_file, geom_string='4_pin'):
-        self.read_input(input_file)
+    def __init__(self, input_file="", geom_string='4_pin', input_data={}):
+        if input_file == "":
+            self.n_x = input_data["n_x"]
+            self.n_pts_x = self.n_x + 2
+            self.n_y = input_data["n_y"]
+            self.n_pts_y = self.n_y + 2
+            self.delta_x = input_data["delta_x"]
+            self.delta_y = input_data["delta_y"]
+            self.sim_method = input_data["sim_method"]
+            self.G = input_data["G"]
+            self.xs_folder = input_data["xs_folder"]
+        else:
+            self.read_input(input_file)
         self.initialize_BC()
         self.initialize_geometry(geom_string)
         self.initialize_materials()
@@ -204,14 +216,16 @@ class ProblemData:
                     # combination of double derivative term on current element and total cross section term
                     A_matrix[i,i] += 2 * mat.D / self.delta_x**2 + 2 * mat.D / self.delta_y**2 + mat.sigma_t[g]
                     
-                    # double derivative term in x direction
-                    '''A_matrix[i, self.unroll_index([g, (x_i-1)%self.n_x, y_i])] += -mat.D / self.delta_x**2
+                    # double derivative term in x and y direction with periodic boundary conditions
+                    A_matrix[i, self.unroll_index([g, (x_i-1)%self.n_x, y_i])] += -mat.D / self.delta_x**2
                     A_matrix[i, self.unroll_index([g, (x_i+1)%self.n_x, y_i])] += -mat.D / self.delta_x**2
 
                     # double derivative term in y direction
                     A_matrix[i, self.unroll_index([g, x_i, (y_i-1)%self.n_y])] += -mat.D / self.delta_y**2
-                    A_matrix[i, self.unroll_index([g, x_i, (y_i+1)%self.n_y])] += -mat.D / self.delta_y**2'''
-                    if(x_i > 0):
+                    A_matrix[i, self.unroll_index([g, x_i, (y_i+1)%self.n_y])] += -mat.D / self.delta_y**2
+
+                    # double derivative term in x direction
+                    '''if(x_i > 0):
                         A_matrix[i, self.unroll_index([g, x_i-1, y_i])] += -mat.D / self.delta_x**2
                     if(x_i < self.n_x - 1):
                         A_matrix[i, self.unroll_index([g, x_i+1, y_i])] += -mat.D / self.delta_x**2
@@ -220,7 +234,7 @@ class ProblemData:
                     if(y_i > 0):
                         A_matrix[i, self.unroll_index([g, x_i, y_i-1])] += -mat.D / self.delta_y**2
                     if(y_i < self.n_y - 1):
-                        A_matrix[i, self.unroll_index([g, x_i, y_i+1])] += -mat.D / self.delta_y**2
+                        A_matrix[i, self.unroll_index([g, x_i, y_i+1])] += -mat.D / self.delta_y**2'''
 
                     for g_p in range(self.G): # group to group scattering and fission terms
                         A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p])
@@ -228,6 +242,71 @@ class ProblemData:
         #for row in range(len(A_matrix)):
         #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
+
+    # use finite difference method to construct the A matrix representing the diffusion equation in the form Ax=b, assume 0 flux at boundary conditions for simplicity
+    def diffusion_construct_sparse_FD_A_matrix(self, A_mat_size):
+        #A_matrix = np.zeros((A_mat_size, A_mat_size))
+        row = []
+        col = []
+        data = []
+        b_vector = np.zeros(A_mat_size)
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                for y_i in range(self.n_y):
+                    mat = self.materials[self.material_matrix[x_i,y_i]]
+                    i = self.unroll_index([g, x_i, y_i])
+                    
+                    # combination of double derivative term on current element and total cross section term
+                    row.append(i)
+                    col.append(i)
+                    data.append(2 * mat.D[g] / self.delta_x**2 + 2 * mat.D[g] / self.delta_y**2 + mat.sigma_t[g])
+                    
+                    # double derivative term in x and y direction with periodic boundary conditions
+                    '''row.append(i)
+                    col.append(self.unroll_index([g, (x_i-1)%self.n_x, y_i]))
+                    data.append(-mat.D[g] / self.delta_x**2)
+
+                    row.append(i)
+                    col.append(self.unroll_index([g, (x_i+1)%self.n_x, y_i]))
+                    data.append(-mat.D[g] / self.delta_x**2)
+
+                    # double derivative term in y direction
+                    row.append(i)
+                    col.append(self.unroll_index([g, x_i, (y_i-1)%self.n_y]))
+                    data.append(-mat.D[g] / self.delta_y**2)
+                    
+                    row.append(i)
+                    col.append(self.unroll_index([g, x_i, (y_i+1)%self.n_y]))
+                    data.append(-mat.D[g] / self.delta_y**2)'''
+
+                    # double derivative term in x direction
+                    if(x_i > 0):
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i-1, y_i]))
+                        data.append(-mat.D[g] / self.delta_x**2)
+                    if(x_i < self.n_x - 1):
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i+1, y_i]))
+                        data.append(-mat.D[g] / self.delta_x**2)
+
+                    # double derivative term in y direction
+                    if(y_i > 0):
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i-1]))
+                        data.append(-mat.D[g] / self.delta_y**2)
+                    if(y_i < self.n_y - 1):
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i+1]))
+                        data.append(-mat.D[g] / self.delta_y**2)
+
+                    for g_p in range(self.G): # group to group scattering and fission terms
+                        row.append(i)
+                        col.append(self.unroll_index([g_p, x_i, y_i]))
+                        data.append(-(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p]))
+                    b_vector[i] = mat.Q[g]
+        #for row in range(len(A_matrix)):
+        #    print("row: ", A_matrix[row])
+        return sp.csr_matrix((data, (row, col)), shape=(A_mat_size, A_mat_size)), b_vector
 
     # use finite difference method to construct the A matrix representing the 1D diffusion equation in the form Ax=b, assume 0 flux at boundary conditions for simplicity
     def diffusion_construct_FD_A_matrix_1D(self, A_mat_size):
