@@ -284,20 +284,36 @@ class ProblemData:
                         row.append(i)
                         col.append(self.unroll_index([g, x_i-1, y_i]))
                         data.append(-mat.D[g] / self.delta_x**2)
+                    else:
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i]))
+                        data.append(mat.D[g] / self.delta_x**2)
                     if(x_i < self.n_x - 1):
                         row.append(i)
                         col.append(self.unroll_index([g, x_i+1, y_i]))
                         data.append(-mat.D[g] / self.delta_x**2)
+                    else:
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i]))
+                        data.append(mat.D[g] / self.delta_x**2)
 
                     # double derivative term in y direction
                     if(y_i > 0):
                         row.append(i)
                         col.append(self.unroll_index([g, x_i, y_i-1]))
                         data.append(-mat.D[g] / self.delta_y**2)
+                    else:
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i]))
+                        data.append(mat.D[g] / self.delta_y**2)
                     if(y_i < self.n_y - 1):
                         row.append(i)
                         col.append(self.unroll_index([g, x_i, y_i+1]))
                         data.append(-mat.D[g] / self.delta_y**2)
+                    else:
+                        row.append(i)
+                        col.append(self.unroll_index([g, x_i, y_i]))
+                        data.append(mat.D[g] / self.delta_y**2)
 
                     for g_p in range(self.G): # group to group scattering and fission terms
                         row.append(i)

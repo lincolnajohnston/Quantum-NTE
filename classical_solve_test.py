@@ -48,7 +48,7 @@ L_x = 3.2
 L_y = 3.2
 
 # Run the most fine simulation which will be treated as the true solution
-ref_n = 150
+ref_n = 800
 ref_input_file = 'input'+str(ref_n)+'.txt'
 # create ProblemData object, select geometry type
 ref_data = ProblemData.ProblemData(geom_string = '4_pin', input_data = {"n_x":ref_n, "n_y":ref_n, "delta_x":L_x/ref_n, "delta_y":L_y/ref_n, "sim_method":"diffusion", "G":1, "xs_folder":"XS-1group"})
@@ -82,8 +82,11 @@ for g in range(ref_data.G):
     plt.figure()'''
 
 #n_vals = [40,41,42,43,44,45,46,47,48,49,50,52,54,56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,86,88,90,92,94,96,98,100,102,104,106,108,110,112,114,116,118,120,122,124,126,128,130,132,134,136,138,140,142,144,146,148,150,155,160,165,170,175,180,185,190,195,200,205,210,215,220,225,230,235,240,245,250,260,270,280,290,300,310,320,330,340,350,360,370,380,390,400,410,420,430,440,450,460,470,490,510,530,550,600]
-#n_vals = [40,41,42,43,44,45,46,47,48,49,50,52,54,56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,86,88,90,92,94,96,98,100,102,104,106,108,110,112,114,116,118,120,122,124,126,128,130,132,134,136,138,140,142,144,146,148,150,155,160,165,170,175,180,185,190,195,200,205,210,215,220]
-n_vals = [40,45,50,55,60,64,70,80,90,100]
+n_vals = [40,41,42,43,44,45,46,47,48,49,50,52,54,56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,86,88,90,92,94,96,98,100,102,104,106,108,110,112,114,116,118,120,122,124,126,128,130,132,134,136,138,140,142,144,146,148,150,155,160,165,170,175,180,185,190,195,200,205,210,215,220,225,230,235,240,245,250,260,270,280,290,300,310,320,330,340,350,370,400]
+#n_vals = [20,25,30,35,40,45,50,55,60,64,70,80,90,100,110,120,130,150,170,190,210,230,250]
+#n_vals = [40,45,50,55,60,64,70,80,90,100]
+
+n_vals = np.array(n_vals)
 
 # do the most finely discretized solution first
 
@@ -125,7 +128,7 @@ for n_index,n in enumerate(n_vals):
     for i in range(n_index,int(math.log2(data.n_x)) + 1):
         integrals[n_index, i-n_index] = np.sum(classical_sol_vec[:,:2**i,:2**i]) / (2**(i*ndim))
 
-    xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
+    '''xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
     yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
     for g in range(data.G):
         ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
@@ -138,10 +141,10 @@ for n_index,n in enumerate(n_vals):
         ax.invert_yaxis()
         plt.title("Classical Solution Error, Group " + str(g))
         #plt.savefig('real_sol_g' + str(g) + '.png')
-        plt.figure()
+        plt.figure()'''
 #print(integrals)
 
-for i in range(10):
+'''for i in range(10):
     if(integrals[-1,i] == 0):
         break
     plt.plot(n_vals, np.abs(integrals[:,i]-integrals[-1,i]))
@@ -156,26 +159,30 @@ for i in range(10):
     plt.xlabel(r'$\Delta x$')
     plt.ylabel("Error of integral over some region")
     plt.legend(["integral width: "+str(n_vals[i]/n_vals[-1])+" of domain" for i in range(len(n_vals))])
+plt.figure()'''
 print("n vals: ", n_vals)
 print("l_inf: ", l_inf)
 print("l_2: ", l_2)
-for i in range(len(n_vals)):
-    plt.plot(n_vals, l_inf)
-    plt.xlabel("n_x")
-    plt.ylabel("L_inf error")
+
+plt.plot(n_vals, l_inf)
+plt.xlabel("n_x")
+plt.ylabel("L_inf error")
 plt.figure()
-for i in range(len(n_vals)):
-    plt.plot(1/np.array(n_vals), l_inf)
-    plt.xlabel(r'$\Delta x$')
-    plt.ylabel("L_inf error")
+
+plt.plot(L_x/np.array(n_vals), l_inf)
+plt.xlabel(r'$\Delta x$')
+plt.ylabel("L_inf error")
 plt.figure()
-for i in range(len(n_vals)):
-    plt.plot(n_vals, l_2)
-    plt.xlabel("n_x")
-    plt.ylabel("L_2 error")
+
+plt.plot(n_vals, l_2)
+plt.xlabel("n_x")
+plt.ylabel("L_2 error")
 plt.figure()
-for i in range(len(n_vals)):
-    plt.plot(1/np.array(n_vals), l_2)
-    plt.xlabel(r'$\Delta x$')
-    plt.ylabel("L_2 error")
+
+plt.plot(L_x/np.array(n_vals), l_2)
+plt.xlabel(r'$\Delta x$')
+plt.ylabel("L_2 error")
+coef = (L_x/n_vals[0])**2 / l_2[0]
+plt.plot(L_x/n_vals,(L_x/n_vals)**2 / coef) # assumes L_x = L_y
+
 plt.show()
