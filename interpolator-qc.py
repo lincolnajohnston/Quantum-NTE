@@ -89,8 +89,9 @@ alpha_norm = math.sqrt(alpha_1 * alpha_1 + alpha_2 * alpha_2)
 alpha_1 = alpha_1 / alpha_norm
 alpha_2 = alpha_2 / alpha_norm
 
-#term to probabilistically select term 1 or 2
-alpha_stateprep = StatePreparation([alpha_1, alpha_2])
+total_shots = 100000
+alpha_1_shots = alpha_1 * alpha_1 * total_shots
+alpha_2_shots = alpha_2 * alpha_2 * total_shots
 
 # term 1
 stateprep_phi_c = StatePreparation(coarse_sol).control(1)
@@ -99,45 +100,63 @@ stateprep_phi_c = StatePreparation(coarse_sol).control(1)
 stateprep_phi_0 = StatePreparation(coarse_sol_diff).control(1)
 interpolater_stateprep = StatePreparation(interp_state).control(1)
 
-qc = QuantumCircuit(nf+1,nf)
-qc.append(alpha_stateprep, [0])
-qc.measure(0,0)
-'''qc.append(stateprep_phi_0, list(range(nc+1)))
-qc.append(interpolater_stateprep, [0] + list(range(nc+1,nf+1)))
-
-qc.x(0)
-
-qc.append(stateprep_phi_c, list(range(nc+1)))
+# Make Circuit 1
+qc1 = QuantumCircuit(nf+1,nf)
+qc1.x(0)
+qc1.append(stateprep_phi_c, [0] + list(range(dn+1,nf+1)))
 for i in range(dn):
-    qc.ch(0,nc+i+1)'''
-qc.append(stateprep_phi_0, [0] + list(range(dn+1,nf+1)))
-qc.append(interpolater_stateprep, list(range(dn+1)))
+    qc1.ch(0,i+1)
 
-qc.x(0)
+qc1.measure(range(1,nf+1), range(nf))
 
-qc.append(stateprep_phi_c, [0] + list(range(dn+1,nf+1)))
-for i in range(dn):
-    qc.ch(0,i+1)
-
-qc.measure(range(1,nf+1), range(nf))
-
-qc.save_statevector()
+qc1.save_statevector()
 # Run quantum algorithm
 backend = QasmSimulator(method="statevector")
-new_circuit = transpile(qc, backend)
-job = backend.run(new_circuit, shots=100000)
+new_circuit = transpile(qc1, backend)
+job = backend.run(new_circuit, shots=alpha_1_shots)
 job_result = job.result()
-counts = job_result.get_counts()
+counts1 = job_result.get_counts()
 #state_vec = job_result.get_statevector(qc).data
 
 #from qiskit.visualization import plot_histogram
 #plot_histogram(counts)
 
-counts = dict(sorted(counts.items()))
-sqrt_counts = {key: math.sqrt(value) for key, value in counts.items()}
+counts1 = dict(sorted(counts1.items()))
+sqrt_counts1 = {key: math.sqrt(value) for key, value in counts1.items()}
+
+# Make Circuit 2
+qc2 = QuantumCircuit(nf+1,nf)
+qc2.x(0)
+qc2.append(stateprep_phi_0, [0] + list(range(dn+1,nf+1)))
+qc2.append(interpolater_stateprep, list(range(dn+1)))
+
+qc2.measure(range(1,nf+1), range(nf))
+
+qc2.save_statevector()
+# Run quantum algorithm
+backend = QasmSimulator(method="statevector")
+new_circuit = transpile(qc2, backend)
+job = backend.run(new_circuit, shots=alpha_2_shots)
+job_result = job.result()
+counts2 = job_result.get_counts()
+#state_vec = job_result.get_statevector(qc).data
+
+#from qiskit.visualization import plot_histogram
+#plot_histogram(counts)
+
+counts2 = dict(sorted(counts2.items()))
+sqrt_counts2 = {key: math.sqrt(value) for key, value in counts2.items()}
+
+counts = {key: value + (0 if counts2.get(key)==None else counts2.get(key)) for key, value in counts1.items()}
+
 plt.bar(counts.keys(), counts.values(), color='g')
+plt.title("Fine grid counts")
+plt.figure()
+plt.bar(counts1.keys(), counts1.values(), color='g')
+plt.title("Circuit 1 (Coarse Grid) counts")
 plt.show()
 print("counts: ", counts)
 #print("state: ", state_vec)
 
-qc.draw('mpl', filename="circuit.png")
+qc1.draw('mpl', filename="circuit1.png")
+qc2.draw('mpl', filename="circuit2.png")
