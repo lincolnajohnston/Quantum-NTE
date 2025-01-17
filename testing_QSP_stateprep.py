@@ -35,7 +35,37 @@ def Identity(num_qubits):
 def getProjectorProbability(M, state):
     return np.dot(M @ state, (M @ state).conj())
 
+# Measure one qubit in the M basis, but indirectly by transforming it so measurement in the computational 
+# basis will give the same result, then performing another transformation to collapse to the same state 
 def doMeasurementOfM(M, state, rho_bits):
+    eigenvalues, eigenvectors = np.linalg.eig(M)
+
+    # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
+    T = np.kron(np.kron(Identity(rho_bits), np.outer([1,0],eigenvectors[:,0]) + np.outer([0,1],eigenvectors[:,1])), Identity(rho_bits))
+    T_inv = np.kron(np.kron(Identity(rho_bits), np.outer(eigenvectors[:,0], [1,0]) + np.outer(eigenvectors[:,1], [0,1])), Identity(rho_bits))
+                    
+    # transform state                
+    state = T @ state
+    total_prob = 0
+    rand = random.random()
+    i = -1
+
+    # measure the state in the computational basis and collapse the state to either 0 or 1
+    traced_state = getTraceOfState(state, 2*rho_bits + 1, [i for i in range(2*rho_bits+1) if i != rho_bits])
+    while (total_prob < rand):
+        i+=1
+        marginal_prob = traced_state[i] ** 2
+        total_prob += marginal_prob
+    M_bit_state = [1-i, i]
+    collapse_operator = np.kron(np.kron(Identity(rho_bits), np.outer(M_bit_state,M_bit_state)), Identity(rho_bits))
+    state = collapse_operator @ state / math.sqrt(marginal_prob)
+
+    # return the state to the eigenvectors of the measurement operator, M, corresponding to the measurement
+    state = T_inv @ state
+    return eigenvalues[i], state
+
+# measure using the M operator but do the measurement directly in the basis of M
+def doMeasurementOfM_old(M, state, rho_bits):
     eigenvalues, eigenvectors = np.linalg.eig(M)
     total_prob = 0
     rand = random.random()
@@ -45,7 +75,8 @@ def doMeasurementOfM(M, state, rho_bits):
         Mi = np.kron(np.kron(Identity(rho_bits), np.outer(eigenvectors[:,i], eigenvectors[:,i].conj())), Identity(rho_bits))
         marginal_prob = getProjectorProbability(Mi, state)
         total_prob += marginal_prob
-    return eigenvalues[i], Mi @ state / math.sqrt(marginal_prob)
+    new_state = Mi @ state / math.sqrt(marginal_prob)
+    return eigenvalues[i], new_state
 
 # Like doing a trace of density matrix but on a quantum state, basically collapsing a large state into a smaller state
 # this is still very untested, not sure it works basically at all
@@ -165,10 +196,12 @@ elif sim_type == "density_matrix":
     rho_out_state = get_state_from_dm(total_dm_final)
 
     counts = np.zeros(int(math.pow(2,rho_bits)))
-    num_iter = 1000
+    num_iter = 10000
     for iter in range(num_iter):
         if(iter % 1000 == 0):
             print(iter)
+        #M_diag = np.multiply(M_matrix, [[1,0],[0,1]])
+        #M_offdiag = np.multiply(M_matrix, [[0,1],[1,0]])
         m_val, new_state = doMeasurementOfM(M_matrix, rho_out_state, rho_bits)
         new_dm = DensityMatrix(np.outer(new_state, new_state.conj()))
         #tao_out = partial_trace(state=new_dm, qargs=list(range(rho_bits,2*rho_bits+1)))
