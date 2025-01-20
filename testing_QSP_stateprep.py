@@ -108,10 +108,10 @@ def getTraceOfState(state, n_bits, trace_bits):
 
 
 ######### Input ###########
-sim_type = "density_matrix"
+sim_type = "quantum_state"
 
 alpha_0 = 1
-alpha_1 = 10
+alpha_1 = 2
 
 rho_bits = 2
 
@@ -143,16 +143,21 @@ O_operator = Operator(O_matrix)
 phi_goal = alpha_0 * phi_0 + alpha_1 * phi_1
 tau_goal = np.outer(phi_goal, phi_goal.conj())
 
+M_eigenvalues, M_eigenvectors = np.linalg.eig(M_matrix)
+
+# T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
+T = np.outer([1,0],eigenvectors[:,0]) + np.outer([0,1],eigenvectors[:,1])
+
 qc1 = QuantumCircuit(2*rho_bits+1,2*rho_bits+1)
 
 # initialize system
 if sim_type == "quantum_state":
-    sigma_stateprep = StatePreparation(sigma_matrix)
+    sigma_stateprep = StatePreparation(beta)
     rho_0_stateprep = StatePreparation(phi_0)
     rho_1_stateprep = StatePreparation(phi_1)
-    qc1.append(sigma_stateprep, [0])
-    qc1.append(rho_0_stateprep, [1])
-    qc1.append(rho_1_stateprep, [2])
+    qc1.append(sigma_stateprep, [rho_bits])
+    qc1.append(rho_0_stateprep, list(range(rho_bits)))
+    qc1.append(rho_1_stateprep, list(range(rho_bits + 1, 2 * rho_bits + 1)))
 elif sim_type == "density_matrix":
     sigma_dm = DensityMatrix(sigma_matrix)
     rho_0_dm = DensityMatrix(rho_0)
@@ -163,13 +168,28 @@ elif sim_type == "density_matrix":
 for i in range(rho_bits):
     qc1.cswap(rho_bits,i,rho_bits+1+i)
 
+num_iter = 100000
 # create/run quantum circuit
 if sim_type == "quantum_state":
+    T_gate = UnitaryGate(T)
+    qc1.append(T_gate, [rho_bits])
+    qc1.measure([rho_bits],[rho_bits])
+    qc1.measure(list(range(rho_bits)), list(range(rho_bits)))
     backend = QasmSimulator(method="statevector")
     new_circuit = transpile(qc1, backend)
-    job = backend.run(new_circuit, shots=1000)
+    job = backend.run(new_circuit, shots=num_iter)
     job_result = job.result()
     counts = job_result.get_counts()
+
+    # post-processing: weight the counts by the eigenvalue associated with the measurement on the sigma qubit
+    weighted_counts = {}
+    for i, (bitkey, n) in enumerate(counts.items()):
+        eig = eigenvalues[int(bitkey[rho_bits])]
+        if bitkey[rho_bits+1:2*rho_bits+1] in weighted_counts:
+            weighted_counts[bitkey[rho_bits+1:2*rho_bits+1]] += eig * n
+        else:
+            weighted_counts[bitkey[rho_bits+1:2*rho_bits+1]] = eig * n
+    predicted_state = [math.sqrt(weighted_counts['{:b}'.format(i).zfill(rho_bits)]/num_iter) for i in range(len(weighted_counts))]
 elif sim_type == "density_matrix":
     total_dm_final = total_dm.evolve(qc1)
 
@@ -191,7 +211,6 @@ elif sim_type == "density_matrix":
     rho_out_state = get_state_from_dm(total_dm_final)
 
     counts = np.zeros(int(math.pow(2,rho_bits)))
-    num_iter = 10000
     for iter in range(num_iter):
         if(iter % 1000 == 0):
             print(iter)
@@ -211,12 +230,14 @@ elif sim_type == "density_matrix":
 
     print(counts) 
     predicted_state = [math.sqrt(counts[i]/num_iter) for i in range(len(counts))]
-    print("predicted_state: ", predicted_state)    
-    print("desired_state: ", phi_goal)    
+print("predicted_state: ", predicted_state)    
+print("desired_state: ", phi_goal)  
+error = np.linalg.norm(phi_goal - predicted_state)
+print("L2 error: ", error)
 
 
-print("total_dm: ", get_state_from_dm(np.real(total_dm.data)))
-print("total_dm_final: ", get_state_from_dm(np.real(total_dm_final.data)))
+#print("total_dm: ", get_state_from_dm(np.real(total_dm.data)))
+#print("total_dm_final: ", get_state_from_dm(np.real(total_dm_final.data)))
 
 
 CSWAP = np.array([[1,0,0,0,0,0,0,0], [0,1,0,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,1,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
