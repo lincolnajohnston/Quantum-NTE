@@ -32,20 +32,9 @@ def get_state_from_dm(dm):
 def Identity(num_qubits):
     return np.eye(int(math.pow(2,num_qubits)))
 
-def getProjectorProbability(M, state):
-    return np.dot(M @ state, (M @ state).conj())
-
 # Measure one qubit in the M basis, but indirectly by transforming it so measurement in the computational 
 # basis will give the same result, then performing another transformation to collapse to the same state 
-def doMeasurementOfM(M, state, rho_bits):
-    eigenvalues, eigenvectors = np.linalg.eig(M)
-
-    # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
-    T = np.kron(np.kron(Identity(rho_bits), np.outer([1,0],eigenvectors[:,0]) + np.outer([0,1],eigenvectors[:,1])), Identity(rho_bits))
-    T_inv = np.kron(np.kron(Identity(rho_bits), np.outer(eigenvectors[:,0], [1,0]) + np.outer(eigenvectors[:,1], [0,1])), Identity(rho_bits))
-                    
-    # transform state                
-    state = T @ state
+def doMeasurementOfM(state, rho_bits, eigenvalues):     
     total_prob = 0
     rand = random.random()
     i = -1
@@ -67,22 +56,8 @@ def doMeasurementOfM(M, state, rho_bits):
     # return measurement and new state the circuit is in
     return eigenvalues[i], state
 
-# measure using the M operator but do the measurement directly in the basis of M
-def doMeasurementOfM_old(M, state, rho_bits):
-    eigenvalues, eigenvectors = np.linalg.eig(M)
-    total_prob = 0
-    rand = random.random()
-    i = -1
-    while (total_prob < rand):
-        i+=1
-        Mi = np.kron(np.kron(Identity(rho_bits), np.outer(eigenvectors[:,i], eigenvectors[:,i].conj())), Identity(rho_bits))
-        marginal_prob = getProjectorProbability(Mi, state)
-        total_prob += marginal_prob
-    new_state = Mi @ state / math.sqrt(marginal_prob)
-    return eigenvalues[i], new_state
-
 # Like doing a trace of density matrix but on a quantum state, basically collapsing a large state into a smaller state
-# this is still very untested, not sure it works basically at all
+# this is still very untested, not sure it works basically at all, it is also very inefficient and limiting the numpy implementation
 def getTraceOfState(state, n_bits, trace_bits):
     n_trace_bits = len(trace_bits)
     bit_list = list(range(n_bits))
@@ -108,7 +83,7 @@ def getTraceOfState(state, n_bits, trace_bits):
 
 
 ######### Input ###########
-sim_type = "quantum_state"
+sim_type = "numpy"
 
 alpha_0 = 1
 alpha_1 = 2
@@ -137,11 +112,7 @@ M_matrix = np.array([[(alpha_0 * alpha_0) / (beta_0 * beta_0 * np.dot(phi_1,phi_
 
 eigenvalues, eigenvectors = np.linalg.eig(M_matrix)
 
-O_matrix = np.array([[1,3],[3,1]])
-O_operator = Operator(O_matrix)
-
 phi_goal = alpha_0 * phi_0 + alpha_1 * phi_1
-tau_goal = np.outer(phi_goal, phi_goal.conj())
 
 M_eigenvalues, M_eigenvectors = np.linalg.eig(M_matrix)
 
@@ -151,14 +122,14 @@ T = np.outer([1,0],eigenvectors[:,0]) + np.outer([0,1],eigenvectors[:,1])
 qc1 = QuantumCircuit(2*rho_bits+1,2*rho_bits+1)
 
 # initialize system
-if sim_type == "quantum_state":
+if sim_type == "qiskit":
     sigma_stateprep = StatePreparation(beta)
     rho_0_stateprep = StatePreparation(phi_0)
     rho_1_stateprep = StatePreparation(phi_1)
     qc1.append(sigma_stateprep, [rho_bits])
     qc1.append(rho_0_stateprep, list(range(rho_bits)))
     qc1.append(rho_1_stateprep, list(range(rho_bits + 1, 2 * rho_bits + 1)))
-elif sim_type == "density_matrix":
+elif sim_type == "numpy":
     sigma_dm = DensityMatrix(sigma_matrix)
     rho_0_dm = DensityMatrix(rho_0)
     rho_1_dm = DensityMatrix(rho_1)
@@ -168,9 +139,9 @@ elif sim_type == "density_matrix":
 for i in range(rho_bits):
     qc1.cswap(rho_bits,i,rho_bits+1+i)
 
-num_iter = 100000
+num_iter = 10000
 # create/run quantum circuit
-if sim_type == "quantum_state":
+if sim_type == "qiskit":
     T_gate = UnitaryGate(T)
     qc1.append(T_gate, [rho_bits])
     qc1.measure([rho_bits],[rho_bits])
@@ -190,34 +161,19 @@ if sim_type == "quantum_state":
         else:
             weighted_counts[bitkey[rho_bits+1:2*rho_bits+1]] = eig * n
     predicted_state = [math.sqrt(weighted_counts['{:b}'.format(i).zfill(rho_bits)]/num_iter) for i in range(len(weighted_counts))]
-elif sim_type == "density_matrix":
+elif sim_type == "numpy":
     total_dm_final = total_dm.evolve(qc1)
-
-    #measure_operator = Operator(np.kron(np.kron(O_matrix, M_matrix), Identity(rho_bits)))
-    #quantum_expectation = total_dm_final.expectation_value(measure_operator)
-    #classical_expectation = np.trace(tau_goal @ O_matrix)
-
-    # try to get counts from qiskit DensityMatrix operations
-    '''count_dict = {'{:b}'.format(i).zfill(rho_bits):0 for i in range(int(math.pow(2,rho_bits)))}
-    rho_a = partial_trace(state=total_dm_final, qargs=[1, 2])
-    rho_b = partial_trace(state=total_dm_final, qargs=[0, 2])
-    measure_operator = Operator(np.kron(np.kron(Identity(rho_bits), M_matrix), Identity(rho_bits)))
-    #weight = total_dm_final.expectation_value(measure_operator)
-    weight = rho_b.measure()
-    result = rho_a.measure()[0]
-    count_dict[result] += weight'''
 
     # Use numpy arrays to manually do measurements
     rho_out_state = get_state_from_dm(total_dm_final)
+    rho_out_state = np.kron(np.kron(Identity(rho_bits), T), Identity(rho_bits)) @ rho_out_state
 
     counts = np.zeros(int(math.pow(2,rho_bits)))
     for iter in range(num_iter):
         if(iter % 1000 == 0):
             print(iter)
-        m_val, new_state = doMeasurementOfM(M_matrix, rho_out_state, rho_bits)
-        new_dm = DensityMatrix(np.outer(new_state, new_state.conj()))
+        m_val, new_state = doMeasurementOfM(rho_out_state, rho_bits, M_eigenvalues)
         state_out = getTraceOfState(new_state, 2*rho_bits+1, list(range(rho_bits+1)))
-        tao_out = np.outer(state_out.conj(), state_out)
 
         # sample the remaining state in the computational basis
         threshold = random.random()
@@ -228,30 +184,12 @@ elif sim_type == "density_matrix":
                 break
         counts[sampled_basis] += m_val
 
-    print(counts) 
     predicted_state = [math.sqrt(counts[i]/num_iter) for i in range(len(counts))]
+
+# output results of quantum circuit
 print("predicted_state: ", predicted_state)    
 print("desired_state: ", phi_goal)  
 error = np.linalg.norm(phi_goal - predicted_state)
 print("L2 error: ", error)
-
-
-#print("total_dm: ", get_state_from_dm(np.real(total_dm.data)))
-#print("total_dm_final: ", get_state_from_dm(np.real(total_dm_final.data)))
-
-
-CSWAP = np.array([[1,0,0,0,0,0,0,0], [0,1,0,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,1,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
-SWAP = np.array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]])
-X = np.array([[0,1],[1,0]])
-
-#manual_total_dm_final = CSWAP @ np.kron(np.kron(rho_1, rho_0), sigma_matrix) @ CSWAP.conj().T
-#manual_total_dm_final = np.kron(np.eye(2), SWAP) @ CSWAP @ np.kron(np.kron(rho_1, rho_0), sigma_matrix) @ CSWAP.conj().T @ np.kron(np.eye(2), SWAP).conj().T
-#manual_total_dm_final = np.kron(np.kron(np.eye(2),np.eye(2)), X) @ np.kron(np.kron(rho_1, rho_0), sigma_matrix)
-#print("manual total_dm_final: ", get_state_from_dm(manual_total_dm_final))
-#print("difference between manual and qiskit total_dm_final: ", manual_total_dm_final - total_dm_final.data)
-
-#sqrt_counts = {key: math.sqrt(value) for key, value in counts.items()}
-
-#print("state: ", state_vec)
 
 qc1.draw('mpl', filename="test_circuit.png")
