@@ -74,25 +74,25 @@ def getTraceOfState(state, n_bits, trace_bits):
     
     return out_state
 
-# Creates a quantum state where each term is approxmiately a sequential integer (and then scaled)
-def get_interpolater_state(N):
-    equal_state = [1/math.sqrt(2), 1/math.sqrt(2)]
-    large_equal_state = [1]
+# Creates a quantum state where each term is approxmiately a sequential integer [1,2,3,...] (and then scaled)
+def get_interpolater_state(nf, nc, qc1):
+    N = nf - nc
     total_norm = 1
-    out_state = [1]
+    last_val = 1
+    dot_prod = 1
     for i in range(N):
         q_n = [1,math.pow(N,1/(N))-math.pow(i,1/(N))+1]
         q_n_norm = np.linalg.norm(q_n)
         q_n = q_n / q_n_norm
+        last_val *= q_n[1]
+        state = StatePreparation(q_n)
+        qc1.append(state,[nf+nc-i])
         total_norm = total_norm * q_n_norm
+        dot_prod *= sum(q_n) / math.sqrt(2)
 
-        out_state = np.kron(out_state,q_n)
-        large_equal_state = np.kron(large_equal_state, equal_state)
-    large_equal_state = large_equal_state * (math.pow(2,N/2) / total_norm)
-    int_state = out_state - large_equal_state
-    return int_state / np.linalg.norm(int_state)
+    return last_val, dot_prod
 
-# Creates a quantum state where each term is a sequential integer (and then scaled)
+# Creates a quantum state where each term is a sequential integer (and then scaled), used to find error of quantum solution
 def get_perfect_interpolater_state(N):
     perfect_interp = [i for i in range(int(math.pow(2,N)))] # the state we are aiming to approximate
     return perfect_interp / np.linalg.norm(perfect_interp)
@@ -124,8 +124,8 @@ coarse_sol_diff = coarse_sol_diff / coarse_sol_diff_norm
 
 qc1 = QuantumCircuit(2*nf+1,2*nf+1)
 
-interp_state = get_interpolater_state(dn)
-interpolater_norm = (math.pow(2,dn)-1) / interp_state[-1] # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
+last_val, interp_dot_prod = get_interpolater_state(nf, nc, qc1)
+interpolater_norm = (math.pow(2,dn)-1) / last_val # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
 alpha_0 = math.pow(2,dn/2) * coarse_sol_norm
 alpha_1 = interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)
 
@@ -139,7 +139,7 @@ beta_0 = 1/math.sqrt(3)
 beta_1 = math.sqrt(2)/math.sqrt(3)
 beta = np.array([beta_0, beta_1])
 sigma_matrix = np.outer(beta, beta.conj())
-phi_dot_product = np.dot(coarse_sol,coarse_sol_diff) * np.dot([1/math.pow(2,(dn)/2) for i in range(int(Nf/Nc))], interp_state)
+phi_dot_product = np.dot(coarse_sol,coarse_sol_diff) * interp_dot_prod
 
 M_matrix = np.array([[(alpha_0 * alpha_0) / (beta_0 * beta_0 * 1), (alpha_1 * alpha_0) / (beta_1 * beta_0 * phi_dot_product)],
               [(alpha_0 * alpha_1) / (beta_0 * beta_1 * phi_dot_product), (alpha_1 * alpha_1) / (beta_1 * beta_1 * 1)]])
@@ -157,7 +157,7 @@ sigma_stateprep = StatePreparation(beta)
 stateprep_phi_c = StatePreparation(coarse_sol)
 #term 2
 stateprep_phi_0 = StatePreparation(coarse_sol_diff)
-interpolater_stateprep = StatePreparation(interp_state)
+#interpolater_stateprep = StatePreparation(interp_state)
 
 qc1.append(sigma_stateprep, [nf])
 
@@ -166,7 +166,7 @@ for i in range(nc):
     qc1.h(i)
 
 qc1.append(stateprep_phi_0, list(range(nf + 1 + nc, 2 * nf + 1)))
-qc1.append(interpolater_stateprep, list(range(nf + 1, nf + 1 + nc)))
+#qc1.append(interpolater_stateprep, list(range(nf + 1, nf + 1 + nc)))
 
 # put cswap gates in quantum circuit
 for i in range(nf):
