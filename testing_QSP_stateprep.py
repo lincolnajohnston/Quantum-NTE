@@ -83,7 +83,7 @@ def getTraceOfState(state, n_bits, trace_bits):
 
 
 ######### Input ###########
-sim_type = "numpy"
+sim_type = "qiskit"
 
 alpha_0 = 1
 alpha_1 = 2
@@ -110,14 +110,12 @@ sigma_matrix = np.outer(beta, beta.conj())
 M_matrix = np.array([[(alpha_0 * alpha_0) / (beta_0 * beta_0 * np.dot(phi_1,phi_1)), (alpha_1 * alpha_0) / (beta_1 * beta_0 * np.dot(phi_0,phi_1))],
               [(alpha_0 * alpha_1) / (beta_0 * beta_1 * np.dot(phi_1,phi_0)), (alpha_1 * alpha_1) / (beta_1 * beta_1 * np.dot(phi_0,phi_0))]])
 
-eigenvalues, eigenvectors = np.linalg.eig(M_matrix)
-
 phi_goal = alpha_0 * phi_0 + alpha_1 * phi_1
 
 M_eigenvalues, M_eigenvectors = np.linalg.eig(M_matrix)
 
 # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
-T = np.outer([1,0],eigenvectors[:,0]) + np.outer([0,1],eigenvectors[:,1])
+T = np.outer([1,0],M_eigenvectors[:,0]) + np.outer([0,1],M_eigenvectors[:,1])
 
 qc1 = QuantumCircuit(2*rho_bits+1,2*rho_bits+1)
 
@@ -155,7 +153,7 @@ if sim_type == "qiskit":
     # post-processing: weight the counts by the eigenvalue associated with the measurement on the sigma qubit
     weighted_counts = {}
     for i, (bitkey, n) in enumerate(counts.items()):
-        eig = eigenvalues[int(bitkey[rho_bits])]
+        eig = M_eigenvalues[int(bitkey[rho_bits])]
         if bitkey[rho_bits+1:2*rho_bits+1] in weighted_counts:
             weighted_counts[bitkey[rho_bits+1:2*rho_bits+1]] += eig * n
         else:
