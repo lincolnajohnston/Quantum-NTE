@@ -103,7 +103,7 @@ Nc = int(math.pow(2,nc))
 nf = 7
 Nf = int(math.pow(2,nf))
 dn = nf-nc
-num_iter = 1000000
+num_iter = 100000000
 
 '''coarse_sol_1 = np.ones(Nc)
 coarse_sol_1 = coarse_sol_1 / np.linalg.norm(coarse_sol_1)
@@ -118,7 +118,8 @@ coarse_sol = np.sin(0.2 * np.array(list(range(16)))) + 1
 print("coarse solution: ", coarse_sol)
 coarse_sol_diff = np.array(coarse_sol)
 coarse_sol_diff[:Nc-1] -= coarse_sol_diff[1:Nc]
-coarse_sol_diff = np.abs(coarse_sol_diff)
+coarse_sol_diff *= -1
+#coarse_sol_diff = np.abs(coarse_sol_diff)
 coarse_sol_diff[Nc-1] = 0 
 
 coarse_sol_norm = np.linalg.norm(coarse_sol)
