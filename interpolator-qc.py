@@ -76,9 +76,7 @@ def getTraceOfState(state, n_bits, trace_bits):
 
 # Creates a quantum state where each term is approxmiately a sequential integer (and then scaled)
 def get_interpolater_state(N):
-    perfect_interp = [i for i in range(int(math.pow(2,N)))] # the state we are aiming to approximate
-    return perfect_interp / np.linalg.norm(perfect_interp)
-    '''equal_state = [1/math.sqrt(2), 1/math.sqrt(2)]
+    equal_state = [1/math.sqrt(2), 1/math.sqrt(2)]
     large_equal_state = [1]
     total_norm = 1
     out_state = [1]
@@ -92,7 +90,12 @@ def get_interpolater_state(N):
         large_equal_state = np.kron(large_equal_state, equal_state)
     large_equal_state = large_equal_state * (math.pow(2,N/2) / total_norm)
     int_state = out_state - large_equal_state
-    return int_state / np.linalg.norm(int_state)'''
+    return int_state / np.linalg.norm(int_state)
+
+# Creates a quantum state where each term is a sequential integer (and then scaled)
+def get_perfect_interpolater_state(N):
+    perfect_interp = [i for i in range(int(math.pow(2,N)))] # the state we are aiming to approximate
+    return perfect_interp / np.linalg.norm(perfect_interp)
 
 nc = 3
 Nc = int(math.pow(2,nc))
@@ -119,17 +122,18 @@ coarse_sol_diff_norm = np.linalg.norm(coarse_sol_diff)
 coarse_sol = coarse_sol / coarse_sol_norm
 coarse_sol_diff = coarse_sol_diff / coarse_sol_diff_norm
 
+qc1 = QuantumCircuit(2*nf+1,2*nf+1)
+
 interp_state = get_interpolater_state(dn)
 interpolater_norm = (math.pow(2,dn)-1) / interp_state[-1] # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
-
 alpha_0 = math.pow(2,dn/2) * coarse_sol_norm
 alpha_1 = interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)
 
-print("alpha 1 probability: ", math.pow(2,dn/2) * coarse_sol_norm / (math.pow(2,dn/2) * coarse_sol_norm + interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)))
+perf_interp_state = get_perfect_interpolater_state(dn)
+perf_interpolater_norm = (math.pow(2,dn)-1) / perf_interp_state[-1] # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
+perf_alpha_1 = perf_interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)
 
-'''alpha_norm = math.sqrt(alpha_0 * alpha_0 + alpha_1 * alpha_1)
-alpha_0 = alpha_0 / alpha_norm
-alpha_1 = alpha_1 / alpha_norm'''
+print("alpha 1 probability: ", math.pow(2,dn/2) * coarse_sol_norm / (math.pow(2,dn/2) * coarse_sol_norm + interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)))
 
 beta_0 = 1/math.sqrt(3)
 beta_1 = math.sqrt(2)/math.sqrt(3)
@@ -140,14 +144,13 @@ phi_dot_product = np.dot(coarse_sol,coarse_sol_diff) * np.dot([1/math.pow(2,(dn)
 M_matrix = np.array([[(alpha_0 * alpha_0) / (beta_0 * beta_0 * 1), (alpha_1 * alpha_0) / (beta_1 * beta_0 * phi_dot_product)],
               [(alpha_0 * alpha_1) / (beta_0 * beta_1 * phi_dot_product), (alpha_1 * alpha_1) / (beta_1 * beta_1 * 1)]])
 
-phi_goal = alpha_0 * np.kron(coarse_sol, 1/math.pow(2,(dn)/2) * np.ones(int(Nf/Nc))) + alpha_1 * np.kron(coarse_sol_diff, interp_state)
+phi_goal = alpha_0 * np.kron(coarse_sol, 1/math.pow(2,(dn)/2) * np.ones(int(Nf/Nc))) + perf_alpha_1 * np.kron(coarse_sol_diff, perf_interp_state)
 
 M_eigenvalues, M_eigenvectors = np.linalg.eig(M_matrix)
 
 # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
 T = np.outer([1,0],M_eigenvectors[:,0]) + np.outer([0,1],M_eigenvectors[:,1])
 
-qc1 = QuantumCircuit(2*nf+1,2*nf+1)
 # ancilla qubit
 sigma_stateprep = StatePreparation(beta)
 # term 1
@@ -202,11 +205,11 @@ print("L2 error: ", error)
 
 #plt.bar(counts.keys(), counts.values(), color='g')
 plt.plot(predicted_state)
-plt.title("Measured State")
-plt.figure()
 plt.plot(phi_goal)
+plt.plot(predicted_state - phi_goal)
 #plt.bar(counts1.keys(), counts1.values(), color='g')
-plt.title("Desired State")
+plt.title("Desired vs Measured States")
+plt.legend(['Measured State', 'Desired State', 'error'])
 plt.show()
 #print("counts: ", counts)
 #print("state: ", state_vec)
