@@ -144,8 +144,6 @@ phi_goal = alpha_0 * np.kron(coarse_sol, 1/math.pow(2,(dn)/2) * np.ones(int(Nf/N
 
 M_eigenvalues, M_eigenvectors = np.linalg.eig(M_matrix)
 
-total_shots = 100000
-
 # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
 T = np.outer([1,0],M_eigenvectors[:,0]) + np.outer([0,1],M_eigenvectors[:,1])
 
@@ -160,18 +158,18 @@ interpolater_stateprep = StatePreparation(interp_state)
 
 qc1.append(sigma_stateprep, [nf])
 
-qc1.append(stateprep_phi_c, list(range(nc)))
-for i in range(nc,nf):
+qc1.append(stateprep_phi_c, list(range(nc, nf)))
+for i in range(nc):
     qc1.h(i)
 
-qc1.append(stateprep_phi_0, list(range(nf + 1, nf + 1 + nc)))
-qc1.append(interpolater_stateprep, list(range(nf + 1 + nc, 2 * nf + 1)))
+qc1.append(stateprep_phi_0, list(range(nf + 1 + nc, 2 * nf + 1)))
+qc1.append(interpolater_stateprep, list(range(nf + 1, nf + 1 + nc)))
 
 # put cswap gates in quantum circuit
 for i in range(nf):
     qc1.cswap(nf,i,nf+1+i)
 
-num_iter = 10000
+num_iter = 1000000
 T_gate = UnitaryGate(T)
 qc1.append(T_gate, [nf])
 qc1.measure([nf],[nf])
