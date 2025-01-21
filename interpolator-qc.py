@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-import random
 
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
@@ -9,70 +8,7 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 
-# returns true if the density matrix represents a pure quantum state
-def is_pure(dm):
-    pure_state = dm[0,:]
-    pure_state = pure_state / np.linalg.norm(pure_state)
-    dm_test = np.outer(pure_state, pure_state)
-    diff = abs(dm_test - dm).sum()
-    return diff < 1E-10
-
-def get_state_from_dm(dm):
-    if is_pure(dm) == False:
-        raise Exception("not a pure matrix")
-    return np.array([math.sqrt(dm[i,i]) for i in range(len(dm.data))])
-
-def Identity(num_qubits):
-    return np.eye(int(math.pow(2,num_qubits)))
-
-# Measure one qubit in the M basis, but indirectly by transforming it so measurement in the computational 
-# basis will give the same result, then performing another transformation to collapse to the same state 
-def doMeasurementOfM(state, rho_bits, eigenvalues):     
-    total_prob = 0
-    rand = random.random()
-    i = -1
-
-    # measure the state in the computational basis and collapse the state to either 0 or 1
-    traced_state = getTraceOfState(state, 2*rho_bits + 1, [i for i in range(2*rho_bits+1) if i != rho_bits])
-    while (total_prob < rand):
-        i+=1
-        marginal_prob = traced_state[i] ** 2
-        total_prob += marginal_prob
-    M_bit_state = [1-i, i]
-    collapse_operator = np.kron(np.kron(Identity(rho_bits), np.outer(M_bit_state,M_bit_state)), Identity(rho_bits))
-    state = collapse_operator @ state / math.sqrt(marginal_prob)
-
-    # return the state to the eigenvectors of the measurement operator, M, corresponding to the measurement
-    # I don't think this step is strictly necessary to get the correct result for tau
-    #state = T_inv @ state
-
-    # return measurement and new state the circuit is in
-    return eigenvalues[i], state
-
-# Like doing a trace of density matrix but on a quantum state, basically collapsing a large state into a smaller state
-# this is still very untested, not sure it works basically at all, it is also very inefficient and limiting the numpy implementation
-def getTraceOfState(state, n_bits, trace_bits):
-    n_trace_bits = len(trace_bits)
-    bit_list = list(range(n_bits))
-    untraced_bits = [bit_i for bit_i in bit_list if bit_i not in trace_bits]
-    n_untraced_bits = len(untraced_bits)
-    out_state = np.zeros(int(math.pow(2,n_untraced_bits)))
-
-    for i in range(int(math.pow(2,n_untraced_bits))):
-        untraced_binary_str = bin(i)[2:].zfill(n_untraced_bits)
-        untraced_binary_list = [int(bit) for bit in untraced_binary_str]
-        #print("i: ", i)
-        for j in range(int(math.pow(2,n_trace_bits))):
-            traced_binary_str = bin(j)[2:].zfill(n_trace_bits)
-            traced_binary_list = [int(bit) for bit in traced_binary_str]
-
-            large_index = int(np.sum([traced_binary_list[k] * math.pow(2,n_bits - trace_bits[k] - 1) for k in range(n_trace_bits)]) + np.sum([untraced_binary_list[k] * math.pow(2,n_bits - untraced_bits[k] - 1) for k in range(n_untraced_bits)]))
-            #print("j: ", j)
-            #print("large_index", large_index)
-            out_state[i] += state[large_index] * state[large_index]
-        out_state[i] = math.sqrt(out_state[i])
-    
-    return out_state
+############## Functions ##############
 
 # Creates a quantum state where each term is approxmiately a sequential integer [1,2,3,...] (and then scaled)
 def get_interpolater_state(nf, nc, qc1):
@@ -103,17 +39,12 @@ Nc = int(math.pow(2,nc))
 nf = 7
 Nf = int(math.pow(2,nf))
 dn = nf-nc
-num_iter = 100000000
+num_iter = 1000000
 
-'''coarse_sol_1 = np.ones(Nc)
-coarse_sol_1 = coarse_sol_1 / np.linalg.norm(coarse_sol_1)
-
-coarse_sol_2 = np.zeros(Nc)
-coarse_sol_2[0] = 1'''
 #coarse_sol = np.array([random.uniform(0, 1) for _ in range(Nc)])
 #coarse_sol = np.array([0.1,0.2,0.3,0.4,0.45,0.5,0.8,0.9])
 #coarse_sol = np.array([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.43, 0.45, 0.47, 0.5, 0.6, 0.8, 0.82, 0.9, 0.99])
-coarse_sol = np.sin(0.2 * np.array(list(range(16)))) + 1
+coarse_sol = np.sin(0.3 * np.array(list(range(16)))) + 1
 #coarse_sol_mins = [min(coarse_sol[i], coarse_sol[i+1]) for i in range(len(coarse_sol)-1)] + [coarse_sol[-1]]
 print("coarse solution: ", coarse_sol)
 coarse_sol_diff = np.array(coarse_sol)
@@ -143,7 +74,7 @@ beta_0 = 1/math.sqrt(3)
 beta_1 = math.sqrt(2)/math.sqrt(3)
 beta = np.array([beta_0, beta_1])
 sigma_matrix = np.outer(beta, beta.conj())
-phi_dot_product = np.dot(coarse_sol,coarse_sol_diff) * interp_dot_prod
+phi_dot_product = np.dot(coarse_sol,coarse_sol_diff) * interp_dot_prod # the closer the dot product is to 0, the more variance there will be in the result
 
 # matrix that allows the two states to be linearly combined
 M_matrix = np.array([[(alpha_0 * alpha_0) / (beta_0 * beta_0 * 1), (alpha_1 * alpha_0) / (beta_1 * beta_0 * phi_dot_product)],
