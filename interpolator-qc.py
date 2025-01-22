@@ -8,6 +8,8 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 
+# Linear Combination of states reference: https://arxiv.org/pdf/2112.12307
+
 ############## Functions ##############
 
 # Creates a quantum state where each term is approxmiately a sequential integer [1,2,3,...] (and then scaled)
@@ -45,12 +47,10 @@ num_iter = 1000000
 #coarse_sol = np.array([0.1,0.2,0.3,0.4,0.45,0.5,0.8,0.9])
 #coarse_sol = np.array([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.43, 0.45, 0.47, 0.5, 0.6, 0.8, 0.82, 0.9, 0.99])
 coarse_sol = np.sin(0.3 * np.array(list(range(16)))) + 1
-#coarse_sol_mins = [min(coarse_sol[i], coarse_sol[i+1]) for i in range(len(coarse_sol)-1)] + [coarse_sol[-1]]
 print("coarse solution: ", coarse_sol)
 coarse_sol_diff = np.array(coarse_sol)
 coarse_sol_diff[:Nc-1] -= coarse_sol_diff[1:Nc]
 coarse_sol_diff *= -1
-#coarse_sol_diff = np.abs(coarse_sol_diff)
 coarse_sol_diff[Nc-1] = 0 
 
 coarse_sol_norm = np.linalg.norm(coarse_sol)
@@ -59,6 +59,7 @@ coarse_sol = coarse_sol / coarse_sol_norm
 coarse_sol_diff = coarse_sol_diff / coarse_sol_diff_norm
 
 ############## Quantum Circuit Setup ##############
+
 qc1 = QuantumCircuit(2*nf+1,2*nf+1)
 
 last_val, interp_dot_prod = get_interpolater_state(nf, nc, qc1)
@@ -104,6 +105,7 @@ for i in range(nf):
     qc1.cswap(nf,i,nf+1+i)
 
 ############## Perform Measurements, Record Counts ##############
+
 # T transforms the state so that it can be measured in the computational basis and retain the same probabilities of each eigenvalue being measured
 T = np.outer([1,0],M_eigenvectors[:,0]) + np.outer([0,1],M_eigenvectors[:,1])
 T_gate = UnitaryGate(T)
@@ -117,6 +119,7 @@ job_result = job.result()
 counts = job_result.get_counts()
 
 ############## Post-Processing ##############
+
 # weight the counts by the eigenvalue associated with the measurement on the sigma qubit
 weighted_counts = {}
 for i, (bitkey, n) in enumerate(counts.items()):
@@ -128,6 +131,7 @@ for i, (bitkey, n) in enumerate(counts.items()):
 predicted_state = [math.sqrt(abs(weighted_counts['{:b}'.format(i).zfill(nf)]/num_iter)) if '{:b}'.format(i).zfill(nf) in weighted_counts else 0 for i in range(Nf)]
 
 ############## Show Results ##############
+
 # print difference between measured and desired state and L2
 print("predicted_state: ", predicted_state)    
 print("desired_state: ", phi_goal)  
