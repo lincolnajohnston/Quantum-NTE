@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
@@ -32,7 +33,7 @@ def get_interpolater_state(N, last_qubits, qc1):
 
 # Creates a quantum state where each term is a sequential integer (and then scaled), used to find error of quantum solution
 def get_perfect_interpolater_state(N):
-    perfect_interp = [i for i in range(int(math.pow(2,N)))] # the state we are aiming to approximate
+    perfect_interp = [i+1 for i in range(int(math.pow(2,N)))] # the state we are aiming to approximate
     return perfect_interp / np.linalg.norm(perfect_interp)
 
 ############## Inputs ##############
@@ -41,7 +42,7 @@ ncy = 2
 nc = ncx + ncy
 Ncx = int(math.pow(2,ncx))
 Ncy = int(math.pow(2,ncy))
-nfx = 3
+nfx = 2
 nfy = 3
 nf = nfx + nfy
 Nfx = int(math.pow(2,nfx))
@@ -49,7 +50,7 @@ Nfy = int(math.pow(2,nfy))
 Nf = Nfx * Nfy
 dnx = nfx - ncx
 dny = nfy - ncy
-num_iter = 100000
+num_iter = 100
 
 #coarse_sol = np.array([random.uniform(0, 1) for _ in range(Nc)])
 #coarse_sol = np.array([0.1,0.2,0.3,0.4,0.45,0.5,0.8,0.9])
@@ -79,9 +80,13 @@ alpha_1 = coarse_sol_shift_x_norm * interpolater_norm_x * math.pow(2,(dny)/2) / 
 alpha_2 = coarse_sol_shift_x_norm * interpolater_norm_y * math.pow(2,(dnx)/2) / math.pow(2,dny)
 alpha_3 = coarse_sol_shift_xy_norm * interpolater_norm_x * interpolater_norm_y / math.pow(2,dnx) / math.pow(2,dny)
 
-#perf_interp_state = get_perfect_interpolater_state(dn)
-#perf_interpolater_norm = (math.pow(2,dn)-1) / perf_interp_state[-1] # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
-#perf_alpha_1 = perf_interpolater_norm * coarse_sol_diff_norm / math.pow(2,dn)
+perf_interp_state_x = get_perfect_interpolater_state(dnx)
+perf_interp_state_y = get_perfect_interpolater_state(dny)
+perf_interpolater_norm_x = (math.pow(2,dnx)-1) / perf_interp_state_x[-1] # norm that assures that the last value of interp_state is math.pow(2,dn)-1, which is directly on the linear interpolation line
+perf_interpolater_norm_y = (math.pow(2,dny)-1) / perf_interp_state_y[-1]
+perf_alpha_1 = coarse_sol_shift_x_norm * perf_interpolater_norm_x * math.pow(2,(dny)/2) / math.pow(2,dnx)
+perf_alpha_2 = coarse_sol_shift_x_norm * perf_interpolater_norm_y * math.pow(2,(dnx)/2) / math.pow(2,dny)
+perf_alpha_3 = coarse_sol_shift_xy_norm * perf_interpolater_norm_x * perf_interpolater_norm_y / math.pow(2,dnx) / math.pow(2,dny)
 
 beta_00 = 1/math.sqrt(3)
 beta_01 = math.sqrt(2)/math.sqrt(3)
@@ -117,7 +122,10 @@ M2_matrix = np.array([[(1 * 1) / (beta_20 * beta_20 * 1), (alpha_3 * 1) / (beta_
               [(1 * alpha_3) / (beta_20 * beta_21 * phi_dot_product_b3), (alpha_3 * alpha_3) / (beta_21 * beta_21 * phi_dot_product_bb)]])
 
 # desired state: used for testing and finding error of quantum state
-#phi_goal = alpha_0 * np.kron(coarse_sol, 1/math.pow(2,(dn)/2) * np.ones(int(Nf/Nc))) + perf_alpha_1 * np.kron(coarse_sol_diff, perf_interp_state)
+phi_goal = (alpha_0 * np.kron(np.kron(coarse_sol, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), 1/math.pow(2,(dnx)/2) * np.ones(int(Nfx/Ncx))) +
+           perf_alpha_1 * np.kron(np.kron(coarse_sol_shift_x, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), perf_interp_state_x) + 
+            perf_alpha_2 * np.kron(np.kron(coarse_sol_shift_x, perf_interp_state_y), 1/math.pow(2,(dnx)/2) * np.ones(int(Nfx/Ncx))) + 
+            perf_alpha_3 * np.kron(np.kron(coarse_sol_shift_x, perf_interp_state_y), perf_interp_state_x))
 
 #fine_mesh_test = coarse_sol_norm * math.pow(2,(dnx + dny)/2) * np.kron(np.kron(coarse_sol, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), 1/math.pow(2,(dnx)/2) * np.ones(int(Nfx/Ncx)))
 #                + interpolater_norm_x * coarse_sol_shift_x_norm * math.pow(2,(dny)/2) / math.pow(2,dnx) * np.kron(np.kron(coarse_sol_shift_x, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), )
@@ -189,8 +197,6 @@ job = backend.run(new_circuit, shots=num_iter)
 job_result = job.result()
 counts = job_result.get_counts()
 
-qc1.draw('mpl', filename="circuit1.png")
-
 ############## Post-Processing ##############
 
 # weight the counts by the eigenvalue associated with the measurement on the sigma qubit
@@ -204,6 +210,16 @@ for i, (bitkey, n) in enumerate(counts.items()):
     else:
         weighted_counts[bitkey[3*nf+3:4*nf+3]] = eig_0 * eig_1 * eig_2 * n
 predicted_state = [math.sqrt(abs(weighted_counts['{:b}'.format(i).zfill(nf)]/num_iter)) if '{:b}'.format(i).zfill(nf) in weighted_counts else 0 for i in range(Nf)]
+predicted_state = np.array(predicted_state).reshape((Ncy, Ncx, int(Nfy/Ncy), int(Nfx/Ncx)))
+predicted_state = np.transpose(predicted_state, (0, 2, 1, 3))
+predicted_state = predicted_state.reshape(Nfy,Nfx)
+phi_goal = np.array(phi_goal).reshape((Ncy, Ncx, int(Nfy/Ncy), int(Nfx/Ncx)))
+phi_goal = np.transpose(phi_goal, (0, 2, 1, 3))
+phi_goal = phi_goal.reshape(Nfy,Nfx)
+#for i in range(Ncy):
+#    phi_goal[i] = np.transpose(phi_goal[i])
+#phi_goal = np.array(phi_goal).reshape((Ncx * Nfy, int(Nfx/Ncx)))
+#phi_goal = np.array(phi_goal).reshape((Ncy,Ncx, int(Nfx/Ncx)))
 
 ############## Show Results ##############
 
@@ -214,10 +230,17 @@ error = np.linalg.norm(phi_goal - predicted_state)
 print("L2 error: ", error)
 
 # plot results
-plt.plot(predicted_state)
+'''plt.plot(predicted_state)
 plt.plot(phi_goal)
-plt.plot(predicted_state - phi_goal)
+plt.plot(predicted_state - phi_goal)'''
+heatmap = sns.heatmap(predicted_state)
+heatmap.invert_yaxis()
+plt.figure()
+heatmap = sns.heatmap(phi_goal)
+heatmap.invert_yaxis()
 
 plt.title("Desired vs Measured States")
 plt.legend(['Measured State', 'Desired State', 'error'])
 plt.show()
+
+qc1.draw('mpl', filename="2d-interpolator-circuit.png")
