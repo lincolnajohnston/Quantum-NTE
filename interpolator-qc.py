@@ -139,12 +139,13 @@ error = np.linalg.norm(phi_goal - predicted_state)
 print("L2 error: ", error)
 
 # plot results
+plt.plot(list(range(0, int(Nf/Nc) * len(coarse_sol), int(Nf/Nc))), coarse_sol_norm * coarse_sol, 'o')
 plt.plot(predicted_state)
 plt.plot(phi_goal)
 plt.plot(predicted_state - phi_goal)
 
 plt.title("Desired vs Measured States")
-plt.legend(['Measured State', 'Desired State', 'error'])
+plt.legend(['Input Coarse Grid', 'Measured State', 'Desired State', 'error'])
 plt.show()
 
-qc1.draw('mpl', filename="circuit1.png")
+qc1.draw('mpl', filename="1d-interpolator-circuit.png")

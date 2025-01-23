@@ -42,8 +42,8 @@ ncy = 2
 nc = ncx + ncy
 Ncx = int(math.pow(2,ncx))
 Ncy = int(math.pow(2,ncy))
-nfx = 2
-nfy = 3
+nfx = 3
+nfy = 4
 nf = nfx + nfy
 Nfx = int(math.pow(2,nfx))
 Nfy = int(math.pow(2,nfy))
@@ -123,7 +123,7 @@ M2_matrix = np.array([[(1 * 1) / (beta_20 * beta_20 * 1), (alpha_3 * 1) / (beta_
 
 # desired state: used for testing and finding error of quantum state
 phi_goal = (alpha_0 * np.kron(np.kron(coarse_sol, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), 1/math.pow(2,(dnx)/2) * np.ones(int(Nfx/Ncx))) +
-           perf_alpha_1 * np.kron(np.kron(coarse_sol_shift_x, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), perf_interp_state_x) + 
+            perf_alpha_1 * np.kron(np.kron(coarse_sol_shift_x, 1/math.pow(2,(dny)/2) * np.ones(int(Nfy/Ncy))), perf_interp_state_x) + 
             perf_alpha_2 * np.kron(np.kron(coarse_sol_shift_x, perf_interp_state_y), 1/math.pow(2,(dnx)/2) * np.ones(int(Nfx/Ncx))) + 
             perf_alpha_3 * np.kron(np.kron(coarse_sol_shift_x, perf_interp_state_y), perf_interp_state_x))
 
@@ -172,6 +172,8 @@ for i in range(nf):
     qc1.cswap(4*nf+1,i,2*nf+i) # second combination
 for i in range(nf):
     qc1.cswap(4*nf+2,i,3*nf+i) # third combination
+
+qc1.draw('mpl', filename="2d-interpolator-circuit.png")
 
 ############## Perform Measurements, Record Counts ##############
 
@@ -243,4 +245,3 @@ plt.title("Desired vs Measured States")
 plt.legend(['Measured State', 'Desired State', 'error'])
 plt.show()
 
-qc1.draw('mpl', filename="2d-interpolator-circuit.png")

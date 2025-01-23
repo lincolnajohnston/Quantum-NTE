@@ -122,7 +122,7 @@ class ProblemData:
                 y_val = (j + 0.5) * self.delta_y - y_range/2
 
                 # homogeneous fuel
-                #self.material_matrix[i,j] = "fuel"
+                self.material_matrix[i,j] = "fuel"
                 
                 # fuel at center
                 '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
@@ -134,12 +134,12 @@ class ProblemData:
                     self.material_matrix[i,j] = "water"'''
 
                 # 4 fuel pins
-                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
+                '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
                     # use fuel XSs
                     self.material_matrix[i,j] = "fuel"
                 else:
                     # use moderator XSs
-                    self.material_matrix[i,j] = "water"
+                    self.material_matrix[i,j] = "water"'''
         return
 
     def initialize_materials(self):
@@ -187,6 +187,41 @@ class ProblemData:
         #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
 
+    def diffusion_construct_L_F_matrices(self, A_mat_size):
+        fd_order = 2
+        L_matrix = np.zeros((A_mat_size, A_mat_size))
+        F_matrix = np.zeros((A_mat_size, A_mat_size))
+        for g in range(self.G):
+            for x_i in range(self.n_x):
+                for y_i in range(self.n_y):
+                    mat = self.materials[self.material_matrix[x_i,y_i]]
+                    i = self.unroll_index([g, x_i, y_i])
+                    if(x_i == 0): # left BC, normal vector = (-1,0)
+                        J_x_minus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
+                    else:
+                        J_x_minus = self.get_av_D("x",x_i-1,y_i, g) * self.delta_y
+                        L_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
+                    if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
+                        J_x_plus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
+                    else:
+                        J_x_plus = self.get_av_D("x",x_i,y_i, g) * self.delta_y
+                        L_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
+                    if(y_i == 0): # bottom BC, normal vector = (0,-1)
+                        J_y_minus = self.get_edge_D(x_i ,y_i, g,self.delta_y)* self.delta_x
+                    else:
+                        J_y_minus = self.get_av_D("y",y_i-1,x_i, g) * self.delta_x
+                        L_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
+                    if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
+                        J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
+                    else:
+                        J_y_plus = self.get_av_D("y",y_i,x_i, g) * self.delta_x
+                        L_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
+                    L_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
+                    for g_p in range(self.G): # group to group scattering and fission terms
+                        L_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g]) * self.delta_x * self.delta_y
+                        F_matrix[i,self.unroll_index([g_p, x_i, y_i])] += (mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
+        return L_matrix, F_matrix
+    
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2
         beta = 0.5
