@@ -17,13 +17,18 @@ from QPE import PhaseEstimation
 from qiskit import Aer
 import fable
 
+# from a vector of counts for each basis vector, return the normalized state representing the amplitudes for each of the basis vectors
+def getStateFromCounts(counts_vec):
+    norm = math.sqrt(np.sum(counts_vec))
+    return np.sqrt(counts_vec) / norm
+
 #sim_path = 'simulations/LCU_8G_diffusion/'
 sim_path = 'simulations/test_1G_diffusion/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 A_mat_size = (data.n_x) * (data.n_y) * data.G
 A_bits = math.ceil(math.log2(A_mat_size))
-n_eig_eval_bits = 5  # number of bits to represent the final eigenvalue
+n_eig_eval_bits = 6  # number of bits to represent the final eigenvalue
 A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
 # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
 print("A is hermitian: ", ishermitian(A_matrix))
@@ -45,7 +50,7 @@ eigenvector_input = eigenvector_input/np.linalg.norm(eigenvector_input) # normal
 
 sqrtB = sqrtm(B_matrix)
 sqrtB_inv = np.linalg.inv(sqrtB)
-A_squiggle = sqrtB_inv @ A_matrix @ sqrtB
+A_squiggle = sqrtB_inv @ A_matrix @ sqrtB_inv
 logn = fable.get_logn(sqrtB)
 block_encode_bits = 2*logn+1
 qc = QuantumCircuit(block_encode_bits + n_eig_eval_bits, block_encode_bits + n_eig_eval_bits)
@@ -55,7 +60,7 @@ eigvec_input_state = StatePreparation(eigenvector_input)
 qc.append(eigvec_input_state, list(range(n_eig_eval_bits, n_eig_eval_bits + A_bits)))
 
 #A_times_eigenvector = A_matrix @ (eigenvector_input) / A_mat_size
-num_iter = 1000000
+num_iter = 10000
 
 # block encoding of B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
 # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(1/2) * phi_0
@@ -97,6 +102,9 @@ if method == "statevector":
         state_vec_collpased[i] = math.sqrt(state_vec_collpased[i])
 
 elif method == "counts":
+    # measure eigenvalue qubits
+    #qc.measure(list(range(n_eig_eval_bits)), list(range(n_eig_eval_bits)))
+
     # measure qubits used for block encoding
     qc.measure(list(range(n_eig_eval_bits + A_bits, n_eig_eval_bits + block_encode_bits)), list(range(n_eig_eval_bits + A_bits, n_eig_eval_bits + block_encode_bits)))
 
@@ -112,19 +120,19 @@ elif method == "counts":
     #plot_histogram(counts, title='Bell-State counts')
 
     # rearrange counts of eigenvector qubits to be in order
-    test = '{:b}'.format(10).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0')
+    test = '{:b}'.format(10).zfill(block_encode_bits).ljust(qc.num_qubits,'0')
     test2 = counts[test]
-    counts_dict = {'{:b}'.format(i).zfill(A_bits):counts['{:b}'.format(i).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0')] if '{:b}'.format(i).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0') in counts else 0 for i in range(A_mat_size)}
+    counts_dict = {'{:b}'.format(i).zfill(A_bits):counts['{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0')] if '{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0') in counts else 0 for i in range(A_mat_size)}
     
 
 qc.draw('mpl', filename="test_block_encoding.png")
 
 print(counts_dict)
-test = counts['{:b}'.format(4).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0')]
+#test = counts['{:b}'.format(4).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0')]
 # TODO: Think I might have normalized this wrong, still getting answers slightly wrong
-predicted_state_from_counts = [counts['{:b}'.format(i).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0')] if '{:b}'.format(i).zfill(n_eig_eval_bits + A_bits).ljust(qc.num_qubits,'0') in counts else 0 for i in range(A_mat_size)]
-normalizer = np.linalg.norm(np.sqrt(predicted_state_from_counts))
-predicted_state_from_counts = np.sqrt(predicted_state_from_counts)/normalizer
+counts_of_A_matrix = np.array([counts['{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0')] if '{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0') in counts else 0 for i in range(A_mat_size)])
+predicted_state_from_counts = getStateFromCounts(counts_of_A_matrix)
+
 print("predicted_state: ", predicted_state_from_counts)
 print("eigenvector input: ", eigenvector_input)
 
