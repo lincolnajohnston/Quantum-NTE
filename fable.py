@@ -182,7 +182,7 @@ def fable(a, circ = None, epsilon=None):
     if(circ == None):
         circ = QuantumCircuit(2*logn + 1)
     else:
-        circ = circ.reverse_bits()
+        circ.reverse_bits()
         assert(circ.num_qubits >= 2*logn + 1)
 
     # diffusion on row indices
@@ -190,7 +190,7 @@ def fable(a, circ = None, epsilon=None):
         circ.h(i+1)
 
     # matrix oracle
-    circ = circ.compose(OA)
+    circ.compose(OA)
 
     # swap register
     for i in range(logn):
@@ -201,6 +201,6 @@ def fable(a, circ = None, epsilon=None):
         circ.h(i+1)
 
     # reverse bits because of little-endiannes
-    circ = circ.reverse_bits()
+    circ.reverse_bits()
 
     return circ, alpha

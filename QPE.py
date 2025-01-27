@@ -15,8 +15,11 @@
 from typing import Optional
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister
+from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 
 from qiskit.circuit.library import QFT
+import numpy as np
+import fable
 
 
 class PhaseEstimation(QuantumCircuit):
@@ -52,7 +55,9 @@ class PhaseEstimation(QuantumCircuit):
     def __init__(
         self,
         num_evaluation_qubits: int,
-        unitary: QuantumCircuit,
+        #unitary: QuantumCircuit,
+        #unitary_gate: UnitaryGate,
+        A_matrix,
         iqft: Optional[QuantumCircuit] = None,
         name: str = "QPE",
         circuit: QuantumCircuit = None
@@ -85,7 +90,8 @@ class PhaseEstimation(QuantumCircuit):
         if(circuit == None):
             circuit = QuantumCircuit(qr_eval, qr_state, name=name)
         else:
-            assert(circuit.num_qubits >= unitary.num_qubits + num_evaluation_qubits)
+            #assert(circuit.num_qubits >= unitary_gate.num_qubits + num_evaluation_qubits)
+            print('circuit already made')
 
         if iqft is None:
             iqft = QFT(num_evaluation_qubits, inverse=True, do_swaps=False).reverse_bits()
@@ -93,8 +99,11 @@ class PhaseEstimation(QuantumCircuit):
         for i in range(num_evaluation_qubits):
             circuit.h(i)  # hadamards on evaluation qubits
 
-        for j in range(num_evaluation_qubits):  # controlled powers
-            circuit.compose(unitary.power(2**j).control(), qubits=[j] + list(range(num_evaluation_qubits,unitary.num_qubits + num_evaluation_qubits)), inplace=True)
+        #for j in range(num_evaluation_qubits):  # controlled powers
+        #    circuit.compose(unitary.power(2**j).control(), qubits=[j] + list(range(num_evaluation_qubits,unitary.num_qubits + num_evaluation_qubits)), inplace=True)
+        #for j in range(num_evaluation_qubits):
+            #circuit.append(unitary_gate.control(), [j] + list(range(num_evaluation_qubits, unitary_gate.num_qubits + num_evaluation_qubits)))
+        fable.fable(A_matrix, circuit, epsilon=0)
 
         circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
 

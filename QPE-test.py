@@ -70,13 +70,13 @@ qc, alpha_sqrtB = fable.fable(sqrtB, qc, epsilon=0)
 # block encoding of B^(-1/2)*A*B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
 # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(-1/2)*A*B^(1/2) * (arbitrary_phi)
 # TODO: FIX THIS, not done correctly here because I'm being lazy, more efficient way to block encode this from Changpeng paper
-A_squiggle_qc, alpha_A_squiggle = fable.fable(A_squiggle, epsilon=0)
+#A_squiggle_qc, alpha_A_squiggle = fable.fable(A_squiggle, epsilon=0)
 
 # do QPE
-qpe = PhaseEstimation(n_eig_eval_bits, A_squiggle_qc, circuit=qc)
+#qpe = PhaseEstimation(n_eig_eval_bits, A_squiggle, circuit=qc)
 
 # do B^(-1/2) on the eigenvector state to return it to its original state
-qc, alpha_sqrtB_inv = fable.fable(sqrtB_inv, qc, epsilon=0)
+#qc, alpha_sqrtB_inv = fable.fable(sqrtB_inv, qc, epsilon=0)
 
 
 method = "counts"
@@ -120,8 +120,8 @@ elif method == "counts":
     #plot_histogram(counts, title='Bell-State counts')
 
     # rearrange counts of eigenvector qubits to be in order
-    test = '{:b}'.format(10).zfill(block_encode_bits).ljust(qc.num_qubits,'0')
-    test2 = counts[test]
+    #test = '{:b}'.format(10).zfill(block_encode_bits).ljust(qc.num_qubits,'0')
+    #test2 = counts[test]
     counts_dict = {'{:b}'.format(i).zfill(A_bits):counts['{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0')] if '{:b}'.format(i).zfill(block_encode_bits).ljust(qc.num_qubits,'0') in counts else 0 for i in range(A_mat_size)}
     
 
