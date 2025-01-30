@@ -16,9 +16,11 @@ from typing import Optional
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
+import LcuFunctions
 
 from qiskit.circuit.library import QFT
 import numpy as np
+import math
 import fable
 
 
@@ -58,6 +60,7 @@ class PhaseEstimation(QuantumCircuit):
         #unitary: QuantumCircuit,
         #unitary_gate: UnitaryGate,
         A_matrix,
+        A_bits,
         iqft: Optional[QuantumCircuit] = None,
         name: str = "QPE",
         circuit: QuantumCircuit = None
@@ -98,12 +101,21 @@ class PhaseEstimation(QuantumCircuit):
 
         for i in range(num_evaluation_qubits):
             circuit.h(i)  # hadamards on evaluation qubits
-
-        #for j in range(num_evaluation_qubits):  # controlled powers
-        #    circuit.compose(unitary.power(2**j).control(), qubits=[j] + list(range(num_evaluation_qubits,unitary.num_qubits + num_evaluation_qubits)), inplace=True)
-        #for j in range(num_evaluation_qubits):
-            #circuit.append(unitary_gate.control(), [j] + list(range(num_evaluation_qubits, unitary_gate.num_qubits + num_evaluation_qubits)))
-        fable.fable(A_matrix, circuit, epsilon=0)
+        
+        # TODO: make this more realistic, need to have a hermitian matrix as input, block encode it, then transform it to the exponential of that matrix, the control of which will be applied in this for loop
+        if LcuFunctions.is_unitary(A_matrix):
+            A_control = np.kron(np.array([[1,0],[0,0]]),np.eye(int(math.pow(2,A_bits)))) + np.kron(np.array([[0,0],[0,1]]),A_matrix)
+            for j in range(num_evaluation_qubits):
+                for k in range(2**j):
+                    A_control_gate = UnitaryGate(A_control)
+                    circuit.append(A_control_gate, list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)) + [j])
+        else:
+            for j in range(num_evaluation_qubits):
+                for k in range(2**j):
+                    fable.fable(A_matrix, circuit, epsilon=0, max_i = circuit.num_qubits-1, c_index=j)
+        #control_A = UnitaryGate(A_matrix).control()
+        #circuit.append(control_A, [0] + list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)))
+        #circuit.append(A_unitary, list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)))
 
         circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
 

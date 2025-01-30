@@ -5,6 +5,7 @@
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Qubit
+from qiskit.circuit.library import RYGate, RZGate, CXGate
 
 def gray_code(b):
     '''Gray code of b.
@@ -61,7 +62,7 @@ def compute_control(i, n):
     return 2*n - int(np.log2(gray_code(i-1) ^ gray_code(i)))
 
 
-def compressed_uniform_rotation(a, ry=True):
+def compressed_uniform_rotation(a, max_i, c_index, ry=True):
     '''Compute a compressed uniform rotation circuit based on the thresholded
     vector a.
 
@@ -75,7 +76,7 @@ def compressed_uniform_rotation(a, ry=True):
             A qiskit circuit representing the compressed uniform rotation.
     '''
     n = int(np.log2(a.shape[0])/2)
-    circ = QuantumCircuit(2*n + 1)
+    circ = QuantumCircuit(max_i+1)
 
     i = 0
     while i < a.shape[0]:
@@ -84,9 +85,19 @@ def compressed_uniform_rotation(a, ry=True):
         # add the rotation gate
         if a[i] != 0:
             if ry:
-                circ.ry(a[i], 0)
+                if c_index == -1:
+                    ry_gate = RYGate(a[i])
+                    circ.append(ry_gate, [max_i-0])
+                else:
+                    ry_gate = RYGate(a[i]).control()
+                    circ.append(ry_gate, [c_index, max_i-0])
             else:
-                circ.rz(a[i], 0)
+                if c_index == -1:
+                    rz_gate = RZGate(a[i])
+                    circ.append(rz_gate, [max_i-0])
+                else:
+                    rz_gate = RZGate(a[i]).control()
+                    circ.append(rz_gate, [c_index, max_i-0])
 
         # loop over sequence of consecutive zeros
         while True:
@@ -100,7 +111,12 @@ def compressed_uniform_rotation(a, ry=True):
         # add CNOT gates
         for j in range(1, 2*n+1):
             if parity_check & (1 << (j-1)):
-                circ.cx(j, 0)
+                if c_index == -1:
+                    ccx_gate = CXGate()
+                    circ.append(ccx_gate, [max_i-j, max_i-0])
+                else:
+                    ccx_gate = CXGate().control()
+                    circ.append(ccx_gate, [c_index, max_i-j, max_i-0])
 
     return circ
 
@@ -114,7 +130,7 @@ def get_logn(a):
     return logn
 
 
-def fable(a, circ = None, epsilon=None):
+def fable(a, circ = None, epsilon=None, max_i=0, c_index=-1):
     '''FABLE - Fast Approximate BLock Encodings.
 
     Args:
@@ -141,6 +157,8 @@ def fable(a, circ = None, epsilon=None):
     if n < 2**logn:
         a = np.pad(a, ((0, 2**logn - n), (0, 2**logn - n)))
         n = 2**logn
+    if max_i == 0:
+        max_i = 2*logn
 
     a = np.ravel(a)
 
@@ -154,7 +172,7 @@ def fable(a, circ = None, epsilon=None):
         if epsilon:
             a[abs(a) <= epsilon] = 0
         # compute circuit
-        OA = compressed_uniform_rotation(a)
+        OA = compressed_uniform_rotation(a, max_i, c_index)
     else:  # complex data
         # magnitude
         a_m = gray_permutation(
@@ -175,32 +193,32 @@ def fable(a, circ = None, epsilon=None):
             a_p[abs(a_p) <= epsilon] = 0
 
         # compute circuit
-        OA = compressed_uniform_rotation(a_m).compose(
-                compressed_uniform_rotation(a_p, ry=False)
+        OA = compressed_uniform_rotation(a_m, max_i, c_index).compose(
+                compressed_uniform_rotation(a_p, max_i, c_index, ry=False)
             )
 
     if(circ == None):
         circ = QuantumCircuit(2*logn + 1)
     else:
-        circ.reverse_bits()
+        #circ.reverse_bits()
         assert(circ.num_qubits >= 2*logn + 1)
 
     # diffusion on row indices
     for i in range(logn):
-        circ.h(i+1)
+        circ.h(max_i-(i+1)) if c_index == -1 else circ.ch(c_index, max_i-(i+1))
 
     # matrix oracle
-    circ.compose(OA)
+    circ.compose(OA, inplace=True)
 
     # swap register
     for i in range(logn):
-        circ.swap(i+1,  i+logn+1)
+        circ.swap(max_i-(i+1),  max_i-(i+logn+1)) if c_index == -1 else circ.cswap(c_index, max_i-(i+1),  max_i-(i+logn+1))
 
     # diffusion on row indices
     for i in range(logn):
-        circ.h(i+1)
+        circ.h(max_i-(i+1)) if c_index == -1 else circ.ch(c_index, max_i-(i+1))
 
     # reverse bits because of little-endiannes
-    circ.reverse_bits()
+    #circ.reverse_bits()
 
     return circ, alpha
