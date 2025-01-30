@@ -54,6 +54,7 @@ def apply_unitary_to_qubits(n_qubits, new_order, unitary):
 
     return final_matrix
 
+# create the QFT unitary matrix then invert it (conjugate transpose it)
 def get_IQFT_matrix(n_bits):
     mat_size = int(math.pow(2,n_bits))
     omega = cmath.exp(2j*math.pi/mat_size)
@@ -83,7 +84,6 @@ print("B is hermitian: ", ishermitian(B_matrix))
 A_eigenvalues, A_eigenvectors = np.linalg.eig(A_matrix)
 B_eigenvalues, B_eigenvectors = np.linalg.eig(B_matrix)
 
-A_sing_vals = svdvals(A_matrix)
 eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
 eig_index = 0 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenmode
 
@@ -120,9 +120,6 @@ state_vec = state_prep_unitary @ state_vec
 print("state prep time: ", time.time() - last_time)
 last_time = time.time()
 
-#A_times_eigenvector = A_matrix @ (eigenvector_input) / A_mat_size
-num_iter = 1000000
-
 # apply sqrtB gate, normalize state_vec because sqrtB might not be unitary
 state_vec = np.kron(sqrtB,np.eye(n_eig_eval_states)) @ state_vec
 state_vec = state_vec / np.linalg.norm(state_vec)
@@ -130,38 +127,32 @@ state_vec = state_vec / np.linalg.norm(state_vec)
 print("sqrtB time: ", time.time() - last_time)
 last_time = time.time()
 
-# do QPE on A_squiggle_pow
+########## do QPE on A_squiggle_pow ##########
+
 # apply the Hadamards
 H = 1/math.sqrt(2) * np.array([[1, 1],[1,-1]])
-combined_hadamard_gate = 1
+combined_hadamard_gate = np.eye(A_mat_size)
 for i in range(n_eig_eval_bits):
     combined_hadamard_gate = np.kron(combined_hadamard_gate, H)
-full_hadamard_unitary = apply_unitary_to_qubits(n_bits, list(range(A_bits, A_bits + n_eig_eval_bits)) + list(range(A_bits)), combined_hadamard_gate)
-state_vec = full_hadamard_unitary @ state_vec
+state_vec = combined_hadamard_gate @ state_vec
 
 print("Hadamard time: ", time.time() - last_time)
 last_time = time.time()
 
 # apply the controlled unitaries
-control_A_squiggle_pow = np.kron(np.array([[1,0],[0,0]]), np.eye(A_mat_size)) + np.kron(np.array([[0,0],[0,1]]), A_squiggle_pow)
 for c_i in range(n_bits-1,A_bits-1,-1):
-    # apply controlled unitaries one at a time (how we are going to actually do it in a quantum computer)
-    #for j in range(int(math.pow(2,n_bits-c_i-1))):
-    #    full_control_unitary = apply_unitary_to_qubits(n_bits, [c_i] + list(range(A_bits)) + list(range(A_bits, c_i)) + list(range(c_i + 1, n_bits)), control_A_squiggle_pow)
-    #    state_vec = full_control_unitary @ state_vec
-    # apply the power of the unitaries as a unitary itself
-    full_control_unitary = apply_unitary_to_qubits(n_bits, [c_i] + list(range(A_bits)) + list(range(A_bits, c_i)) + list(range(c_i + 1, n_bits)), np.linalg.matrix_power(control_A_squiggle_pow, int(math.pow(2,n_bits-c_i-1))))
+    A_squiggle_pow_pow = np.linalg.matrix_power(A_squiggle_pow, int(math.pow(2,n_bits-c_i-1)))
+    t0 = np.kron(np.eye(int(math.pow(2,c_i))), np.array([[1,0],[0,0]]))
+    t1 = np.kron(A_squiggle_pow_pow, np.kron(np.eye(int(math.pow(2,c_i-A_bits))), np.array([[0,0],[0,1]])))
+    full_control_unitary = np.kron(t0 + t1, np.eye(int(math.pow(2,n_bits - c_i - 1))))
     state_vec = full_control_unitary @ state_vec
 
 print("controlled unitary time: ", time.time() - last_time)
 last_time = time.time()
 
-# do the IQFT
-test = get_IQFT_matrix(3)
-IQFT_mat = get_IQFT_matrix(n_eig_eval_bits)
-full_iqft_unitary = apply_unitary_to_qubits(n_bits, list(range(A_bits, A_bits + n_eig_eval_bits)) + list(range(A_bits)), IQFT_mat)
-#full_iqft_unitary = apply_unitary_to_qubits(n_bits, list(range(A_bits + n_eig_eval_bits - 1, A_bits - 1, -1)) + list(range(A_bits)), IQFT_mat)
-state_vec = full_iqft_unitary @ state_vec
+########## do IQFT ##########
+IQFT_mat = np.kron(np.eye(A_mat_size), get_IQFT_matrix(n_eig_eval_bits))
+state_vec = IQFT_mat @ state_vec
 
 print("IQFT time: ", time.time() - last_time)
 last_time = time.time()
@@ -175,6 +166,7 @@ print("circuits made")
 print("ssqrtB_inv time: ", time.time() - last_time)
 last_time = time.time()
 
+########## effectively do measurement of the register containing the eigenvalue and find the most likely eigenvalue the state will collapse to ##########
 state_vec_collapsed = np.zeros(n_eig_eval_states)
 for i in range(n_eig_eval_states):
     for j in range(A_mat_size):
