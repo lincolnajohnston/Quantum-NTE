@@ -113,9 +113,6 @@ class PhaseEstimation(QuantumCircuit):
             for j in range(num_evaluation_qubits):
                 for k in range(2**j):
                     fable.fable(A_matrix, circuit, epsilon=0, max_i = circuit.num_qubits-1, c_index=j)
-        #control_A = UnitaryGate(A_matrix).control()
-        #circuit.append(control_A, [0] + list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)))
-        #circuit.append(A_unitary, list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)))
 
         circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
 
