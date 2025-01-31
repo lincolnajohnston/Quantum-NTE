@@ -105,8 +105,7 @@ class PhaseEstimation(QuantumCircuit):
         # TODO: make this more realistic, need to have a hermitian matrix as input, block encode it, then transform it to the exponential of that matrix, the control of which will be applied in this for loop
         if LcuFunctions.is_unitary(A_matrix):
             A_control = np.kron(np.array([[1,0],[0,0]]),np.eye(int(math.pow(2,A_bits)))) + np.kron(np.array([[0,0],[0,1]]),A_matrix)
-            #for j in range(num_evaluation_qubits):
-            for j in range(1):
+            for j in range(num_evaluation_qubits):
                 for k in range(2**j):
                     A_control_gate = UnitaryGate(A_control)
                     circuit.append(A_control_gate, list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)) + [j])

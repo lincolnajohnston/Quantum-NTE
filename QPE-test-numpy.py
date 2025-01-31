@@ -74,7 +74,7 @@ input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 A_mat_size = (data.n_x) * (data.n_y) * data.G
 A_bits = math.ceil(math.log2(A_mat_size))
-n_eig_eval_bits = 6  # number of bits to represent the final eigenvalue
+n_eig_eval_bits = 5  # number of bits to represent the final eigenvalue
 n_eig_eval_states = int(math.pow(2,n_eig_eval_bits))
 A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
 # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are

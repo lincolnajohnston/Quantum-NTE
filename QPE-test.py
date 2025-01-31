@@ -28,7 +28,7 @@ input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 A_mat_size = (data.n_x) * (data.n_y) * data.G
 A_bits = math.ceil(math.log2(A_mat_size))
-n_eig_eval_bits = 5  # number of bits to represent the final eigenvalue
+n_eig_eval_bits = 7  # number of bits to represent the final eigenvalue
 n_eig_eval_states = int(math.pow(2,n_eig_eval_bits))
 A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
 # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
@@ -81,7 +81,7 @@ qc, alpha_sqrtB = fable.fable(sqrtB, qc, epsilon=0, max_i = qc.num_qubits-1)
 qpe = PhaseEstimation(n_eig_eval_bits, A_squiggle_pow, A_bits, circuit=qc)
 
 # do B^(-1/2) on the eigenvector state to return it to its original state
-qc, alpha_sqrtB_inv = fable.fable(sqrtB_inv, qc, epsilon=0, max_i = qc.num_qubits-1)
+#qc, alpha_sqrtB_inv = fable.fable(sqrtB_inv, qc, epsilon=0, max_i = qc.num_qubits-1)
 print("circuits made")
 
 method = "statevector"
@@ -115,6 +115,13 @@ if method == "statevector":
         state_vec_collapsed[i] = math.sqrt(state_vec_collapsed[i])'''
 
     state_vec_collapsed = state_vec_collapsed / np.linalg.norm(state_vec_collapsed)
+    index_max = max(range(len(state_vec_collapsed)), key=state_vec_collapsed.__getitem__)
+    max_index_binary = ('{:b}'.format(index_max).zfill(n_eig_eval_bits))
+    eig_result_i = 0
+    for i in range(n_eig_eval_bits):
+        eig_result_i += int(max_index_binary[i]) * int(math.pow(2,i))
+    print("eigenvalue found: ", (eig_result_i) / n_eig_eval_states)
+    print("expected eigenvalue: ", eigvals[eig_index])
 
 elif method == "counts":
     # measure eigenvalue qubits
