@@ -16,6 +16,12 @@ from qiskit.circuit.library import StatePreparation
 from QPE import PhaseEstimation
 from qiskit import Aer
 import fable
+########## Comments/Thoughts ##########
+# What needs to be done, in approximate order
+# -solve coarse matrix, interpolate eigenvector to fine mesh, run the rest of the algorithm on it
+# -do better block encoding on B^(1/2)
+# -implement the block encoding of A_squiggle in the QPE correctly, apply the exponent of A_squiggle quantumly, not classically
+
 ########## Functions ##########
 
 # from a vector of counts for each basis vector, return the normalized state representing the amplitudes for each of the basis vectors
@@ -26,17 +32,35 @@ def getStateFromCounts(counts_vec):
 ########## Read input, set up variables ##########
 
 #sim_path = 'simulations/LCU_8G_diffusion/'
-sim_path = 'simulations/test_1G_diffusion/'
-input_file = 'input.txt'
-data = ProblemData.ProblemData(sim_path + input_file)
-A_mat_size = (data.n_x) * (data.n_y) * data.G
-A_bits = math.ceil(math.log2(A_mat_size))
-n_eig_eval_bits = 7  # number of bits to represent the final eigenvalue
+coarse_sim_path = 'simulations/test_1G_diffusion_coarse/'
+fine_sim_path = 'simulations/test_1G_diffusion_fine/'
+coarse_input_file = 'input.txt'
+fine_input_file = 'input.txt'
+coarse_data = ProblemData.ProblemData(coarse_sim_path + coarse_input_file)
+fine_data = ProblemData.ProblemData(fine_sim_path + fine_input_file)
+A_coarse_mat_size = (coarse_data.n_x) * (coarse_data.n_y) * coarse_data.G
+A_coarse_x_bits = math.ceil(math.log2(coarse_data.n_x))
+A_coarse_y_bits = math.ceil(math.log2(coarse_data.n_y))
+A_coarse_G_bits = math.ceil(math.log2(coarse_data.G))
+A_coarse_bits = A_coarse_x_bits + A_coarse_y_bits + A_coarse_G_bits
+A_mat_size = (fine_data.n_x) * (fine_data.n_y) * fine_data.G
+A_x_bits = math.ceil(math.log2(fine_data.n_x))
+A_y_bits = math.ceil(math.log2(fine_data.n_y))
+A_G_bits = math.ceil(math.log2(fine_data.G))
+A_bits = A_x_bits + A_y_bits + A_G_bits
+interpolation_bits = A_bits - A_coarse_bits
+n_eig_eval_bits = 5  # number of bits to represent the final eigenvalue
 n_eig_eval_states = int(math.pow(2,n_eig_eval_bits))
 
 # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
 # If hermitian, then QPE will output their eigenvalues, if not, need to make A and B hermitian (using one more qubit)
-A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
+A_matrix_coarse, B_matrix_coarse = coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+A_eigenvalues_coarse, A_eigenvectors_coarse = np.linalg.eig(A_matrix_coarse)
+B_eigenvalues_coarse, B_eigenvectors_coarse = np.linalg.eig(B_matrix_coarse)
+print("A is hermitian: ", ishermitian(A_matrix_coarse))
+print("B is hermitian: ", ishermitian(B_matrix_coarse))
+print("B is positive definite: ", np.all(B_eigenvalues_coarse > 0))
+A_matrix, B_matrix = fine_data.diffusion_construct_L_F_matrices(A_mat_size)
 A_eigenvalues, A_eigenvectors = np.linalg.eig(A_matrix)
 B_eigenvalues, B_eigenvectors = np.linalg.eig(B_matrix)
 print("A is hermitian: ", ishermitian(A_matrix))
@@ -44,6 +68,7 @@ print("B is hermitian: ", ishermitian(B_matrix))
 print("B is positive definite: ", np.all(B_eigenvalues > 0))
 
 # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
+eigvals_coarse, eigvecs_coarse = eigh(A_matrix, B_matrix, eigvals_only=False)
 eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
 eig_index = 0 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenmode
 
@@ -51,7 +76,7 @@ eig_index = 0 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenm
 
 # eigenvector_input is the state that is fed into the quantum circuit
 # TODO: make eigenvector input the interpolation of the coarse mesh eigvec
-eigenvector_input = eigvecs[:,eig_index]
+eigenvector_input = A_eigenvectors_coarse[:,eig_index]
 eigenvector_input = eigenvector_input/np.linalg.norm(eigenvector_input) # normalize into quantum state
 
 # Create the sqrtB, sqrtB_inv, and A_squiggle matrices. Cheating here for now by finding them classically.
@@ -69,9 +94,19 @@ logn = fable.get_logn(sqrtB)
 block_encode_bits = 2*logn+1
 qc = QuantumCircuit(block_encode_bits + n_eig_eval_bits, block_encode_bits + n_eig_eval_bits)
 
-# put the quantum circuit in the phi_0 state
+# put the quantum circuit in the fine phi_0 state
 eigvec_input_state = StatePreparation(eigenvector_input)
-qc.append(eigvec_input_state, list(range(n_eig_eval_bits, n_eig_eval_bits + A_bits)))
+x_bits_diff = A_x_bits - A_coarse_x_bits
+y_bits_diff = A_y_bits - A_coarse_y_bits
+G_bits_diff = A_G_bits - A_coarse_G_bits
+test = list(range(n_eig_eval_bits + G_bits_diff, n_eig_eval_bits + A_G_bits)) + list(range(n_eig_eval_bits + A_G_bits + y_bits_diff, n_eig_eval_bits + A_G_bits + A_y_bits)) + list(range(n_eig_eval_bits + A_G_bits + A_y_bits + x_bits_diff, n_eig_eval_bits + A_bits))
+qc.append(eigvec_input_state, list(range(n_eig_eval_bits + x_bits_diff, n_eig_eval_bits + A_x_bits)) + list(range(n_eig_eval_bits + A_x_bits + y_bits_diff, n_eig_eval_bits + A_x_bits + A_y_bits)) + list(range(n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff, n_eig_eval_bits + A_bits)))
+for i in range(n_eig_eval_bits, n_eig_eval_bits + x_bits_diff):
+    qc.h(i)
+for i in range(n_eig_eval_bits + A_x_bits, n_eig_eval_bits + A_x_bits + y_bits_diff):
+    qc.h(i)
+for i in range(n_eig_eval_bits + A_x_bits + A_y_bits, n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff):
+    qc.h(i)
 
 # block encoding of B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
 # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(1/2) * phi_0
@@ -104,6 +139,7 @@ if method == "statevector":
 
     # print statevector of non-junk qubits
     state_vec = job_result.get_statevector(qc).data
+    eigvec_collapsed = state_vec[0:int(math.pow(2,n_eig_eval_bits+A_bits)):int(math.pow(2,n_eig_eval_bits))]
     state_vec_dict = {'{:b}'.format(i).zfill(qc.num_qubits):round(state_vec[i],5) for i in range(len(state_vec))}
     N_eig_eval = int(math.pow(2,n_eig_eval_bits))
     state_vec_collapsed = np.zeros(N_eig_eval)
