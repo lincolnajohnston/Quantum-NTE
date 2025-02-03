@@ -22,7 +22,18 @@ from qiskit.circuit.library import QFT
 import numpy as np
 import math
 import fable
+import cmath
 
+# create the QFT unitary matrix then invert it (conjugate transpose it), should be the same as the built-in Qiskit function, but have this here for testing
+def get_IQFT_matrix(n_bits):
+    mat_size = int(math.pow(2,n_bits))
+    omega = cmath.exp(2j*math.pi/mat_size)
+    final_mat = np.ones((mat_size,mat_size), dtype=np.complex_)
+    for i in range(mat_size):
+        final_mat[:,i] *= omega ** i
+    for i in range(mat_size):
+        final_mat[i,:]  = np.power(final_mat[i,:],i)
+    return (1/math.sqrt(mat_size)) * final_mat.conj()
 
 class PhaseEstimation(QuantumCircuit):
     r"""Phase Estimation circuit.
@@ -106,6 +117,7 @@ class PhaseEstimation(QuantumCircuit):
         if LcuFunctions.is_unitary(A_matrix):
             A_control = np.kron(np.array([[1,0],[0,0]]),np.eye(int(math.pow(2,A_bits)))) + np.kron(np.array([[0,0],[0,1]]),A_matrix)
             for j in range(num_evaluation_qubits):
+            #for j in range(1):
                 for k in range(2**j):
                     A_control_gate = UnitaryGate(A_control)
                     circuit.append(A_control_gate, list(range(num_evaluation_qubits, num_evaluation_qubits + A_bits)) + [j])
@@ -114,7 +126,10 @@ class PhaseEstimation(QuantumCircuit):
                 for k in range(2**j):
                     fable.fable(A_matrix, circuit, epsilon=0, max_i = circuit.num_qubits-1, c_index=j)
 
-        circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
+        # TODO: figure out what the issue with my application of the built-in IQFT gate is, why I can't seem to get the right answer when using it
+        #circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
+        IQFT_gate = UnitaryGate(get_IQFT_matrix(num_evaluation_qubits))
+        circuit.append(IQFT_gate, list(range(num_evaluation_qubits)))
 
         super().__init__(*circuit.qregs, name=circuit.name)
         #self.compose(circuit.to_gate(), qubits=self.qubits, inplace=True)

@@ -70,7 +70,7 @@ last_time = time.time()
 
 #sim_path = 'simulations/LCU_8G_diffusion/'
 sim_path = 'simulations/test_1G_diffusion/'
-input_file = 'input.txt'
+input_file = 'input-exact-eigenvalue.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 A_mat_size = (data.n_x) * (data.n_y) * data.G
 A_bits = math.ceil(math.log2(A_mat_size))
@@ -85,7 +85,7 @@ A_eigenvalues, A_eigenvectors = np.linalg.eig(A_matrix)
 B_eigenvalues, B_eigenvectors = np.linalg.eig(B_matrix)
 
 eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
-eig_index = 0 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenmode
+eig_index = 1 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenmode
 
 print("B is positive definite: ", np.all(B_eigenvalues > 0))
 #print(A_matrix)
@@ -176,3 +176,4 @@ for i in range(n_eig_eval_states):
 index_max = max(range(len(state_vec_collapsed)), key=state_vec_collapsed.__getitem__)
 print("eigenvalue found: ", (index_max) / n_eig_eval_states)
 print("expected eigenvalue: ", eigvals[eig_index])
+print("probability of getting this eigenvalue on one measurement: ", state_vec_collapsed[index_max] ** 2)
