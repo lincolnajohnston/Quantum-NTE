@@ -46,7 +46,7 @@ class ProblemData:
             self.right_y_I_1 = np.zeros(self.n_pts_y) * right_I_1
             self.left_y_I_1 = np.zeros(self.n_pts_y) * left_I_1
         elif self.sim_method == "diffusion":
-            self.beta = 0.5 # related to albedo constant
+            self.beta = 0.5 # related to albedo constant, beta=0.5 corresponds to alpha=0 (vacuum BC) and beta=0 correpsonds to alpha=1 (reflective BC)
 
     # return B.C.s at edge of problem domain
     def get_I_1_value(self, index):
@@ -224,7 +224,7 @@ class ProblemData:
     
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2
-        beta = 0.5
+        beta = 0.5 # hardcoded vacuum boundary condition
         phi_2_offset = self.G * self.n_x * self.n_y
         A_matrix = np.zeros((A_mat_size, A_mat_size))
         b_vector = np.zeros((A_mat_size))

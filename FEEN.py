@@ -64,8 +64,12 @@ class FEEN():
 
         # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
         # If hermitian, then QPE will output their eigenvalues, if not, need to make A and B hermitian (using one more qubit)
-        A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-        A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+        if self.coarse_data.sim_method == "sp3":
+            A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
+            A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
+        else:
+            A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+            A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
         eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
@@ -229,14 +233,25 @@ class FEEN():
 
 
         if(self.plot_results):
-            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5)
-            ax.invert_yaxis()
-            plt.title("Input (Coarse) Solution")
-            plt.figure()
+            fig, (ax1, ax2) = plt.subplots(1,2)
+            heatmap_min = min(np.min(np.abs(input_state_collapsed)), np.min(np.abs(eigenvector_fine)))
+            heatmap_max = max(np.max(np.abs(input_state_collapsed)), np.max(np.abs(eigenvector_fine)))
 
-            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5)
+            xticks = np.round(np.array(range(self.fine_data.n_x))*self.fine_data.delta_x - (self.fine_data.n_x - 1)*self.fine_data.delta_x/2,3)
+            yticks = np.round(np.array(range(self.fine_data.n_y))*self.fine_data.delta_y - (self.fine_data.n_y - 1)*self.fine_data.delta_y/2,3)
+
+            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax1, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax1.set_xlabel("x (cm)")
+            ax1.set_ylabel("y (cm)")
             ax.invert_yaxis()
-            plt.title("Actual Fine Solution")
+            #plt.title("Input (Coarse) Solution")
+            #plt.figure()
+
+            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax2, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax2.set_xlabel("x (cm)")
+            ax2.set_ylabel("y (cm)")
+            ax.invert_yaxis()
+            #plt.title("Actual Fine Solution")
             plt.figure()
 
             error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
@@ -248,46 +263,176 @@ class FEEN():
         # draw circuit, can take a while to run
         #qc.draw('mpl', filename="test_block_encoding.png")
 
-n_eig_eval_bits = 5
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/test_1G_diffusion_coarse/input-exact-eigenvalue-h4.txt', 'simulations/test_1G_diffusion_fine/input-exact-eigenvalue-h8.txt', plot_results=True)
-FEEN1.find_eigenvalue()
+
+# simulation to find eigenvector heatmaps, ANS plot 1
+'''n_eig_eval_bits = 5
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=True)
+FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
 print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
 
+print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
+print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)'''
+
+
+################## ANS plot 2, fixed fine mesh (16), varying coarse mesh(2-16)  ##################
+'''n_eig_eval_bits = 5
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
+
 # fixed fine mesh, varying coarse mesh inputs
-'''fine_nxs = [16]
+x_range = 16
+y_range = x_range
+fine_nxs = [16]
 fine_nys = [16]
-#fine_dxs = [1.048] # exact eigenvalue
-#fine_dys = [1.048]
-#fine_dxs = [1] # nearly exact eigenvalue
-#fine_dys = [1]
-#fine_dxs = [0.5] # in between discrete eigenvlaues
-#fine_dys = [0.5]
+fine_dxs = x_range / np.array(fine_nxs)
+fine_dys = y_range / np.array(fine_nys)
 
 coarse_nxs = [2,4,8,16]
 coarse_nys = [2,4,8,16]
+#coarse_nxs = [2]
+#coarse_nys = [2]
+coarse_dxs = x_range / np.array(coarse_nxs)
+coarse_dys = y_range / np.array(coarse_nys)
+
+success_probs = np.zeros(len(fine_nxs) * len(coarse_nxs))
+expected_fidelity = np.zeros(len(fine_nxs) * len(coarse_nxs))
+for i in range(len(fine_nxs)):
+    for j in range(len(coarse_nxs)):
+        FEEN1.fine_data.n_x = fine_nxs[i]
+        FEEN1.fine_data.n_pts_x = fine_nxs[i] + 2
+        FEEN1.fine_data.n_y = fine_nys[i]
+        FEEN1.fine_data.n_pts_y = fine_nys[i] + 2
+        FEEN1.fine_data.delta_x = fine_dxs[i]
+        FEEN1.fine_data.delta_y = fine_dys[i]
+        FEEN1.fine_data.initialize_BC()
+        FEEN1.fine_data.initialize_geometry()
+
+
+        FEEN1.coarse_data.n_x = coarse_nxs[j]
+        FEEN1.coarse_data.n_pts_x = coarse_nxs[j] + 2
+        FEEN1.coarse_data.n_y = coarse_nys[j]
+        FEEN1.coarse_data.n_pts_y = coarse_nys[j] + 2
+        FEEN1.coarse_data.delta_x = coarse_dxs[j]
+        FEEN1.coarse_data.delta_y = coarse_dys[j]
+        FEEN1.coarse_data.initialize_BC()
+        FEEN1.coarse_data.initialize_geometry()
+
+        FEEN1.find_eigenvalue()
+
+        print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
+        print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+
+        success_probs[i*len(coarse_nxs) + j] = FEEN1.found_fidelity if abs(FEEN1.found_eigenvalue - FEEN1.expected_eigenvalue) < (1/math.pow(2,n_eig_eval_bits)) else 0
+        expected_fidelity[i*len(coarse_nxs) + j] = FEEN1.expected_fidelity if abs(FEEN1.found_eigenvalue - FEEN1.expected_eigenvalue) < (1/math.pow(2,n_eig_eval_bits)) else 0
+
+# plot varying coarse mesh input with fixed fine mesh
+plt.plot(coarse_nxs, success_probs, '-o')
+plt.plot(coarse_nxs, expected_fidelity, '-o')
+plt.title(r'$P_{s}$' + " vs " + r'$h_{c}$' + " for a Fixed " r'$h_{f}$' + "= " + str(fine_nxs[0]))
+plt.legend(["Experimental " + r'$P_{s}$', "Theoretical Probability: " + r'$||\langle\phi_c,\phi_f\rangle || ^2$'])
+plt.xlabel(r'$h_{c}$')
+plt.ylabel(r'$P_{s}$')
+plt.grid(True)
+plt.show()'''
+
+################## ANS plot 3, fixed fine mesh (16), varying coarse mesh(2-16), exact eigenvalues  ##################
+n_eig_eval_bits = 5
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
+
+# fixed fine mesh, varying coarse mesh inputs
+x_range = 16.6
+y_range = x_range
+fine_nxs = [16]
+fine_nys = [16]
+fine_dxs = x_range / np.array(fine_nxs)
+fine_dys = y_range / np.array(fine_nys)
+
+coarse_nxs = [2,4,8,16]
+coarse_nys = [2,4,8,16]
+#coarse_nxs = [2]
+#coarse_nys = [2]
+coarse_dxs = x_range / np.array(coarse_nxs)
+coarse_dys = y_range / np.array(coarse_nys)
+
+success_probs = np.zeros(len(fine_nxs) * len(coarse_nxs))
+expected_fidelity = np.zeros(len(fine_nxs) * len(coarse_nxs))
+for i in range(len(fine_nxs)):
+    for j in range(len(coarse_nxs)):
+        FEEN1.fine_data.n_x = fine_nxs[i]
+        FEEN1.fine_data.n_pts_x = fine_nxs[i] + 2
+        FEEN1.fine_data.n_y = fine_nys[i]
+        FEEN1.fine_data.n_pts_y = fine_nys[i] + 2
+        FEEN1.fine_data.delta_x = fine_dxs[i]
+        FEEN1.fine_data.delta_y = fine_dys[i]
+        FEEN1.fine_data.initialize_BC()
+        FEEN1.fine_data.initialize_geometry()
+
+
+        FEEN1.coarse_data.n_x = coarse_nxs[j]
+        FEEN1.coarse_data.n_pts_x = coarse_nxs[j] + 2
+        FEEN1.coarse_data.n_y = coarse_nys[j]
+        FEEN1.coarse_data.n_pts_y = coarse_nys[j] + 2
+        FEEN1.coarse_data.delta_x = coarse_dxs[j]
+        FEEN1.coarse_data.delta_y = coarse_dys[j]
+        FEEN1.coarse_data.initialize_BC()
+        FEEN1.coarse_data.initialize_geometry()
+
+        FEEN1.find_eigenvalue()
+
+        print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
+        print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+
+        success_probs[i*len(coarse_nxs) + j] = FEEN1.found_fidelity if abs(FEEN1.found_eigenvalue - FEEN1.expected_eigenvalue) < (1/math.pow(2,n_eig_eval_bits)) else 0
+        expected_fidelity[i*len(coarse_nxs) + j] = FEEN1.expected_fidelity if abs(FEEN1.found_eigenvalue - FEEN1.expected_eigenvalue) < (1/math.pow(2,n_eig_eval_bits)) else 0
+
+# plot varying coarse mesh input with fixed fine mesh
+plt.plot(coarse_nxs, success_probs, '-o')
+plt.plot(coarse_nxs, expected_fidelity, '-o')
+plt.title(r'$P_{s}$' + " vs " + r'$h_{c}$' + " for a Fixed " r'$h_{f}$' + "= " + str(fine_nxs[0]))
+plt.legend(["Experimental " + r'$P_{s}$', "Theoretical Probability: " + r'$||\langle\phi_c,\phi_f\rangle || ^2$'])
+plt.xlabel(r'$h_{c}$')
+plt.ylabel(r'$P_{s}$')
+plt.grid(True)
+plt.show()
+
+
+
+
+
+# fixed fine mesh, varying coarse mesh inputs
+'''fine_nxs = [8]
+fine_nys = [8]
+#fine_dxs = [1.048] # exact eigenvalue
+#fine_dys = [1.048]
+fine_dxs = [2] # nearly exact eigenvalue
+fine_dys = [2]
+#fine_dxs = [0.5] # in between discrete eigenvlaues
+#fine_dys = [0.5]
+
+coarse_nxs = [2,4,8]
+coarse_nys = [2,4,8]
 #coarse_dxs = [8.384, 4.192, 2.096, 1.048] # exact eigenvalue
 #coarse_dys = [8.384, 4.192, 2.096, 1.048]
-#coarse_dxs = [8,4,2,1] # nearly exact eigenvalue
-#coarse_dys = [8,4,2,1]
+coarse_dxs = [8,4,2] # nearly exact eigenvalue
+coarse_dys = [8,4,2]
 #coarse_dxs = [4,2,1,0.5] # in between discrete eigenvlaues
 #coarse_dys = [4,2,1,0.5]'''
 
 # fixed coarse mesh, varying fine mesh inputs
-'''fine_nxs = [4,8,16]
-fine_nys = [4,8,16]
-fine_dxs = [4.192, 2.096, 1.048] # exact eigenvalue
-fine_dys = [4.192, 2.096, 1.048]
+'''fine_nxs = [2,4,8]
+fine_nys = [2,4,8]
+fine_dxs = [8.384, 4.192, 2.096, 1.048] # exact eigenvalue
+fine_dys = [8.384, 4.192, 2.096, 1.048]
 #fine_dxs = [1] # nearly exact eigenvalue
 #fine_dys = [1]
 #fine_dxs = [0.5] # in between discrete eigenvlaues
 #fine_dys = [0.5]
 
-coarse_nxs = [4]
-coarse_nys = [4]
-coarse_dxs = [4.192] # exact eigenvalue
-coarse_dys = [4.192]
+coarse_nxs = [2]
+coarse_nys = [2]
+coarse_dxs = [8.384] # exact eigenvalue
+coarse_dys = [8.384]
 #coarse_dxs = [8,4,2,1] # nearly exact eigenvalue
 #coarse_dys = [8,4,2,1]
 #coarse_dxs = [4,2,1,0.5] # in between discrete eigenvlaues

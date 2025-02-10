@@ -66,8 +66,8 @@ def get_success_prob(coarse_data, fine_data):
         print("projected probability of success: ", state_overlap ** 2)
         return state_overlap ** 2
 
-coarse_input_file = 'simulations/test_1G_diffusion_coarse/input-exact-eigenvalue-h8.txt'
-fine_input_file = 'simulations/test_1G_diffusion_fine/input-exact-eigenvalue-h8.txt'
+coarse_input_file = 'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt'
+fine_input_file = 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt'
 coarse_data = ProblemData.ProblemData(coarse_input_file)
 fine_data = ProblemData.ProblemData(fine_input_file)
 
@@ -92,10 +92,10 @@ coarse_dys = 16.768 / np.array(coarse_nxs)
 
 
 # fixed coarse mesh, varying fine mesh inputs
-fine_nxs = [8,16,32,64,128]
-fine_nys = [8,16,32,64,128]
+fine_nxs = [8,16,32,64]
+fine_nys = [8,16,32,64]
 fine_dxs = 16.768 / np.array(fine_nxs) # exact eigenvalue
-fine_dys = 16.768 / np.array(fine_nxs)
+fine_dys = 16.768 / np.array(fine_nys)
 #fine_dxs = [1] # nearly exact eigenvalue
 #fine_dys = [1]
 #fine_dxs = [0.5] # in between discrete eigenvlaues
@@ -104,7 +104,7 @@ fine_dys = 16.768 / np.array(fine_nxs)
 coarse_nxs = [8]
 coarse_nys = [8]
 coarse_dxs = 16.768 / np.array(coarse_nxs) # exact eigenvalue
-coarse_dys = 16.768 / np.array(coarse_nxs)
+coarse_dys = 16.768 / np.array(coarse_nys)
 #coarse_dxs = [8,4,2,1] # nearly exact eigenvalue
 #coarse_dys = [8,4,2,1]
 #coarse_dxs = [4,2,1,0.5] # in between discrete eigenvlaues
