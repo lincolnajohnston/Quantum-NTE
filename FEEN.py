@@ -48,7 +48,7 @@ class FEEN():
         self.sim_method = sim_method
         self.plot_results = plot_results
 
-    def find_eigenvalue(self):
+    def find_eigenvalue(self, A_multiplier=1):
         A_coarse_mat_size = (self.coarse_data.n_x) * (self.coarse_data.n_y) * self.coarse_data.G
         A_coarse_x_bits = math.ceil(math.log2(self.coarse_data.n_x))
         A_coarse_y_bits = math.ceil(math.log2(self.coarse_data.n_y))
@@ -70,6 +70,9 @@ class FEEN():
         else:
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+
+        A_matrix = A_multiplier * A_matrix
+        A_matrix_coarse = A_multiplier * A_matrix_coarse
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
         eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
@@ -100,6 +103,10 @@ class FEEN():
         logn = fable.get_logn(sqrtB)
         block_encode_bits = 2*logn+1
         qc = QuantumCircuit(block_encode_bits + self.n_eig_eval_bits, block_encode_bits + self.n_eig_eval_bits)
+
+        qc2 = QuantumCircuit(block_encode_bits + self.n_eig_eval_bits, block_encode_bits + self.n_eig_eval_bits)
+        test = fable.fable(A_matrix, qc2, epsilon=0, max_i = qc2.num_qubits-1)
+        qc2.draw('mpl', filename="test_block_encoding" + str(int(test[1])) + ".png")
 
         # put the quantum circuit in the coarse phi_0 state and do interpolation onto the fine grid
         eigvec_input_state = StatePreparation(eigenvector_input)
@@ -176,7 +183,7 @@ class FEEN():
             state_vec_collapsed_eigvec = state_vec_collapsed_eigvec / np.linalg.norm(state_vec_collapsed_eigvec)
             eigenvector_error = state_vec_collapsed_eigvec - eigenvector_fine'''
 
-            index_max = max(range(len(state_vec_collapsed)), key=state_vec_collapsed.__getitem__)
+            self.index_max = max(range(len(state_vec_collapsed)), key=state_vec_collapsed.__getitem__)
 
             # when the build-in IQFT is used in the QPE script, bit reversal like this needs to be done, but I can't seem to get that working
             #max_index_binary = ('{:b}'.format(index_max).zfill(n_eig_eval_bits))
@@ -185,17 +192,17 @@ class FEEN():
             #    eig_result_i += int(max_index_binary[i]) * int(math.pow(2,i))
             print("Simulation Run: ")
             print("expected eigenvalue: ", eigvals[eig_index])
-            print("eigenvalue found: ", (index_max) / n_eig_eval_states)
-            print("probability of getting this eigenvalue on one measurement: ", state_vec_collapsed[index_max] ** 2)
+            print("eigenvalue found: ", (self.index_max) / n_eig_eval_states)
+            print("probability of getting this eigenvalue on one measurement: ", state_vec_collapsed[self.index_max] ** 2)
             print("square of inner product of input state and actual fine eigenvector: ", np.inner(input_state_collapsed, eigenvector_fine) ** 2)
             self.expected_eigenvalue = eigvals[eig_index]
-            self.found_eigenvalue = index_max / n_eig_eval_states
+            self.found_eigenvalue = self.index_max / n_eig_eval_states
             self.expected_fidelity = float(np.inner(input_state_collapsed, eigenvector_fine)) ** 2
-            self.found_fidelity = state_vec_collapsed[index_max] ** 2
+            self.found_fidelity = state_vec_collapsed[self.index_max] ** 2
             #self.found_fidelity = np.sum([state_vec_collapsed[i] ** 2 for i in range(index_max - 5, index_max + 5)])
 
         elif self.sim_method == "counts":
-            num_iter = 1000 # should be able to only run this once if probablity of success if high and you do some amplitude amplification on the block encode bits
+            num_iter = 1000000 # should be able to only run this once if probablity of success if high and you do some amplitude amplification on the block encode bits
             # measure eigenvalue qubits
             qc.measure(list(range(self.n_eig_eval_bits)), list(range(self.n_eig_eval_bits)))
 
@@ -215,7 +222,7 @@ class FEEN():
             counts_dict = {'{:b}'.format(i).zfill(self.n_eig_eval_bits):counts['{:b}'.format(i).zfill(qc.num_qubits)] if '{:b}'.format(i).zfill(qc.num_qubits) in counts else 0 for i in range(n_eig_eval_states)}
 
             counts_vec = np.array([counts['{:b}'.format(i).zfill(qc.num_qubits)] if '{:b}'.format(i).zfill(qc.num_qubits) in counts else 0 for i in range(n_eig_eval_states)]) # convert dictionary to array in binary order
-            index_max = max(range(len(counts_vec)), key=counts_vec.__getitem__) # index of basis vector with highest counts
+            self.index_max = max(range(len(counts_vec)), key=counts_vec.__getitem__) # index of basis vector with highest counts
             #max_index_binary = ('{:b}'.format(index_max).zfill(n_eig_eval_bits)) # convert index_max to binary form
 
             # reverse order of bits to get actual correct index, eig_result_i
@@ -224,10 +231,10 @@ class FEEN():
             #    eig_result_i += int(max_index_binary[i]) * int(math.pow(2,i))
 
             # print results
-            print("eigenvalue found: ", (index_max) / n_eig_eval_states)
+            print("eigenvalue found: ", (self.index_max) / n_eig_eval_states)
             print("expected eigenvalue: ", eigvals[eig_index])
             self.expected_eigenvalue = eigvals[eig_index]
-            self.found_eigenvalue = index_max / n_eig_eval_states
+            self.found_eigenvalue = self.index_max / n_eig_eval_states
             self.expected_fidelity = np.inner(input_state_collapsed, eigenvector_fine) ** 2
             #self.found_fidelity = np.sum([counts_vec[i] for i in range(index_max - 2, index_max + 2)])/sum(counts_vec)
 
@@ -264,16 +271,45 @@ class FEEN():
         #qc.draw('mpl', filename="test_block_encoding.png")
 
 
+start_time = time.time()
 # simulation to find eigenvector heatmaps, ANS plot 1
-'''n_eig_eval_bits = 5
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=True)
-FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
+n_eig_eval_bits = 3
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_coarse/input.txt', 'simulations/Pu239_1G_diffusion_fine/input.txt', plot_results=False, sim_method="counts")
 
-print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
-print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+extra_precision_bits = 10
+eig_lower_bound = 0
+eig_upper_bound = 1
+additive = 0
+wraparound = False
+for i in range(extra_precision_bits):
+    FEEN1.find_eigenvalue(int(math.pow(2,i)))
+    if(wraparound and FEEN1.index_max < math.pow(2,n_eig_eval_bits) / 2):
+        additive += 1
+        wraparound = False
+    else:
+        wraparound = False
+    eig_lower_bound = additive + (FEEN1.index_max - 0.5) / math.pow(2,n_eig_eval_bits)
+    eig_upper_bound = additive + (FEEN1.index_max + 0.5) / math.pow(2,n_eig_eval_bits)
+    if (FEEN1.expected_eigenvalue < eig_lower_bound or FEEN1.expected_eigenvalue > eig_upper_bound):
+        print("binary search failed")
+    
+    doubled_lower_bound = 2 * eig_lower_bound
+    doubled_upper_bound = 2 * eig_upper_bound
+    if(math.floor(doubled_lower_bound) != math.floor(doubled_upper_bound)):
+        #raise Exception("edge case not handled yet")
+        print("possible error from looping of eigenvalues over integers")
+        wraparound = True
+    additive = math.floor(doubled_lower_bound)
 
-print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
-print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)'''
+eig_lower_bound = eig_lower_bound / math.pow(2,extra_precision_bits-1)
+eig_upper_bound = eig_upper_bound / math.pow(2,extra_precision_bits-1)
+print("eigenvalue is between ", eig_lower_bound, " and ", eig_upper_bound)
+
+    #print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
+    #print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+
+    #print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
+    #print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)
 
 
 ################## ANS plot 2, fixed fine mesh (16), varying coarse mesh(2-16)  ##################
@@ -337,7 +373,7 @@ plt.grid(True)
 plt.show()'''
 
 ################## ANS plot 3, fixed fine mesh (16), varying coarse mesh(2-16), exact eigenvalues  ##################
-n_eig_eval_bits = 5
+'''n_eig_eval_bits = 5
 FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
 
 # fixed fine mesh, varying coarse mesh inputs
@@ -394,7 +430,7 @@ plt.legend(["Experimental " + r'$P_{s}$', "Theoretical Probability: " + r'$||\la
 plt.xlabel(r'$h_{c}$')
 plt.ylabel(r'$P_{s}$')
 plt.grid(True)
-plt.show()
+plt.show()'''
 
 
 
@@ -490,3 +526,5 @@ plt.show()'''
 
 #print(success_probs)
 #print(expected_fidelity)
+
+print("total runtime: ", time.time() - start_time)
