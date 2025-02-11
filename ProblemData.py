@@ -9,22 +9,26 @@ class ProblemData:
     def __init__(self, input_file):
         self.read_input(input_file)
         self.initialize_BC()
-        self.initialize_geometry()
         self.initialize_materials()
+        self.initialize_geometry()
 
     def read_input(self, filename):
         with open(filename, 'r') as file:
             lines = file.readlines()
         
-        self.n_x = int(lines[0].strip())
-        self.n_pts_x = self.n_x + 2
-        self.n_y = int(lines[1].strip())
-        self.n_pts_y = self.n_y + 2
-        self.delta_x = float(lines[2].strip())
-        self.delta_y = float(lines[3].strip())
-        self.sim_method = lines[4].strip()
-        self.G = int(lines[5].strip())
-        self.xs_folder = lines[6].strip()
+        self.dim = int(lines[0].strip())
+        self.n = np.zeros(self.dim, dtype=int)
+        self.n_pts = np.zeros(self.dim, dtype=int)
+        self.h = np.zeros(self.dim)
+        for d in range(self.dim):
+            self.n[d] = int(lines[1+d].strip())
+            self.n_pts[d] = self.n[d] + 2
+            self.h[d] = float(lines[1 + self.dim + d].strip())
+        self.geometry_name = lines[1 + 2 * self.dim].strip()
+        self.sim_method = lines[2 + 2 * self.dim].strip()
+        self.G = int(lines[3 + 2 * self.dim].strip())
+        self.xs_folder = lines[4 + 2 * self.dim].strip()
+        self.mat_name_dict = {}
     
     def initialize_BC(self):
         if self.sim_method == "sp3":
@@ -110,44 +114,45 @@ class ProblemData:
     
 
     def initialize_geometry(self):
-        self.material_matrix = np.empty((self.n_x, self.n_y), dtype=object)
-        x_range = self.n_x * self.delta_x
-        y_range = self.n_y * self.delta_y
+        self.material_matrix = np.zeros(self.n, dtype=int)
+        #x_range = self.n_x * self.delta_x
+        #y_range = self.n_y * self.delta_y
+        ranges = self.n * self.h
 
-        fuel_radius = min(x_range,y_range)/4
+        fuel_radius = min(ranges)/4
 
-        for i in range(self.n_x):
-            for j in range(self.n_y):
-                x_val = (i + 0.5) * self.delta_x - x_range/2
-                y_val = (j + 0.5) * self.delta_y - y_range/2
+        for index in range(math.prod(self.n)):
+            indices = np.zeros(self.dim, dtype=int)
+            for d in range(self.dim):
+                indices[d] = index
+                if d < self.dim - 1:
+                    indices[d] = math.floor(indices[d] / math.prod(self.n[d+1:]))
+                indices[d] = indices[d] % self.n[d]
+            
+            if(self.geometry_name == "homogeneous_fuel"):
+                self.material_matrix[tuples(indices)] = "fuel"
+            elif (self.geometry_name == "single_pin_cell_2d"):
+                coordinates = (indices + 0.5) * self.h - ranges/2
 
-                # homogeneous fuel
-                #self.material_matrix[i,j] = "fuel"
-                
-                # fuel at center
-                if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+                if (np.linalg.norm(coordinates) < fuel_radius):
                     # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
+                    self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
                     
                 else:
                     # use moderator XSs
-                    self.material_matrix[i,j] = "water"
-
-                # 4 fuel pins
-                '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
-                    # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
-                else:
-                    # use moderator XSs
-                    self.material_matrix[i,j] = "water"'''
+                    self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
+            print(coordinates)
         return
 
     def initialize_materials(self):
         self.materials = {}
+        mat_index = 0
         for _, dirs, _ in os.walk(self.xs_folder):
             for mat in dirs:
                 xs_file = self.xs_folder + "/" + mat + "/xs.txt"
-                self.materials[mat] = Material(mat, xs_file, self.G, self.n_x, self.n_y)
+                self.mat_name_dict[mat] = mat_index
+                self.materials[mat_index] = Material(mat, xs_file, self.G)
+                mat_index += 1
                 
     # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
     def diffusion_construct_A_matrix(self, A_mat_size):

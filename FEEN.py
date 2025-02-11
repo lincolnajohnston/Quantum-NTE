@@ -49,16 +49,12 @@ class FEEN():
         self.plot_results = plot_results
 
     def find_eigenvalue(self):
-        A_coarse_mat_size = (self.coarse_data.n_x) * (self.coarse_data.n_y) * self.coarse_data.G
-        A_coarse_x_bits = math.ceil(math.log2(self.coarse_data.n_x))
-        A_coarse_y_bits = math.ceil(math.log2(self.coarse_data.n_y))
-        A_coarse_G_bits = math.ceil(math.log2(self.coarse_data.G))
-        A_coarse_bits = A_coarse_x_bits + A_coarse_y_bits + A_coarse_G_bits
-        A_mat_size = (self.fine_data.n_x) * (self.fine_data.n_y) * self.fine_data.G
-        A_x_bits = math.ceil(math.log2(self.fine_data.n_x))
-        A_y_bits = math.ceil(math.log2(self.fine_data.n_y))
-        A_G_bits = math.ceil(math.log2(self.fine_data.G))
-        A_bits = A_x_bits + A_y_bits + A_G_bits
+        A_coarse_mat_size = math.prod(self.coarse_data.n) * self.coarse_data.G
+        A_coarse_bits_vec = [math.ceil(math.log2(self.coarse_data.n[i])) for i in range(self.coarse_data.dim)] + [math.ceil(math.log2(self.coarse_data.G))]
+        A_coarse_bits = sum(A_coarse_bits_vec)
+        A_mat_size = math.prod(self.fine_data.n) * self.fine_data.G
+        A_bits_vec = [math.ceil(math.log2(self.fine_data.n[i])) for i in range(self.fine_data.dim)] + [math.ceil(math.log2(self.fine_data.G))]
+        A_bits = sum(A_bits_vec)
         interpolation_bits = A_bits - A_coarse_bits
         n_eig_eval_states = int(math.pow(2,self.n_eig_eval_bits))
 
@@ -67,7 +63,7 @@ class FEEN():
         if self.coarse_data.sim_method == "sp3":
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
-        else:
+        elif self.coarse_data.sim_method == "diffusion":
             # NDE with operators in opposite order
             B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
             B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
@@ -280,7 +276,7 @@ class FEEN():
 
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_coarse/input.txt', 'simulations/Pu239_1G_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
