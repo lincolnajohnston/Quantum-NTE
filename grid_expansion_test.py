@@ -3,6 +3,12 @@ import math
 import random
 import matplotlib.pyplot as plt
 
+# Code Description: 
+# Interpolates a coarse mesh represented as a quantum state over 'nc' qubits to a quantum state representing the same solution on a fine mesh over 'nf' qubits
+# Uses 1-qubit gates to perform the inteprolation. Intention of this algorithm is to use in the FEEN/QPE algorithm to improve the overlap between the coarse mesh input
+# and the fundamental eigenvector of the fine mesh matrix. Only uses numpy calculations instead of Qiskit emulation.
+
+
 # basically makes the solution piecewise constant using each grid point on the coarse grid
 def expand_grid_constant(coarse_sol, nc, nf):
     #H_gate = [[1, 1], [1, -1]]

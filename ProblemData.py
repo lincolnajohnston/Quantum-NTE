@@ -122,7 +122,7 @@ class ProblemData:
                 y_val = (j + 0.5) * self.delta_y - y_range/2
 
                 # homogeneous fuel
-                self.material_matrix[i,j] = "fuel"
+                #self.material_matrix[i,j] = "fuel"
                 
                 # fuel at center
                 if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):

@@ -8,6 +8,11 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 
+# Code Description: 
+# Interpolates a coarse mesh represented as a quantum state over 'nc' qubits to a quantum state representing the same solution on a fine mesh over 'nf' qubits
+# Uses 1-qubit gates to perform the inteprolation. Intention of this algorithm is to use in the FEEN/QPE algorithm to improve the overlap between the coarse mesh input
+# and the fundamental eigenvector of the fine mesh matrix.
+
 # Linear Combination of states reference: https://arxiv.org/pdf/2112.12307
 
 ############## Functions ##############

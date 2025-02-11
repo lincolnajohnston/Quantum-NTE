@@ -15,6 +15,9 @@ from scipy.linalg import eigh
 import random
 import ProblemData
 
+# Code Description:
+# Script for plotting the scaling of the theoretical upper limit on the probability of FEEN/QPE success based on the size of the coarse and fine mesh grids
+
 # from a vector of counts for each basis vector, return the normalized state representing the amplitudes for each of the basis vectors
 def getStateFromCounts(counts_vec):
     norm = math.sqrt(np.sum(counts_vec))

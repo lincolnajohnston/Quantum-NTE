@@ -9,6 +9,9 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 
+# Code Description: 
+# 2-d version of interpolator-qc.py
+
 # Linear Combination of states reference: https://arxiv.org/pdf/2112.12307
 
 ############## Functions ##############
@@ -43,7 +46,7 @@ nc = ncx + ncy
 Ncx = int(math.pow(2,ncx))
 Ncy = int(math.pow(2,ncy))
 nfx = 3
-nfy = 4
+nfy = 3
 nf = nfx + nfy
 Nfx = int(math.pow(2,nfx))
 Nfy = int(math.pow(2,nfy))
@@ -173,7 +176,7 @@ for i in range(nf):
 for i in range(nf):
     qc1.cswap(4*nf+2,i,3*nf+i) # third combination
 
-qc1.draw('mpl', filename="2d-interpolator-circuit.png")
+#qc1.draw('mpl', filename="2d-interpolator-circuit.png")
 
 ############## Perform Measurements, Record Counts ##############
 
