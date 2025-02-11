@@ -114,7 +114,7 @@ class ProblemData:
         x_range = self.n_x * self.delta_x
         y_range = self.n_y * self.delta_y
 
-        fuel_radius = min(x_range,y_range)/8
+        fuel_radius = min(x_range,y_range)/4
 
         for i in range(self.n_x):
             for j in range(self.n_y):
@@ -125,13 +125,13 @@ class ProblemData:
                 self.material_matrix[i,j] = "fuel"
                 
                 # fuel at center
-                '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
+                if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
                     # use fuel XSs
                     self.material_matrix[i,j] = "fuel"
                     
                 else:
                     # use moderator XSs
-                    self.material_matrix[i,j] = "water"'''
+                    self.material_matrix[i,j] = "water"
 
                 # 4 fuel pins
                 '''if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):

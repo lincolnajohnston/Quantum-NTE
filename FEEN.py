@@ -68,12 +68,23 @@ class FEEN():
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
         else:
-            A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-            A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+            # NDE with operators in opposite order
+            B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+            B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+
+            # NDE with operators in normal order
+            #A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+            #A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+
+        # find condition numbers and alphas of A and B matrices to help determine efficiency of implementing a block-encoding of them
+        alpha_A = np.linalg.norm(np.ravel(A_matrix), np.inf)
+        alpha_B = np.linalg.norm(np.ravel(B_matrix), np.inf)
+        cond_A = np.linalg.cond(A_matrix)
+        cond_B = np.linalg.cond(B_matrix)
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
         eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
-        eig_index = 0 # index of eigenvector/eigenvalue to use, 0 for fundamental eigenmode
+        eig_index = -1 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector
 
         # solve problem classically to compare to quantum results
         eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
@@ -116,13 +127,16 @@ class FEEN():
         for i in range(self.n_eig_eval_bits + A_x_bits + A_y_bits, self.n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff):
             qc.h(i)
 
-        input_state = Statevector.from_instruction(qc).data
-        input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
+        # extract the interpolated input eigenvector from the quantum ciruit
+        #input_state = Statevector.from_instruction(qc).data
+        #input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
+        input_state_collapsed = np.zeros(A_mat_size)
+
 
         # block encoding of B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
         # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(1/2) * phi_0
         # TODO: FIX THIS, not done correctly here because I'm being lazy, more efficient way to block encode this from Changpeng paper
-        qc, alpha_sqrtB = fable.fable(sqrtB, qc, epsilon=0, max_i = qc.num_qubits-1)
+        qc, alpha_sqrtB = fable.fable(sqrtB, qc, epsilon=0.01, max_i = qc.num_qubits-1)
         #state_0 = Statevector.from_instruction(qc).data
         #state_0_collapsed = state_0[:n_eig_eval_states*A_mat_size:n_eig_eval_states] / np.linalg.norm(state_0[:n_eig_eval_states*A_mat_size:n_eig_eval_states])
 
@@ -261,19 +275,19 @@ class FEEN():
             plt.show()
 
         # draw circuit, can take a while to run
-        #qc.draw('mpl', filename="test_block_encoding.png")
+        qc.draw('mpl', filename="test_block_encoding.png")
 
 
 # simulation to find eigenvector heatmaps, ANS plot 1
-'''n_eig_eval_bits = 5
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=True)
+n_eig_eval_bits = 4
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_coarse/input.txt', 'simulations/Pu239_1G_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
 print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
 
-print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
-print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)'''
+#print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
+#print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)
 
 
 ################## ANS plot 2, fixed fine mesh (16), varying coarse mesh(2-16)  ##################
@@ -337,7 +351,7 @@ plt.grid(True)
 plt.show()'''
 
 ################## ANS plot 3, fixed fine mesh (16), varying coarse mesh(2-16), exact eigenvalues  ##################
-n_eig_eval_bits = 5
+'''n_eig_eval_bits = 5
 FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
 
 # fixed fine mesh, varying coarse mesh inputs
@@ -394,7 +408,7 @@ plt.legend(["Experimental " + r'$P_{s}$', "Theoretical Probability: " + r'$||\la
 plt.xlabel(r'$h_{c}$')
 plt.ylabel(r'$P_{s}$')
 plt.grid(True)
-plt.show()
+plt.show()'''
 
 
 
