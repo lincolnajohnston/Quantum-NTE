@@ -1,0 +1,7 @@
+8
+8
+1.415
+1.415
+diffusion
+1
+XS-1group

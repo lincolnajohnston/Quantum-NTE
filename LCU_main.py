@@ -202,17 +202,17 @@ op_time = time.perf_counter()
 print("Operator Construction Time: ", op_time - v_mat_time)
 
 # Run circuit using Numpy
-b_state = quantum_b_vector
+'''b_state = quantum_b_vector
 l_state = np.zeros(2**num_LCU_bits)
 l_state[0] = 1
 l_state = V @ l_state
 state_vec = np.kron(l_state, b_state)
 state_vec = U @ state_vec
-state_vec = (np.kron(np.conj(V).T,np.eye(2**nb))) @ state_vec
+state_vec = (np.kron(np.conj(V).T,np.eye(2**nb))) @ state_vec'''
 
 # Run circuit sing Qiskit
 # b vector State preparation
-'''qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
+qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
 V_gate = UnitaryGate(V, 'V', False)
 U_gate = UnitaryGate(U, 'U', False)
 V_inv_gate = UnitaryGate(np.conj(V).T, 'V_inv', False)
@@ -226,7 +226,8 @@ new_circuit = transpile(qc, backend)
 job = backend.run(new_circuit)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
-#print(state_vec[0:A_mat_size])'''
+#print(state_vec[0:A_mat_size])
+qc.draw('mpl', filename="test_circuit.png")
 
 state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
