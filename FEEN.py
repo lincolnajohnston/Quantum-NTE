@@ -270,7 +270,7 @@ class FEEN():
 
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse_custom_geom/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine_custom_geom/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)

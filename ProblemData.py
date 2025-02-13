@@ -120,21 +120,35 @@ class ProblemData:
 
         fuel_radius = min(ranges)/4
 
-        for index in range(math.prod(self.n)):
-            indices = self.roll_index(index)[1:]
-            
-            if(self.geometry_name == "homogeneous_fuel"):
-                self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
-            elif (self.geometry_name == "single_pin_cell_2d"):
-                coordinates = (indices + 0.5) * self.h - ranges/2
-
-                if (np.linalg.norm(coordinates) < fuel_radius):
-                    # use fuel XSs
+        # custom geometry
+        if (self.geometry_name[:7] == "custom:"):
+            geometry_filename = self.geometry_name[7:]
+            i = 0
+            with open(geometry_filename, 'r') as file:
+                lines = file.readlines()
+                for line in lines:
+                    for word in line.split():
+                        indices = self.roll_index(i)[1:]
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict[word]
+                        i+=1
+                assert(i == self.G * math.prod(self.n))
+        else:
+            # pre-baked geometries       
+            for index in range(math.prod(self.n)):
+                indices = self.roll_index(index)[1:]
+                
+                if(self.geometry_name == "homogeneous_fuel"):
                     self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
-                    
-                else:
-                    # use moderator XSs
-                    self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
+                elif (self.geometry_name == "single_pin_cell_2d"):
+                    coordinates = (indices + 0.5) * self.h - ranges/2
+
+                    if (np.linalg.norm(coordinates) < fuel_radius):
+                        # use fuel XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
+                        
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
         return
 
     def initialize_materials(self):
