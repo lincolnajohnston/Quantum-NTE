@@ -1,8 +1,8 @@
 2
-8
-8
-1
-1
+16
+16
+0.25
+0.25
 single_pin_cell_2d
 diffusion
 1

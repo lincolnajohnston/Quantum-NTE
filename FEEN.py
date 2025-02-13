@@ -50,10 +50,10 @@ class FEEN():
 
     def find_eigenvalue(self):
         A_coarse_mat_size = math.prod(self.coarse_data.n) * self.coarse_data.G
-        A_coarse_bits_vec = [math.ceil(math.log2(self.coarse_data.n[i])) for i in range(self.coarse_data.dim)] + [math.ceil(math.log2(self.coarse_data.G))]
+        A_coarse_bits_vec = [math.ceil(math.log2(self.coarse_data.G))] + [math.ceil(math.log2(self.coarse_data.n[i])) for i in range(self.coarse_data.dim)]
         A_coarse_bits = sum(A_coarse_bits_vec)
         A_mat_size = math.prod(self.fine_data.n) * self.fine_data.G
-        A_bits_vec = [math.ceil(math.log2(self.fine_data.n[i])) for i in range(self.fine_data.dim)] + [math.ceil(math.log2(self.fine_data.G))]
+        A_bits_vec = [math.ceil(math.log2(self.fine_data.G))] + [math.ceil(math.log2(self.fine_data.n[i])) for i in range(self.fine_data.dim)]
         A_bits = sum(A_bits_vec)
         interpolation_bits = A_bits - A_coarse_bits
         n_eig_eval_states = int(math.pow(2,self.n_eig_eval_bits))
@@ -112,15 +112,10 @@ class FEEN():
         eigvec_input_state = StatePreparation(eigenvector_input)
         #eigvec_input_state = StatePreparation(math.pow(1/math.sqrt(2),A_coarse_bits) * np.ones(A_coarse_mat_size))
         #eigvec_input_state = StatePreparation(eigvecs_coarse[:,1] / np.linalg.norm(eigvecs_coarse[:,1]))
-        x_bits_diff = A_x_bits - A_coarse_x_bits
-        y_bits_diff = A_y_bits - A_coarse_y_bits
-        G_bits_diff = A_G_bits - A_coarse_G_bits
-        qc.append(eigvec_input_state, list(range(self.n_eig_eval_bits + x_bits_diff, self.n_eig_eval_bits + A_x_bits)) + list(range(self.n_eig_eval_bits + A_x_bits + y_bits_diff, self.n_eig_eval_bits + A_x_bits + A_y_bits)) + list(range(self.n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff, self.n_eig_eval_bits + A_bits)))
-        for i in range(self.n_eig_eval_bits, self.n_eig_eval_bits + x_bits_diff):
-            qc.h(i)
-        for i in range(self.n_eig_eval_bits + A_x_bits, self.n_eig_eval_bits + A_x_bits + y_bits_diff):
-            qc.h(i)
-        for i in range(self.n_eig_eval_bits + A_x_bits + A_y_bits, self.n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff):
+        A_bits_diff_vec = np.array(A_bits_vec) - np.array(A_coarse_bits_vec)
+        coarse_eig_bits = [q for i in range(self.fine_data.dim + 1) for q in list(range(self.n_eig_eval_bits + sum(A_bits_vec[:i]) + A_bits_diff_vec[i], self.n_eig_eval_bits + sum(A_bits_vec[:i+1])))]
+        qc.append(eigvec_input_state, coarse_eig_bits)
+        for i in list(set(range(self.n_eig_eval_bits, self.n_eig_eval_bits + A_bits)) - set(coarse_eig_bits)):
             qc.h(i)
 
         # extract the interpolated input eigenvector from the quantum ciruit
@@ -276,7 +271,7 @@ class FEEN():
 
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=False, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
