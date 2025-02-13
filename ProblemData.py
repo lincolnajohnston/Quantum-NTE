@@ -124,7 +124,7 @@ class ProblemData:
             indices = self.roll_index(index)[1:]
             
             if(self.geometry_name == "homogeneous_fuel"):
-                self.material_matrix[tuple(indices)] = "fuel"
+                self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
             elif (self.geometry_name == "single_pin_cell_2d"):
                 coordinates = (indices + 0.5) * self.h - ranges/2
 
@@ -135,7 +135,6 @@ class ProblemData:
                 else:
                     # use moderator XSs
                     self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
-            print(coordinates)
         return
 
     def initialize_materials(self):
@@ -186,6 +185,48 @@ class ProblemData:
         #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
     
+    def diffusion_construct_A_matrix(self, A_mat_size):
+        fd_order = 2
+        A_matrix = np.zeros((A_mat_size, A_mat_size))
+        b_vector = np.zeros(A_mat_size)
+        delta_V = math.prod(self.h)
+        for i in range(self.G * math.prod(self.n)):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    D_left = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_left = -D_left
+                    A_matrix[i,i] += -J_left * delta_V / self.h[d]
+                else: # internal edge on left side of finite volume
+                    D_left = self.get_av_D(d,x_i-1,indices[1:], g)
+                    A_matrix[i,i] += D_left * delta_V / self.h[d] # (i) term
+
+                    left_indices = np.array(indices)
+                    left_indices[d+1] -= 1
+                    A_matrix[i,self.unroll_index(left_indices)] +=  -D_left * delta_V / self.h[d] # (i-1) term
+                if(x_i == self.n[d] - 1): # right BC, normal vector = (1,0)
+                    D_right = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_right = D_right
+                    A_matrix[i,i] += J_right * delta_V / self.h[d]
+                else: # internal edge on right side of finite volume
+                    D_right = self.get_av_D(d,x_i,indices[1:], g)
+                    A_matrix[i,i] += D_right * delta_V / self.h[d] # (i) term
+
+                    right_indices = np.array(indices)
+                    right_indices[d+1] += 1
+                    A_matrix[i,self.unroll_index(right_indices)] +=  -D_right * delta_V / self.h[d] # (i+1) term
+            for g_p in range(self.G): # group to group scattering and fission terms
+                group_indices = np.array(indices)
+                group_indices[0] = g_p
+                A_matrix[i,self.unroll_index(group_indices)] -= (mat.sigma_sgg[g_p, g]) * delta_V
+                A_matrix[i,self.unroll_index(group_indices)] -= (mat.chi[g] * mat.nu_sigma_f[g_p]) * delta_V
+            A_matrix[i,i] += (mat.sigma_t[g]) * delta_V
+            b_vector[i] = mat.Q[g] * delta_V
+        return A_matrix, b_vector
+    
     def diffusion_construct_L_F_matrices(self, A_mat_size):
         fd_order = 2
         L_matrix = np.zeros((A_mat_size, A_mat_size))
@@ -225,41 +266,6 @@ class ProblemData:
                 L_matrix[i,self.unroll_index(group_indices)] += -(mat.sigma_sgg[g_p, g]) * delta_V
                 F_matrix[i,self.unroll_index(group_indices)] += (mat.chi[g] * mat.nu_sigma_f[g_p]) * delta_V
             L_matrix[i,i] += (mat.sigma_t[g]) * delta_V
-        return L_matrix, F_matrix
-
-    def diffusion_construct_L_F_matrices_old(self, A_mat_size):
-        fd_order = 2
-        L_matrix = np.zeros((A_mat_size, A_mat_size))
-        F_matrix = np.zeros((A_mat_size, A_mat_size))
-        for g in range(self.G):
-            for x_i in range(self.n_x):
-                for y_i in range(self.n_y):
-                    mat = self.materials[self.material_matrix[x_i,y_i]]
-                    i = self.unroll_index([g, x_i, y_i])
-                    if(x_i == 0): # left BC, normal vector = (-1,0)
-                        J_x_minus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_minus = self.get_av_D("x",x_i-1,y_i, g) * self.delta_y
-                        L_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
-                    if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                        J_x_plus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_plus = self.get_av_D("x",x_i,y_i, g) * self.delta_y
-                        L_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
-                    if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                        J_y_minus = self.get_edge_D(x_i ,y_i, g,self.delta_y)* self.delta_x
-                    else:
-                        J_y_minus = self.get_av_D("y",y_i-1,x_i, g) * self.delta_x
-                        L_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
-                    if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
-                        J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
-                    else:
-                        J_y_plus = self.get_av_D("y",y_i,x_i, g) * self.delta_x
-                        L_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
-                    L_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
-                    for g_p in range(self.G): # group to group scattering and fission terms
-                        L_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g]) * self.delta_x * self.delta_y
-                        F_matrix[i,self.unroll_index([g_p, x_i, y_i])] += (mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
         return L_matrix, F_matrix
     
     def sp3_construct_A_matrix(self, A_mat_size):

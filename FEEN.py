@@ -113,16 +113,15 @@ class FEEN():
         #eigvec_input_state = StatePreparation(math.pow(1/math.sqrt(2),A_coarse_bits) * np.ones(A_coarse_mat_size))
         #eigvec_input_state = StatePreparation(eigvecs_coarse[:,1] / np.linalg.norm(eigvecs_coarse[:,1]))
         A_bits_diff_vec = np.array(A_bits_vec) - np.array(A_coarse_bits_vec)
-        coarse_eig_bits = [q for i in range(self.fine_data.dim + 1) for q in list(range(self.n_eig_eval_bits + sum(A_bits_vec[:i]) + A_bits_diff_vec[i], self.n_eig_eval_bits + sum(A_bits_vec[:i+1])))]
-        qc.append(eigvec_input_state, coarse_eig_bits)
-        for i in list(set(range(self.n_eig_eval_bits, self.n_eig_eval_bits + A_bits)) - set(coarse_eig_bits)):
+        coarse_eig_bits = [q for i in range(self.fine_data.dim + 1) for q in list(range(self.n_eig_eval_bits + sum(A_bits_vec[:i]) + A_bits_diff_vec[i], self.n_eig_eval_bits + sum(A_bits_vec[:i+1])))] # qubits the coarse eigenvector solution will be put on
+        qc.append(eigvec_input_state, coarse_eig_bits) # add coarse solution to the quantum circuit
+        for i in list(set(range(self.n_eig_eval_bits, self.n_eig_eval_bits + A_bits)) - set(coarse_eig_bits)): # add in Hadamards to extend the coarse solution to a fine grid
             qc.h(i)
 
         # extract the interpolated input eigenvector from the quantum ciruit
-        #input_state = Statevector.from_instruction(qc).data
-        #input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
-        input_state_collapsed = np.zeros(A_mat_size)
-
+        input_state = Statevector.from_instruction(qc).data
+        input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
+        #input_state_collapsed = np.zeros(A_mat_size)
 
         # block encoding of B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
         # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(1/2) * phi_0
@@ -237,22 +236,22 @@ class FEEN():
             #self.found_fidelity = np.sum([counts_vec[i] for i in range(index_max - 2, index_max + 2)])/sum(counts_vec)
 
 
-        if(self.plot_results):
+        if(self.plot_results and self.fine_data.dim == 2):
             fig, (ax1, ax2) = plt.subplots(1,2)
             heatmap_min = min(np.min(np.abs(input_state_collapsed)), np.min(np.abs(eigenvector_fine)))
             heatmap_max = max(np.max(np.abs(input_state_collapsed)), np.max(np.abs(eigenvector_fine)))
 
-            xticks = np.round(np.array(range(self.fine_data.n_x))*self.fine_data.delta_x - (self.fine_data.n_x - 1)*self.fine_data.delta_x/2,3)
-            yticks = np.round(np.array(range(self.fine_data.n_y))*self.fine_data.delta_y - (self.fine_data.n_y - 1)*self.fine_data.delta_y/2,3)
+            xticks = np.round(np.array(range(self.fine_data.n[0]))*self.fine_data.h[0] - (self.fine_data.n[0] - 1)*self.fine_data.h[0]/2,3)
+            yticks = np.round(np.array(range(self.fine_data.n[1]))*self.fine_data.h[1] - (self.fine_data.n[1] - 1)*self.fine_data.h[1]/2,3)
 
-            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax1, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5, ax=ax1, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
             ax1.set_xlabel("x (cm)")
             ax1.set_ylabel("y (cm)")
             ax.invert_yaxis()
             #plt.title("Input (Coarse) Solution")
             #plt.figure()
 
-            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax2, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5, ax=ax2, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
             ax2.set_xlabel("x (cm)")
             ax2.set_ylabel("y (cm)")
             ax.invert_yaxis()
@@ -260,7 +259,7 @@ class FEEN():
             plt.figure()
 
             error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
-            ax = sns.heatmap(error_vector.reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5)
+            ax = sns.heatmap(error_vector.reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5)
             ax.invert_yaxis()
             plt.title("Error")
             plt.show()
@@ -271,7 +270,7 @@ class FEEN():
 
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=False, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)

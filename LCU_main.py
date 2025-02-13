@@ -17,16 +17,16 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 
-sim_path = 'simulations/LCU_1G_sp3_small/'
+sim_path = 'simulations/Pu239_1G_2D_diffusion_coarse/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y) * data.G
+    A_mat_size = 2 * math.prod(data.n) * data.G
     A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y) * data.G
+    A_mat_size = math.prod(data.n) * data.G
     A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
     
 
@@ -227,7 +227,7 @@ job = backend.run(new_circuit)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 #print(state_vec[0:A_mat_size])
-qc.draw('mpl', filename="test_circuit.png")
+#qc.draw('mpl', filename="test_circuit.png")
 
 state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
@@ -273,42 +273,44 @@ solve_time = time.perf_counter()
 print("Total time: ", solve_time - start)
 
 # Make graphs of results
-state_vec.resize((data.G, data.n_x,data.n_y))
-classical_sol_vec = classical_sol_vec[:int(data.G * data.n_x * data.n_y)]
-classical_sol_vec.resize((data.G, data.n_x,data.n_y))
+state_vec.resize(tuple([data.G] + list(data.n)))
+classical_sol_vec = classical_sol_vec[:int(A_mat_size)]
+classical_sol_vec.resize(tuple([data.G] + list(data.n)))
 
-xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
-yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
+if (data.dim == 2):
 
-flux_mins = np.zeros((data.G,1))
-flux_maxes = np.zeros((data.G,1))
-for g in range(data.G):
-    flux_maxes[g] = max(np.max(state_vec[g,:,:]), np.max(classical_sol_vec[g,:,:]))
-    flux_mins[g] = min(np.min(state_vec[g,:,:]), np.min(classical_sol_vec[g,:,:]))
+    xticks = np.round(np.array(range(data.n[0]))*data.h[0] - (data.n[0] - 1)*data.h[0]/2,3)
+    yticks = np.round(np.array(range(data.n[1]))*data.h[1] - (data.n[1] - 1)*data.h[1]/2,3)
 
-for g in range(data.G):
-    ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
-    ax.invert_yaxis()
-    plt.title("Quantum Solution, Group " + str(g))
-    #plt.savefig('quantum_sol_g' + str(g) + '.png')
-    plt.figure()
+    flux_mins = np.zeros((data.G,1))
+    flux_maxes = np.zeros((data.G,1))
+    for g in range(data.G):
+        flux_maxes[g] = max(np.max(state_vec[g,:,:]), np.max(classical_sol_vec[g,:,:]))
+        flux_mins[g] = min(np.min(state_vec[g,:,:]), np.min(classical_sol_vec[g,:,:]))
 
-for g in range(data.G):
-    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
-    ax.invert_yaxis()
-    plt.title("Real Solution, Group " + str(g))
-    #plt.savefig('real_sol_g' + str(g) + '.png')
-    plt.figure()
+    for g in range(data.G):
+        ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Quantum Solution, Group " + str(g))
+        #plt.savefig('quantum_sol_g' + str(g) + '.png')
+        plt.figure()
 
-'''sol_rel_error.resize((data.G, data.n_x,data.n_y))
-for g in range(data.G):
-    ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
-    ax.invert_yaxis()
-    plt.title("Relative error between quantum and real solution, Group " + str(g))
-    plt.figure()'''
+    for g in range(data.G):
+        ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Real Solution, Group " + str(g))
+        #plt.savefig('real_sol_g' + str(g) + '.png')
+        plt.figure()
 
-'''for g in range(data.G):
-    ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
-    plt.title("Actual error between quantum and real solution, Group " + str(g))
-    plt.figure()'''
-plt.show()
+    '''sol_rel_error.resize((data.G, data.n_x,data.n_y))
+    for g in range(data.G):
+        ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
+        ax.invert_yaxis()
+        plt.title("Relative error between quantum and real solution, Group " + str(g))
+        plt.figure()'''
+
+    '''for g in range(data.G):
+        ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
+        plt.title("Actual error between quantum and real solution, Group " + str(g))
+        plt.figure()'''
+    plt.show()

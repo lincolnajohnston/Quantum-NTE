@@ -1,7 +1,9 @@
+2
 8
 8
 1.415
 1.415
+homogeneous_fuel
 diffusion
 1
 XS-1group
