@@ -57,6 +57,7 @@ class FEEN():
         A_bits = sum(A_bits_vec)
         interpolation_bits = A_bits - A_coarse_bits
         n_eig_eval_states = int(math.pow(2,self.n_eig_eval_bits))
+        reverse_order = False
 
         # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
         # If hermitian, then QPE will output their eigenvalues, if not, need to make A and B hermitian (using one more qubit)
@@ -64,13 +65,14 @@ class FEEN():
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
         elif self.coarse_data.sim_method == "diffusion":
-            # NDE with operators in opposite order
-            B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-            B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
-
-            # NDE with operators in normal order
-            #A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-            #A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+            if reverse_order:
+                # NDE with operators in opposite order
+                B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+                B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+            else: 
+                # NDE with operators in normal order
+                A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+                A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
 
         # find condition numbers and alphas of A and B matrices to help determine efficiency of implementing a block-encoding of them
         alpha_A = np.linalg.norm(np.ravel(A_matrix), np.inf)
@@ -80,7 +82,7 @@ class FEEN():
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
         eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
-        eig_index = -1 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector
+        eig_index = -1 if reverse_order else 0 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector of inverse equation, 0 for fundamental eigenvector of standard equation
 
         # solve problem classically to compare to quantum results
         eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
@@ -157,6 +159,7 @@ class FEEN():
             # Run emulator
             backend = QasmSimulator(method="statevector")
             new_circuit = transpile(qc, backend)
+            print(dict(new_circuit.count_ops())) # print the counts of each type of gate
             job = backend.run(new_circuit)
             job_result = job.result()
 
@@ -265,16 +268,19 @@ class FEEN():
             plt.show()
 
         # draw circuit, can take a while to run
-        qc.draw('mpl', filename="test_block_encoding.png")
+        #qc.draw('mpl', filename="test_block_encoding.png")
 
 
 # simulation to find eigenvector heatmaps, ANS plot 1
-n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_2D_diffusion_coarse_custom_geom/input.txt', 'simulations/Pu239_1G_2D_diffusion_fine_custom_geom/input.txt', plot_results=True, sim_method="statevector")
+n_eig_eval_bits = 5
+start_time = time.time()
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_3D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_3D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
 print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+
+print("Runtime: ", time.time() - start_time)
 
 #print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
 #print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)

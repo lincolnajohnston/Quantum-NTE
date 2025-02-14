@@ -18,11 +18,9 @@ class ProblemData:
         
         self.dim = int(lines[0].strip())
         self.n = np.zeros(self.dim, dtype=int)
-        self.n_pts = np.zeros(self.dim, dtype=int)
         self.h = np.zeros(self.dim)
         for d in range(self.dim):
             self.n[d] = int(lines[1+d].strip())
-            self.n_pts[d] = self.n[d] + 2
             self.h[d] = float(lines[1 + self.dim + d].strip())
         self.geometry_name = lines[1 + 2 * self.dim].strip()
         self.sim_method = lines[2 + 2 * self.dim].strip()
@@ -36,6 +34,8 @@ class ProblemData:
             bottom_I_3 = 0
             right_I_3 = 0
             left_I_3 = 0
+
+            # TODO: update this for the new arbitrary number of spatial dimensions
             self.top_x_I_3 = np.ones(self.n_pts_x) * top_I_3
             self.bottom_x_I_3 = np.zeros(self.n_pts_x) * bottom_I_3
             self.right_y_I_3 = np.zeros(self.n_pts_y) * right_I_3
@@ -118,8 +118,6 @@ class ProblemData:
         #y_range = self.n_y * self.delta_y
         ranges = self.n * self.h
 
-        fuel_radius = min(ranges)/4
-
         # custom geometry
         if (self.geometry_name[:7] == "custom:"):
             geometry_filename = self.geometry_name[7:]
@@ -140,9 +138,21 @@ class ProblemData:
                 if(self.geometry_name == "homogeneous_fuel"):
                     self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
                 elif (self.geometry_name == "single_pin_cell_2d"):
+                    fuel_radius = min(ranges)/4
                     coordinates = (indices + 0.5) * self.h - ranges/2
 
                     if (np.linalg.norm(coordinates) < fuel_radius):
+                        # use fuel XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
+                        
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
+                elif (self.geometry_name == "single_square_pin"):
+                    fuel_radius = min(ranges)/4
+                    coordinates = (indices + 0.5) * self.h - ranges/2
+
+                    if (np.all(abs(coordinates) <= fuel_radius)):
                         # use fuel XSs
                         self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
                         
@@ -160,44 +170,6 @@ class ProblemData:
                 self.mat_name_dict[mat] = mat_index
                 self.materials[mat_index] = Material(mat, xs_file, self.G)
                 mat_index += 1
-                
-    # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
-    def diffusion_construct_A_matrix(self, A_mat_size):
-        fd_order = 2
-        A_matrix = np.zeros((A_mat_size, A_mat_size))
-        b_vector = np.zeros(A_mat_size)
-        for g in range(self.G):
-            for x_i in range(self.n_x):
-                for y_i in range(self.n_y):
-                    mat = self.materials[self.material_matrix[x_i,y_i]]
-                    i = self.unroll_index([g, x_i, y_i])
-                    if(x_i == 0): # left BC, normal vector = (-1,0)
-                        J_x_minus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_minus = self.get_av_D("x",x_i-1,y_i, g) * self.delta_y
-                        A_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
-                    if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                        J_x_plus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_plus = self.get_av_D("x",x_i,y_i, g) * self.delta_y
-                        A_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
-                    if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                        J_y_minus = self.get_edge_D(x_i ,y_i, g,self.delta_y)* self.delta_x
-                    else:
-                        J_y_minus = self.get_av_D("y",y_i-1,x_i, g) * self.delta_x
-                        A_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
-                    if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
-                        J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
-                    else:
-                        J_y_plus = self.get_av_D("y",y_i,x_i, g) * self.delta_x
-                        A_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
-                    A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
-                    for g_p in range(self.G): # group to group scattering and fission terms
-                        A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
-                    b_vector[i] = mat.Q[g] * self.delta_x * self.delta_y
-        #for row in range(len(A_matrix)):
-        #    print("row: ", A_matrix[row])
-        return A_matrix, b_vector
     
     def diffusion_construct_A_matrix(self, A_mat_size):
         fd_order = 2
@@ -249,6 +221,7 @@ class ProblemData:
         for i in range(self.G * math.prod(self.n)):
             indices = self.roll_index(i)
             g = indices[0] # current energy group
+            test = self.material_matrix[tuple(indices[1:])]
             mat = self.materials[self.material_matrix[tuple(indices[1:])]]
             for d in range(self.dim): # apply terms for neutron current in each spatial dimension
                 x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
