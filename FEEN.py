@@ -48,6 +48,12 @@ class FEEN():
         self.sim_method = sim_method
         self.plot_results = plot_results
 
+    def psuedo_invert_diagonal_matrix(self, in_matrix):
+        M = np.array(in_matrix)
+        for i in range(len(M)):
+            M[i,i] = 0 if M[i,i]==0 else 1/M[i,i]
+        return M
+
     def find_eigenvalue(self):
         A_coarse_mat_size = math.prod(self.coarse_data.n) * self.coarse_data.G
         A_coarse_bits_vec = [math.ceil(math.log2(self.coarse_data.G))] + [math.ceil(math.log2(self.coarse_data.n[i])) for i in range(self.coarse_data.dim)]
@@ -65,14 +71,17 @@ class FEEN():
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
         elif self.coarse_data.sim_method == "diffusion":
-            if reverse_order:
+            '''if reverse_order:
                 # NDE with operators in opposite order
                 B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
                 B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
             else: 
                 # NDE with operators in normal order
                 A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-                A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+                A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)'''
+            # NDE with operators in normal order
+            A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+            A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
 
         # find condition numbers and alphas of A and B matrices to help determine efficiency of implementing a block-encoding of them
         alpha_A = np.linalg.norm(np.ravel(A_matrix), np.inf)
@@ -81,11 +90,17 @@ class FEEN():
         cond_B = np.linalg.cond(B_matrix)
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
-        eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
+        if reverse_order:
+            eigvals_coarse, eigvecs_coarse = eigh(B_matrix_coarse, A_matrix_coarse, eigvals_only=False)
+        else:
+            eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
         eig_index = -1 if reverse_order else 0 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector of inverse equation, 0 for fundamental eigenvector of standard equation
 
         # solve problem classically to compare to quantum results
-        eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
+        if reverse_order:
+            eigvals, eigvecs = eigh(B_matrix, A_matrix, eigvals_only=False)
+        else:
+            eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
         eigenvector_fine = eigvecs[:,eig_index] / np.linalg.norm(eigvecs[:,eig_index])
 
         ########## Create matrices/vectors needed for the circuit ##########
@@ -98,8 +113,9 @@ class FEEN():
         # Create the sqrtB, sqrtB_inv, and A_squiggle matrices. Cheating here for now by finding them classically.
         # TODO: block encode these using the methods from the Changpeng paper
         sqrtB = sqrtm(B_matrix)
-        sqrtB_inv = np.linalg.inv(sqrtB)
+        sqrtB_inv = self.psuedo_invert_diagonal_matrix(sqrtB) if reverse_order else np.linalg.inv(sqrtB)
         A_squiggle = sqrtB_inv @ A_matrix @ sqrtB_inv
+        test = sqrtB @ sqrtB_inv
         A_squiggle_pow = expm(2j*math.pi*A_squiggle)
         #A_squiggle_pow_eigvals, A_squiggle_pow_eigvecs = np.linalg.eig(A_squiggle_pow)
         print("A_squiggle_pow is unitary: ", LcuFunctions.is_unitary(A_squiggle_pow))
@@ -267,6 +283,32 @@ class FEEN():
             plt.title("Error")
             plt.show()
 
+        if(self.plot_results and self.fine_data.dim == 1):
+            fig, (ax1, ax2) = plt.subplots(1,2)
+            heatmap_min = min(np.min(np.abs(input_state_collapsed)), np.min(np.abs(eigenvector_fine)))
+            heatmap_max = max(np.max(np.abs(input_state_collapsed)), np.max(np.abs(eigenvector_fine)))
+
+
+            ax = sns.heatmap(np.abs(input_state_collapsed.reshape(self.fine_data.n[0], 1)), linewidth=0.5, ax=ax1, vmin=heatmap_min, vmax=heatmap_max)
+            ax1.set_xlabel("x (cm)")
+            ax1.set_ylabel("y (cm)")
+            ax.invert_yaxis()
+            #plt.title("Input (Coarse) Solution")
+            #plt.figure()
+
+            ax = sns.heatmap(np.abs(eigenvector_fine.reshape(self.fine_data.n[0], 1)), linewidth=0.5, ax=ax2, vmin=heatmap_min, vmax=heatmap_max)
+            ax2.set_xlabel("x (cm)")
+            ax2.set_ylabel("y (cm)")
+            ax.invert_yaxis()
+            #plt.title("Actual Fine Solution")
+            plt.figure()
+
+            error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
+            ax = sns.heatmap(error_vector.reshape(self.fine_data.n[0], 1), linewidth=0.5)
+            ax.invert_yaxis()
+            plt.title("Error")
+            plt.show()
+
         # draw circuit, can take a while to run
         #qc.draw('mpl', filename="test_block_encoding.png")
 
@@ -274,7 +316,7 @@ class FEEN():
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 5
 start_time = time.time()
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_3D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_3D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/ProblemData_1D_scaling_tests_fuel_pin/input-coarse.txt', 'simulations/ProblemData_1D_scaling_tests_fuel_pin/input-fine.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
