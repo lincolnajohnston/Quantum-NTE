@@ -119,9 +119,20 @@ def is_unitary(matrix):
     I = matrix.dot(np.conj(matrix).T)
     return I.shape[0] == I.shape[1] and np.allclose(I, np.eye(I.shape[0]))
 
+# does this even make sense
+def get_O_D_matrix(n, inverse=False):
+    N = int(math.pow(2,n))
+    return_mat = np.zeros((N,N))
+    for i in range(N):
+        if inverse:
+            return_mat[i, min(N-1,round((math.sin(i * math.pi / N - math.pi/2) + 1) * N/2))] = 1
+        else:
+            return_mat[min(N-1,round((math.sin(i * math.pi / N - math.pi/2) + 1) * N/2)), i] = 1
+    return return_mat
+
 n_dim = 1
 input_folder = 'simulations/Pu239_1G_1D_diffusion_fine/'
-n_x = 3
+n_x = 2
 N_x = int(math.pow(2,n_x))
 input_file = 'input.txt'
 x_range = 4
@@ -173,7 +184,7 @@ B_inv = (1/math.sqrt(2)) * np.array([[1,1],[-1j,1j]])
 P_n = getP_matrix(n_x)
 
 
-qc = QuantumCircuit(n_x+2, n_x+2)
+qc = QuantumCircuit(3*n_x+5, 3*n_x+5)
 
 # put the quantum circuit in the coarse phi_0 state and do interpolation onto the fine grid
 b_vector = np.zeros(N_x)
@@ -197,44 +208,93 @@ B_inv_gate = UnitaryGate(B_inv, label="B_inv")
 B_gate_controlled = B_gate.control(n_x, ctrl_state='0'*n_x)
 B_inv_gate_controlled = B_inv_gate.control(n_x, ctrl_state='0'*n_x)
 
+q_gate_shift = 2*n_x+4
 ###### T_N ######
 #apply first B gates
-qc.append(B_gate, [n_x])
-qc.append(B_inv_gate_controlled, range(n_x+1))
+qc.append(B_gate, [n_x + q_gate_shift])
+qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
 
 # apply a bunch of CNOT gates
-for i in range(n_x-1,-1,-1):
-    qc.cnot(n_x,i)
+for i in range(n_x - 1 + q_gate_shift, q_gate_shift-1, -1):
+    qc.cnot(n_x + q_gate_shift,i)
 
 # Apply P_n gate
-for i in range(n_x-1,-1,-1):
-    P_n_cnot_gate = XGate().control(i+1)
-    qc.append(P_n_cnot_gate, [n_x] + list(range(i)) + [i])
+for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
+    P_n_cnot_gate = XGate().control(i+1 - q_gate_shift)
+    qc.append(P_n_cnot_gate, [3*n_x+4] + list(range(q_gate_shift, i)) + [i])
 
-# Apply QFT
+###### QFT ######
 qft = QFT(n_x+1, do_swaps=True)
-qc.append(qft,range(n_x+1))
+qc.append(qft,range(q_gate_shift, n_x+1+q_gate_shift))
 
 ###### T_N^-1 ######
 # Apply (P_n)^-1 gate
-for i in range(n_x):
-    P_n_cnot_gate = XGate().control(i+1)
-    qc.append(P_n_cnot_gate, [n_x] + list(range(i)) + [i])
+for i in range(q_gate_shift, n_x + q_gate_shift):
+    P_n_cnot_gate = XGate().control(i+1 - q_gate_shift)
+    qc.append(P_n_cnot_gate, [n_x + q_gate_shift] + list(range(q_gate_shift, i)) + [i])
 
 # apply a bunch of CNOT gates
-for i in range(n_x-1,-1,-1):
-    qc.cnot(n_x,i)
+for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
+    qc.cnot(n_x + q_gate_shift,i)
 
 #apply final B gates
-qc.append(B_gate_controlled, range(n_x+1))
-qc.append(B_inv_gate, [n_x])
+qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))
+qc.append(B_inv_gate, [n_x + q_gate_shift])
 
-###### Row Adjustments ######
+###### SCALING OF END ROWS ######
 H_gate = HGate()
 H_gate_controlled_1 = H_gate.control(n_x+1, ctrl_state='0'*(n_x+1))
 H_gate_controlled_2 = H_gate.control(n_x+1, ctrl_state='1' + '0'*(n_x))
-qc.append(H_gate_controlled_1, range(n_x+2))
-qc.append(H_gate_controlled_2, range(n_x+2))
+qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+
+### O_D ###
+O_D = get_O_D_matrix(n_x)
+O_D_inv = get_O_D_matrix(n_x, inverse=True)
+qc, alpha = fable.fable(O_D, qc, epsilon=0, max_i = 3*n_x+4)
+
+
+qc, alpha = fable.fable(O_D_inv, qc, epsilon=0, max_i = 3*n_x+4)
+
+###### INVERSE SCALING OF END ROWS ######
+qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+
+###### T_N ######
+#apply first B gates
+qc.append(B_gate, [n_x + q_gate_shift])
+qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
+
+# apply a bunch of CNOT gates
+for i in range(n_x - 1 + q_gate_shift, q_gate_shift-1, -1):
+    qc.cnot(n_x + q_gate_shift,i)
+
+# Apply P_n gate
+for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
+    P_n_cnot_gate = XGate().control(i+1 - q_gate_shift)
+    qc.append(P_n_cnot_gate, [3*n_x+4] + list(range(q_gate_shift, i)) + [i])
+
+###### QFT ######
+qft = QFT(n_x+1, do_swaps=True, inverse=True)
+qc.append(qft,range(q_gate_shift, n_x+1+q_gate_shift))
+
+###### T_N^-1 ######
+# Apply (P_n)^-1 gate
+for i in range(q_gate_shift, n_x + q_gate_shift):
+    P_n_cnot_gate = XGate().control(i+1 - q_gate_shift)
+    qc.append(P_n_cnot_gate, [n_x + q_gate_shift] + list(range(q_gate_shift, i)) + [i])
+
+# apply a bunch of CNOT gates
+for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
+    qc.cnot(n_x + q_gate_shift,i)
+
+#apply final B gates
+qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))
+qc.append(B_inv_gate, [n_x + q_gate_shift])
+
+# plot O_D by itself
+#ax = sns.heatmap(np.abs(O_D), linewidth=0.5)
+#plt.show()
 
 # print operator unitary matrix
 circOp = Operator.from_circuit(qc)
@@ -256,7 +316,7 @@ neu_term_circuit = circuit_cos_trans @ eigvals_1 @ circuit_cos_trans_inv
 neu_term_correct = cos_trans @ eigvals_1 @ cos_trans_transposed
 print("neu_term_circuit is unitary: ", is_unitary(neu_term_circuit))
 print("neu_term_correct is unitary: ", is_unitary(neu_term_correct))
-ax = sns.heatmap(np.abs(circuit_unitary), linewidth=0.5)
+ax = sns.heatmap(np.abs(circuit_unitary[:N_x,:N_x]), linewidth=0.5)
 plt.show()
 
 qc.save_statevector()
