@@ -53,13 +53,6 @@ def sum_of_states(qc, A_ind, B_ind, anc_ind, control_index, n_bits):
     assert(len(anc_ind) == len(B_ind) + 1)
 
     # apply QFA (Quantum Full Adder) gates to find sum of numbers
-    '''for i in range(n_bits):
-        applyQFA(qc, [anc_ind[-1 - i], A_ind[i], B_ind[i], anc_ind[-2-i]], control_index)
-
-    # apply QMG (Quantum Majority Gate) gates to undo the carries
-    for i in range(n_bits-2, -1, -1):
-        applyQMG(qc, [anc_ind[-1 - i], A_ind[i], B_ind[i], anc_ind[-2-i]], control_index)'''
-    
     for i in range(n_bits):
         applyQFA(qc, [anc_ind[-1 - i], A_ind[i], B_ind[i], anc_ind[-2-i]], control_index)
 
@@ -69,10 +62,26 @@ def sum_of_states(qc, A_ind, B_ind, anc_ind, control_index, n_bits):
     
     return B_ind + [anc_ind[0]]
 
+def multiply_states(qc, fact1_anc_reg, fact1, product, fact2, carry_reg):
+    for i in range(n):
+        sum_ind = sum_of_states(qc, fact1_anc_reg[n-i:] + fact1, product[0:m+i], [product[m+i]] + carry_reg[n-i:], fact2[i], m+i)
+        sum_ind = np.flip(3*m+4*n - 1 - np.array(sum_ind)) # reverse the indices
+    return sum_ind
+
+def apply_twos_complement(qc, indices):
+    # reverse every qubit
+    for i in indices:
+        qc.x(i)
+    
+    # add one to the result (P_n gate)
+    for i in range(len(indices)-1,0,-1):
+        P_n_cnot_gate = XGate().control(i)
+        qc.append(P_n_cnot_gate, list(np.flip(indices[len(indices) - i - 1:])))
+    qc.x(indices[-1])
 
 
 a = 13
-x = 6
+x = 3
 m = math.floor(math.log2(a)) + 1
 n = math.floor(math.log2(x)) + 1
 a_binary = np.array([int(bit) for bit in bin(a)[2:].zfill(m)])
@@ -91,10 +100,8 @@ for i in range(n):
     if(x_binary[n - i - 1] == 1):
         qc.x(2*n+2*m + i)
 
-for i in range(n):
-    sum_ind = sum_of_states(qc, list(range(n-i, m+n)), list(range(m+n, 2*m+n+i)), [2*m+n+i] + list(range(2*m+4*n-i, 3*m+4*n)), 2*m+2*n+i, m+i)
-    sum_ind = np.flip(3*m+4*n - 1 - np.array(sum_ind)) # reverse the indices
-
+sum_ind = multiply_states(qc, list(range(0,n)), list(range(n,n+m)), list(range(n+m,2*n+2*m)), list(range(2*n+2*m, 3*n+2*m)), list(range(3*n+2*m, 4*n+3*m)))
+#apply_twos_complement(qc, [qc.num_qubits - 1 - i for i in sum_ind])
 
 # find the circuit unitary
 #circOp = Operator.from_circuit(qc)
@@ -118,6 +125,6 @@ print("binary from top to bottom: ", np.flip(final_binary))
 sum_in_binary = [final_binary[sum_ind[i]] for i in range(m+n)]
 print("Sum in binary: ", sum_in_binary)
 summation_answer = sum([final_binary[sum_ind[i]] * int(math.pow(2,m+n - 1 - i)) for i in range(m+n)])
-print("summation: ", summation_answer)
+print("result: ", summation_answer)
 
-qc.draw('mpl', filename="quantum_adder.png")
+qc.draw('mpl', filename="quantum_multiplier.png")
