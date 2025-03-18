@@ -48,10 +48,9 @@ def applyQMG(qc, ind, control_index = -1):
     qc.x(ind[2])
 
 # Take the sum of two states, with the indices for each register input
-def sum_of_states(qc, A_ind, B_ind, anc_ind, control_index):
+def sum_of_states(qc, A_ind, B_ind, anc_ind, control_index, n_bits):
     assert(len(A_ind) == len(B_ind))
     assert(len(anc_ind) == len(B_ind) + 1)
-    n_bits = len(A_ind)
 
     # apply QFA (Quantum Full Adder) gates to find sum of numbers
     '''for i in range(n_bits):
@@ -72,7 +71,7 @@ def sum_of_states(qc, A_ind, B_ind, anc_ind, control_index):
 
 
 
-a = 5
+a = 13
 x = 6
 m = math.floor(math.log2(a)) + 1
 n = math.floor(math.log2(x)) + 1
@@ -86,14 +85,14 @@ qc = QuantumCircuit(3*m + 4*n)
 for i in range(m):
     # encode the a number
     if(a_binary[m - i - 1] == 1):
-        qc.x(m + i)
+        qc.x(n + i)
 for i in range(n):
     # encode the x number
     if(x_binary[n - i - 1] == 1):
-        qc.x(4*n + i)
+        qc.x(2*n+2*m + i)
 
 for i in range(n):
-    sum_ind = sum_of_states(qc, list(range(n-i, m+n)), list(range(m+n, 2*m+n+i)), [2*m+n+i] + list(range(2*m+4*n-i, 3*m+4*n)), 2*m+2*n+i)
+    sum_ind = sum_of_states(qc, list(range(n-i, m+n)), list(range(m+n, 2*m+n+i)), [2*m+n+i] + list(range(2*m+4*n-i, 3*m+4*n)), 2*m+2*n+i, m+i)
     sum_ind = np.flip(3*m+4*n - 1 - np.array(sum_ind)) # reverse the indices
 
 
