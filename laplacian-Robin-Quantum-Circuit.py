@@ -10,7 +10,7 @@ from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate
 from qiskit.quantum_info import Statevector
 from QPE import PhaseEstimation
 from qiskit_aer import Aer, AerSimulator
@@ -130,6 +130,24 @@ def get_O_D_matrix(n, inverse=False):
             return_mat[min(N-1,round((math.sin(i * math.pi / N - math.pi/2) + 1) * N/2)), i] = 1
     return return_mat
 
+# applies the Lambda matrix with the eigenvalues on the diagonal, this is different than the O_D oracle!
+def apply_cosine_eigenvalue_matrix(qc, n, eig_gates, ancilla_gate):
+    qc.h(ancilla_gate)
+
+    # E_N^(plus)
+    for i in range(n+1):
+        bit_index = eig_gates[n - i]
+        plus_rotation_gate = U1Gate(math.pi / (math.pow(2,i))).control(1, ctrl_state = '0')
+        qc.append(plus_rotation_gate, [ancilla_gate, bit_index])
+
+    # E_N^(minus)
+    for i in range(n+1):
+        bit_index = eig_gates[n - i]
+        minus_rotation_gate = U1Gate(-math.pi / (math.pow(2,i))).control(1)
+        qc.append(minus_rotation_gate, [ancilla_gate, bit_index])
+
+    qc.h(ancilla_gate)
+
 n_dim = 1
 input_folder = 'simulations/Pu239_1G_1D_diffusion_fine/'
 n_x = 2
@@ -211,7 +229,7 @@ B_inv_gate_controlled = B_inv_gate.control(n_x, ctrl_state='0'*n_x)
 q_gate_shift = 2*n_x+4
 ###### T_N ######
 #apply first B gates
-qc.append(B_gate, [n_x + q_gate_shift])
+'''qc.append(B_gate, [n_x + q_gate_shift])
 qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
 
 # apply a bunch of CNOT gates
@@ -246,18 +264,31 @@ H_gate = HGate()
 H_gate_controlled_1 = H_gate.control(n_x+1, ctrl_state='0'*(n_x+1))
 H_gate_controlled_2 = H_gate.control(n_x+1, ctrl_state='1' + '0'*(n_x))
 qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
-qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])'''
 
 ### O_D ###
-O_D = get_O_D_matrix(n_x)
+'''O_D = get_O_D_matrix(n_x)
 O_D_inv = get_O_D_matrix(n_x, inverse=True)
 qc, alpha = fable.fable(O_D, qc, epsilon=0, max_i = 3*n_x+4)
 
+### CLONE EIGENVALUE ONTO NEW REGISTER ###
+for i in range(n_x+1):
+    qc.cx(2*n_x+4+i, n_x+3+i)
 
-qc, alpha = fable.fable(O_D_inv, qc, epsilon=0, max_i = 3*n_x+4)
+### EIGENVALUE INVERSION ###
+# only accurate when the bit representation of the eigenvalue is close to perfect
+for i in range(n_x + 1):
+    theta = math.pow(2,-i)
+    rotation_gate = RYGate(theta).control(1)
+    qc.append(rotation_gate, [2*n_x+3-i, n_x + 2])
+
+### INVERSE O_D ### 
+qc, alpha = fable.fable(O_D_inv, qc, epsilon=0, max_i = 3*n_x+4)'''
+
+apply_cosine_eigenvalue_matrix(qc, n_x, list(range(q_gate_shift, n_x + 1 + q_gate_shift)), n_x + 2)
 
 ###### INVERSE SCALING OF END ROWS ######
-qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+'''qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
 qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
 
 ###### T_N ######
@@ -290,7 +321,7 @@ for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
 
 #apply final B gates
 qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))
-qc.append(B_inv_gate, [n_x + q_gate_shift])
+qc.append(B_inv_gate, [n_x + q_gate_shift])'''
 
 # plot O_D by itself
 #ax = sns.heatmap(np.abs(O_D), linewidth=0.5)
@@ -300,7 +331,9 @@ qc.append(B_inv_gate, [n_x + q_gate_shift])
 circOp = Operator.from_circuit(qc)
 circuit_unitary = circOp.data
 circuit_unitary *= np.conj(circuit_unitary[0,0]) / abs(circuit_unitary[0,0]) # make the phase of the first term 0 so it's easier to compare to the correct cosine transform
-cos_trans_error = circuit_unitary[0:N_x,0:N_x] - cos_trans[0:N_x,0:N_x]
+ancilla_jump = int(math.pow(2,2*n_x + 4))
+non_ancilla_circuit_unitary = circuit_unitary[0:int((N_x + 1) * ancilla_jump):ancilla_jump,0:int((N_x + 1) * ancilla_jump):ancilla_jump]
+cos_trans_error = non_ancilla_circuit_unitary - cos_trans
 print("circuit unitary: ", np.round(circuit_unitary,3))
 print("desired cosine transform: ", cos_trans[0:N_x,0:N_x])
 print("circuit unitary is unitary: ", is_unitary(circuit_unitary[0:N_x,0:N_x]))
