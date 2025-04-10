@@ -182,6 +182,18 @@ cos_trans = get_discrete_cosine_transform(N_x, 0, N_x)
 cos_trans_inv = np.linalg.inv(cos_trans)
 cos_trans_transposed = np.transpose(cos_trans)
 eigvals_1 = get_eigenvalues(N_x, 0, N_x, x_range)
+sigma_a = np.eye(len(eigvals_1))
+sigma_a[0,0] = 1
+sigma_a[1,1] = 2
+sigma_a[2,2] = 3
+sigma_a[3,3] = 4
+sigma_a[4,4] = 5
+sigma_a[0,0] = 5
+sigma_a[1,1] = 5
+sigma_a[2,2] = 5
+sigma_a[3,3] = 5
+sigma_a[4,4] = 5
+eigvals_1 = eigvals_1 + sigma_a
 eigvals_2 = get_eigenvalues(N_x+2, 1, N_x+1, x_range)
 
 
@@ -229,7 +241,7 @@ B_inv_gate_controlled = B_inv_gate.control(n_x, ctrl_state='0'*n_x)
 q_gate_shift = 2*n_x+4
 ###### T_N ######
 #apply first B gates
-'''qc.append(B_gate, [n_x + q_gate_shift])
+qc.append(B_gate, [n_x + q_gate_shift])
 qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
 
 # apply a bunch of CNOT gates
@@ -264,7 +276,7 @@ H_gate = HGate()
 H_gate_controlled_1 = H_gate.control(n_x+1, ctrl_state='0'*(n_x+1))
 H_gate_controlled_2 = H_gate.control(n_x+1, ctrl_state='1' + '0'*(n_x))
 qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
-qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])'''
+qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
 
 ### O_D ###
 '''O_D = get_O_D_matrix(n_x)
@@ -288,7 +300,7 @@ qc, alpha = fable.fable(O_D_inv, qc, epsilon=0, max_i = 3*n_x+4)'''
 apply_cosine_eigenvalue_matrix(qc, n_x, list(range(q_gate_shift, n_x + 1 + q_gate_shift)), n_x + 2)
 
 ###### INVERSE SCALING OF END ROWS ######
-'''qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
+qc.append(H_gate_controlled_2, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
 qc.append(H_gate_controlled_1, list(range(q_gate_shift, n_x+1+q_gate_shift)) + [n_x + 1])
 
 ###### T_N ######
@@ -321,7 +333,7 @@ for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
 
 #apply final B gates
 qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))
-qc.append(B_inv_gate, [n_x + q_gate_shift])'''
+qc.append(B_inv_gate, [n_x + q_gate_shift])
 
 # plot O_D by itself
 #ax = sns.heatmap(np.abs(O_D), linewidth=0.5)
