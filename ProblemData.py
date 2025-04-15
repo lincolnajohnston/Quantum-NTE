@@ -243,9 +243,9 @@ class ProblemData:
         #    print("row: ", A_matrix[row])
         return A_matrix, b_vector
 
-    # use finite difference method to construct the A matrix representing the diffusion equation in the form Ax=b, assume 0 flux at boundary conditions for simplicity
+    # use finite difference method to construct the A matrix representing the 2D diffusion equation in the form Ax=b, assume 0 flux dirichlet boundary conditions for simplicity
+    # Uses the discretization for a spatially-varying diffusion coefficient: diffusion term is -()
     def diffusion_construct_sparse_FD_A_matrix(self, A_mat_size):
-        #A_matrix = np.zeros((A_mat_size, A_mat_size))
         row = []
         col = []
         data = []
