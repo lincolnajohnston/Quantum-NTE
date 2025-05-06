@@ -149,8 +149,8 @@ class ProblemData:
                         # use moderator XSs
                         self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
                 elif (self.geometry_name == "single_square_pin"):
-                    fuel_radius = min(ranges)/4
-                    coordinates = (indices + 0.5) * self.h - ranges/2
+                    fuel_radius = min(ranges)/8 # radius of central fuel section
+                    coordinates = (indices + 0.5) * self.h - ranges/2 # position of center of finite volume
 
                     if (np.all(abs(coordinates) <= fuel_radius)):
                         # use fuel XSs
@@ -223,7 +223,6 @@ class ProblemData:
         for i in range(self.G * math.prod(self.n)):
             indices = self.roll_index(i)
             g = indices[0] # current energy group
-            test = self.material_matrix[tuple(indices[1:])]
             mat = self.materials[self.material_matrix[tuple(indices[1:])]]
             for d in range(self.dim): # apply terms for neutron current in each spatial dimension
                 x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration

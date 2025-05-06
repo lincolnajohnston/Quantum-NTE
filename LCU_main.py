@@ -301,6 +301,17 @@ if (data.dim == 2):
         plt.title("Real Solution, Group " + str(g))
         #plt.savefig('real_sol_g' + str(g) + '.png')
         plt.figure()
+    
+    # interpolate classical solution to finer grid
+    mult_factor = 8
+    #interp_clas_sol_vec = np.kron(classical_sol_vec[0,:,:],np.ones((mult_factor,mult_factor))) * 0
+    interp_clas_sol_vec = classical_sol_vec[0,:,:] * 0
+    for g in range(data.G):
+        ax = sns.heatmap(interp_clas_sol_vec, linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Real Solution, Group " + str(g))
+        #plt.savefig('real_sol_g' + str(g) + '.png')
+        plt.figure()
 
     '''sol_rel_error.resize((data.G, data.n_x,data.n_y))
     for g in range(data.G):
