@@ -32,7 +32,7 @@ def getStateFromCounts(counts_vec):
 
 ########## Read input, set up variables ##########
 
-# Fundamental Eigenvalue Estimator for the NTE
+# Fundamental Eigenvalue Estimator for the NTE (FEEN)
 class FEEN():
     def __init__(
         self,
@@ -316,7 +316,7 @@ class FEEN():
 # simulation to find eigenvector heatmaps, ANS plot 1
 n_eig_eval_bits = 5
 start_time = time.time()
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/ProblemData_1D_scaling_tests_fuel_pin/input-coarse.txt', 'simulations/ProblemData_1D_scaling_tests_fuel_pin/input-fine.txt', plot_results=True, sim_method="statevector")
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_1D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_1D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
