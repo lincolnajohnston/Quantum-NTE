@@ -1,7 +1,9 @@
+2
 4
 4
 0.5
 0.5
+homogeneous_fuel
 diffusion
 8
 XS-8group

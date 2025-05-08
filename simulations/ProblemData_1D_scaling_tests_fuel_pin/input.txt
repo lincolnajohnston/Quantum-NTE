@@ -1,9 +1,7 @@
-2
-4
-4
+1
 2
 2
-homogeneous_fuel
+single_square_pin
 diffusion
 1
 Pu239-XS-1group

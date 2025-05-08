@@ -32,7 +32,7 @@ def getStateFromCounts(counts_vec):
 
 ########## Read input, set up variables ##########
 
-# Fundamental Eigenvalue Estimator for the NTE
+# Fundamental Eigenvalue Estimator for the NTE (FEEN)
 class FEEN():
     def __init__(
         self,
@@ -48,33 +48,40 @@ class FEEN():
         self.sim_method = sim_method
         self.plot_results = plot_results
 
+    def psuedo_invert_diagonal_matrix(self, in_matrix):
+        M = np.array(in_matrix)
+        for i in range(len(M)):
+            M[i,i] = 0 if M[i,i]==0 else 1/M[i,i]
+        return M
+
     def find_eigenvalue(self):
-        A_coarse_mat_size = (self.coarse_data.n_x) * (self.coarse_data.n_y) * self.coarse_data.G
-        A_coarse_x_bits = math.ceil(math.log2(self.coarse_data.n_x))
-        A_coarse_y_bits = math.ceil(math.log2(self.coarse_data.n_y))
-        A_coarse_G_bits = math.ceil(math.log2(self.coarse_data.G))
-        A_coarse_bits = A_coarse_x_bits + A_coarse_y_bits + A_coarse_G_bits
-        A_mat_size = (self.fine_data.n_x) * (self.fine_data.n_y) * self.fine_data.G
-        A_x_bits = math.ceil(math.log2(self.fine_data.n_x))
-        A_y_bits = math.ceil(math.log2(self.fine_data.n_y))
-        A_G_bits = math.ceil(math.log2(self.fine_data.G))
-        A_bits = A_x_bits + A_y_bits + A_G_bits
+        A_coarse_mat_size = math.prod(self.coarse_data.n) * self.coarse_data.G
+        A_coarse_bits_vec = [math.ceil(math.log2(self.coarse_data.G))] + [math.ceil(math.log2(self.coarse_data.n[i])) for i in range(self.coarse_data.dim)]
+        A_coarse_bits = sum(A_coarse_bits_vec)
+        A_mat_size = math.prod(self.fine_data.n) * self.fine_data.G
+        A_bits_vec = [math.ceil(math.log2(self.fine_data.G))] + [math.ceil(math.log2(self.fine_data.n[i])) for i in range(self.fine_data.dim)]
+        A_bits = sum(A_bits_vec)
         interpolation_bits = A_bits - A_coarse_bits
         n_eig_eval_states = int(math.pow(2,self.n_eig_eval_bits))
+        reverse_order = False
 
         # A_matrix and B_matrix will not necessarily be Hermitian for all problems, but I think for 1G problems they are
         # If hermitian, then QPE will output their eigenvalues, if not, need to make A and B hermitian (using one more qubit)
         if self.coarse_data.sim_method == "sp3":
             A_matrix_coarse, B_matrix_coarse = self.coarse_data.sp3_construct_L_F_matrices(A_coarse_mat_size)
             A_matrix, B_matrix = self.fine_data.sp3_construct_L_F_matrices(A_mat_size)
-        else:
-            # NDE with operators in opposite order
-            B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-            B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
-
+        elif self.coarse_data.sim_method == "diffusion":
+            '''if reverse_order:
+                # NDE with operators in opposite order
+                B_matrix_coarse, A_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+                B_matrix, A_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+            else: 
+                # NDE with operators in normal order
+                A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+                A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)'''
             # NDE with operators in normal order
-            #A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
-            #A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
+            A_matrix_coarse, B_matrix_coarse = self.coarse_data.diffusion_construct_L_F_matrices(A_coarse_mat_size)
+            A_matrix, B_matrix = self.fine_data.diffusion_construct_L_F_matrices(A_mat_size)
 
         # find condition numbers and alphas of A and B matrices to help determine efficiency of implementing a block-encoding of them
         alpha_A = np.linalg.norm(np.ravel(A_matrix), np.inf)
@@ -83,11 +90,17 @@ class FEEN():
         cond_B = np.linalg.cond(B_matrix)
 
         # find eigenvector and eigenvalues of the GEP classically (should use power iteration for real problems)
-        eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
-        eig_index = -1 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector
+        if reverse_order:
+            eigvals_coarse, eigvecs_coarse = eigh(B_matrix_coarse, A_matrix_coarse, eigvals_only=False)
+        else:
+            eigvals_coarse, eigvecs_coarse = eigh(A_matrix_coarse, B_matrix_coarse, eigvals_only=False)
+        eig_index = -1 if reverse_order else 0 # index of eigenvector/eigenvalue to use, -1 for fundamental eigenvector of inverse equation, 0 for fundamental eigenvector of standard equation
 
         # solve problem classically to compare to quantum results
-        eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
+        if reverse_order:
+            eigvals, eigvecs = eigh(B_matrix, A_matrix, eigvals_only=False)
+        else:
+            eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
         eigenvector_fine = eigvecs[:,eig_index] / np.linalg.norm(eigvecs[:,eig_index])
 
         ########## Create matrices/vectors needed for the circuit ##########
@@ -100,8 +113,9 @@ class FEEN():
         # Create the sqrtB, sqrtB_inv, and A_squiggle matrices. Cheating here for now by finding them classically.
         # TODO: block encode these using the methods from the Changpeng paper
         sqrtB = sqrtm(B_matrix)
-        sqrtB_inv = np.linalg.inv(sqrtB)
+        sqrtB_inv = self.psuedo_invert_diagonal_matrix(sqrtB) if reverse_order else np.linalg.inv(sqrtB)
         A_squiggle = sqrtB_inv @ A_matrix @ sqrtB_inv
+        test = sqrtB @ sqrtB_inv
         A_squiggle_pow = expm(2j*math.pi*A_squiggle)
         #A_squiggle_pow_eigvals, A_squiggle_pow_eigvecs = np.linalg.eig(A_squiggle_pow)
         print("A_squiggle_pow is unitary: ", LcuFunctions.is_unitary(A_squiggle_pow))
@@ -116,22 +130,16 @@ class FEEN():
         eigvec_input_state = StatePreparation(eigenvector_input)
         #eigvec_input_state = StatePreparation(math.pow(1/math.sqrt(2),A_coarse_bits) * np.ones(A_coarse_mat_size))
         #eigvec_input_state = StatePreparation(eigvecs_coarse[:,1] / np.linalg.norm(eigvecs_coarse[:,1]))
-        x_bits_diff = A_x_bits - A_coarse_x_bits
-        y_bits_diff = A_y_bits - A_coarse_y_bits
-        G_bits_diff = A_G_bits - A_coarse_G_bits
-        qc.append(eigvec_input_state, list(range(self.n_eig_eval_bits + x_bits_diff, self.n_eig_eval_bits + A_x_bits)) + list(range(self.n_eig_eval_bits + A_x_bits + y_bits_diff, self.n_eig_eval_bits + A_x_bits + A_y_bits)) + list(range(self.n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff, self.n_eig_eval_bits + A_bits)))
-        for i in range(self.n_eig_eval_bits, self.n_eig_eval_bits + x_bits_diff):
-            qc.h(i)
-        for i in range(self.n_eig_eval_bits + A_x_bits, self.n_eig_eval_bits + A_x_bits + y_bits_diff):
-            qc.h(i)
-        for i in range(self.n_eig_eval_bits + A_x_bits + A_y_bits, self.n_eig_eval_bits + A_x_bits + A_y_bits + G_bits_diff):
+        A_bits_diff_vec = np.array(A_bits_vec) - np.array(A_coarse_bits_vec)
+        coarse_eig_bits = [q for i in range(self.fine_data.dim + 1) for q in list(range(self.n_eig_eval_bits + sum(A_bits_vec[:i]) + A_bits_diff_vec[i], self.n_eig_eval_bits + sum(A_bits_vec[:i+1])))] # qubits the coarse eigenvector solution will be put on
+        qc.append(eigvec_input_state, coarse_eig_bits) # add coarse solution to the quantum circuit
+        for i in list(set(range(self.n_eig_eval_bits, self.n_eig_eval_bits + A_bits)) - set(coarse_eig_bits)): # add in Hadamards to extend the coarse solution to a fine grid
             qc.h(i)
 
         # extract the interpolated input eigenvector from the quantum ciruit
-        #input_state = Statevector.from_instruction(qc).data
-        #input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
-        input_state_collapsed = np.zeros(A_mat_size)
-
+        input_state = Statevector.from_instruction(qc).data
+        input_state_collapsed = input_state[:n_eig_eval_states*A_mat_size:n_eig_eval_states]
+        #input_state_collapsed = np.zeros(A_mat_size)
 
         # block encoding of B^(1/2) so that when the most significant bits (bottom bits aka higher index) are 
         # all 0, the state on the less significant (lower index) bits will resemble the state, c * B^(1/2) * phi_0
@@ -167,6 +175,7 @@ class FEEN():
             # Run emulator
             backend = QasmSimulator(method="statevector")
             new_circuit = transpile(qc, backend)
+            print(dict(new_circuit.count_ops())) # print the counts of each type of gate
             job = backend.run(new_circuit)
             job_result = job.result()
 
@@ -246,22 +255,22 @@ class FEEN():
             #self.found_fidelity = np.sum([counts_vec[i] for i in range(index_max - 2, index_max + 2)])/sum(counts_vec)
 
 
-        if(self.plot_results):
+        if(self.plot_results and self.fine_data.dim == 2):
             fig, (ax1, ax2) = plt.subplots(1,2)
             heatmap_min = min(np.min(np.abs(input_state_collapsed)), np.min(np.abs(eigenvector_fine)))
             heatmap_max = max(np.max(np.abs(input_state_collapsed)), np.max(np.abs(eigenvector_fine)))
 
-            xticks = np.round(np.array(range(self.fine_data.n_x))*self.fine_data.delta_x - (self.fine_data.n_x - 1)*self.fine_data.delta_x/2,3)
-            yticks = np.round(np.array(range(self.fine_data.n_y))*self.fine_data.delta_y - (self.fine_data.n_y - 1)*self.fine_data.delta_y/2,3)
+            xticks = np.round(np.array(range(self.fine_data.n[0]))*self.fine_data.h[0] - (self.fine_data.n[0] - 1)*self.fine_data.h[0]/2,3)
+            yticks = np.round(np.array(range(self.fine_data.n[1]))*self.fine_data.h[1] - (self.fine_data.n[1] - 1)*self.fine_data.h[1]/2,3)
 
-            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax1, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax = sns.heatmap(np.abs(input_state_collapsed).reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5, ax=ax1, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
             ax1.set_xlabel("x (cm)")
             ax1.set_ylabel("y (cm)")
             ax.invert_yaxis()
             #plt.title("Input (Coarse) Solution")
             #plt.figure()
 
-            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5, ax=ax2, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
+            ax = sns.heatmap(np.abs(eigenvector_fine).reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5, ax=ax2, xticklabels=xticks, yticklabels=yticks, vmin=heatmap_min, vmax=heatmap_max)
             ax2.set_xlabel("x (cm)")
             ax2.set_ylabel("y (cm)")
             ax.invert_yaxis()
@@ -269,22 +278,51 @@ class FEEN():
             plt.figure()
 
             error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
-            ax = sns.heatmap(error_vector.reshape(self.fine_data.n_x, self.fine_data.n_y), linewidth=0.5)
+            ax = sns.heatmap(error_vector.reshape(self.fine_data.n[0], self.fine_data.n[1]), linewidth=0.5)
+            ax.invert_yaxis()
+            plt.title("Error")
+            plt.show()
+
+        if(self.plot_results and self.fine_data.dim == 1):
+            fig, (ax1, ax2) = plt.subplots(1,2)
+            heatmap_min = min(np.min(np.abs(input_state_collapsed)), np.min(np.abs(eigenvector_fine)))
+            heatmap_max = max(np.max(np.abs(input_state_collapsed)), np.max(np.abs(eigenvector_fine)))
+
+
+            ax = sns.heatmap(np.abs(input_state_collapsed.reshape(self.fine_data.n[0], 1)), linewidth=0.5, ax=ax1, vmin=heatmap_min, vmax=heatmap_max)
+            ax1.set_xlabel("x (cm)")
+            ax1.set_ylabel("y (cm)")
+            ax.invert_yaxis()
+            #plt.title("Input (Coarse) Solution")
+            #plt.figure()
+
+            ax = sns.heatmap(np.abs(eigenvector_fine.reshape(self.fine_data.n[0], 1)), linewidth=0.5, ax=ax2, vmin=heatmap_min, vmax=heatmap_max)
+            ax2.set_xlabel("x (cm)")
+            ax2.set_ylabel("y (cm)")
+            ax.invert_yaxis()
+            #plt.title("Actual Fine Solution")
+            plt.figure()
+
+            error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
+            ax = sns.heatmap(error_vector.reshape(self.fine_data.n[0], 1), linewidth=0.5)
             ax.invert_yaxis()
             plt.title("Error")
             plt.show()
 
         # draw circuit, can take a while to run
-        qc.draw('mpl', filename="test_block_encoding.png")
+        #qc.draw('mpl', filename="test_block_encoding.png")
 
 
 # simulation to find eigenvector heatmaps, ANS plot 1
-n_eig_eval_bits = 4
-FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_coarse/input.txt', 'simulations/Pu239_1G_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
+n_eig_eval_bits = 5
+start_time = time.time()
+FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_1D_diffusion_coarse/input.txt', 'simulations/Pu239_1G_1D_diffusion_fine/input.txt', plot_results=True, sim_method="statevector")
 FEEN1.find_eigenvalue() # uncomment this when I just want to run the QPE algorithm once
 
 print("Found Eigenvalue: ", FEEN1.found_eigenvalue)
 print("Expected Eigenvalue: ", FEEN1.expected_eigenvalue)
+
+print("Runtime: ", time.time() - start_time)
 
 #print("Found Inverse Eigenvalue: ", 1/FEEN1.found_eigenvalue)
 #print("Expected Inverse Eigenvalue: ", 1/FEEN1.expected_eigenvalue)

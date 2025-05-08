@@ -1,7 +1,7 @@
 import numpy as np
 
 class Material:
-    def __init__(self, mat_name, xs_file, G, n_x, n_y):
+    def __init__(self, mat_name, xs_file, G):
         self.sigma_a = np.zeros(G)
         self.nu_sigma_f = np.zeros(G)
         self.D = np.zeros(G)

@@ -1,8 +1,10 @@
-2
-4
-4
-2
-2
+3
+8
+8
+8
+10
+10
+10
 homogeneous_fuel
 diffusion
 1
