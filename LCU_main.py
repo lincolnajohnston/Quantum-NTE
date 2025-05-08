@@ -20,6 +20,7 @@ start = time.perf_counter()
 sim_path = 'simulations/Pu239_1G_2D_diffusion_coarse/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
+save_results = False
 
 # make A matrix and b vector
 if data.sim_method == "sp3":
@@ -247,14 +248,15 @@ classical_sol_vec = classical_sol_vec / np.linalg.norm(classical_sol_vec) # scal
 precision = np.linalg.norm(np.abs(state_vec)-classical_sol_vec)
 print("precision: ", precision)
 # save data vectors to files
-i = 0
-while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
-    i += 1
-f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
-f.write("precision: " +  str(precision))
-f.close()
-np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
-np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
+if save_results:
+    i = 0
+    while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+        i += 1
+    f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+    f.write("precision: " +  str(precision))
+    f.close()
+    np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
+    np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
 
 
 # Print results
