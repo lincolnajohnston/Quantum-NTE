@@ -9,22 +9,24 @@ class ProblemData:
     def __init__(self, input_file):
         self.read_input(input_file)
         self.initialize_BC()
-        self.initialize_geometry()
         self.initialize_materials()
+        self.initialize_geometry()
 
     def read_input(self, filename):
         with open(filename, 'r') as file:
             lines = file.readlines()
         
-        self.n_x = int(lines[0].strip())
-        self.n_pts_x = self.n_x + 2
-        self.n_y = int(lines[1].strip())
-        self.n_pts_y = self.n_y + 2
-        self.delta_x = float(lines[2].strip())
-        self.delta_y = float(lines[3].strip())
-        self.sim_method = lines[4].strip()
-        self.G = int(lines[5].strip())
-        self.xs_folder = lines[6].strip()
+        self.dim = int(lines[0].strip())
+        self.n = np.zeros(self.dim, dtype=int)
+        self.h = np.zeros(self.dim)
+        for d in range(self.dim):
+            self.n[d] = int(lines[1+d].strip())
+            self.h[d] = float(lines[1 + self.dim + d].strip())
+        self.geometry_name = lines[1 + 2 * self.dim].strip()
+        self.sim_method = lines[2 + 2 * self.dim].strip()
+        self.G = int(lines[3 + 2 * self.dim].strip())
+        self.xs_folder = lines[4 + 2 * self.dim].strip()
+        self.mat_name_dict = {}
     
     def initialize_BC(self):
         if self.sim_method == "sp3":
@@ -32,6 +34,8 @@ class ProblemData:
             bottom_I_3 = 0
             right_I_3 = 0
             left_I_3 = 0
+
+            # TODO: update this for the new arbitrary number of spatial dimensions
             self.top_x_I_3 = np.ones(self.n_pts_x) * top_I_3
             self.bottom_x_I_3 = np.zeros(self.n_pts_x) * bottom_I_3
             self.right_y_I_3 = np.zeros(self.n_pts_y) * right_I_3
@@ -46,7 +50,7 @@ class ProblemData:
             self.right_y_I_1 = np.zeros(self.n_pts_y) * right_I_1
             self.left_y_I_1 = np.zeros(self.n_pts_y) * left_I_1
         elif self.sim_method == "diffusion":
-            self.beta = 0.5 # related to albedo constant
+            self.beta = 0.5 # related to albedo constant, beta=0.5 corresponds to alpha=0 (vacuum BC) and beta=0 correpsonds to alpha=1 (reflective BC)
 
     # return B.C.s at edge of problem domain
     def get_I_1_value(self, index):
@@ -79,150 +83,230 @@ class ProblemData:
     # get averaged diffusion coefficient in either the "x" or "y" direction for interior points
     # lower_index is lower index in the direction of the averaged diffusion coefficient
     # set_index is the other dimension index
-    def get_av_D(self, direction, lower_index, set_index, g):
-        if direction == "x":
-            D_lower = self.materials[self.material_matrix[lower_index,set_index]].D[g]
-            D_upper = self.materials[self.material_matrix[lower_index+1,set_index]].D[g]
-            delta = self.delta_x
-        elif direction == "y":
-            D_lower = self.materials[self.material_matrix[set_index,lower_index]].D[g]
-            D_upper = self.materials[self.material_matrix[set_index,lower_index+1]].D[g]
-            delta = self.delta_y
+    def get_av_D(self, direction_index, lower_index, set_indices, g):
+        temp_indices = np.array(set_indices)
+
+        temp_indices[direction_index] = lower_index
+        D_lower = self.materials[self.material_matrix[tuple(temp_indices)]].D[g]
+
+        temp_indices[direction_index] = lower_index + 1
+        D_upper = self.materials[self.material_matrix[tuple(temp_indices)]].D[g]
+
+        delta = self.h[direction_index]
         return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
 
 
-    def get_av_D2(self, direction, lower_index, set_index, g):
-        if direction == "x":
-            D_lower = self.materials[self.material_matrix[lower_index,set_index]].D2[g]
-            D_upper = self.materials[self.material_matrix[lower_index+1,set_index]].D2[g]
-            delta = self.delta_x
-        elif direction == "y":
-            D_lower = self.materials[self.material_matrix[set_index,lower_index]].D2[g]
-            D_upper = self.materials[self.material_matrix[set_index,lower_index+1]].D2[g]
-            delta = self.delta_y
+    def get_av_D2(self, direction_index, lower_index, spatial_indices, g):
+        spatial_indices[direction_index] = lower_index
+        D_lower = self.materials[self.material_matrix[tuple(spatial_indices)]].D2[g]
+
+        spatial_indices[direction_index] = lower_index + 1
+        D_upper = self.materials[self.material_matrix[tuple(spatial_indices)]].D2[g]
+        
+        delta = self.h[direction_index]
         return 2 * (D_lower/delta) * (D_upper/delta) / (D_lower/delta + D_upper/delta)
 
 
-    def get_edge_D(self, x_i, y_i, g, delta):
-        D = self.materials[self.material_matrix[x_i,y_i]].D[g]
-        return 2 * (self.beta/2) * (D/delta) / (self.beta/2 + (D/delta))
-        # Set material data at each finite difference point, O(N)
+    def get_edge_D(self, spatial_indices, g, delta):
+        D = self.materials[self.material_matrix[tuple(spatial_indices)]].D[g]
+        return 2 * (self.beta/2) * (D/delta) / (self.beta/2 + (D/delta)) # TODO: allow for different albedos on different boundaries
     
 
     def initialize_geometry(self):
-        self.material_matrix = np.empty((self.n_x, self.n_y), dtype=object)
-        x_range = self.n_x * self.delta_x
-        y_range = self.n_y * self.delta_y
+        self.material_matrix = np.zeros(self.n, dtype=int)
+        #x_range = self.n_x * self.delta_x
+        #y_range = self.n_y * self.delta_y
+        ranges = self.n * self.h
 
-        fuel_radius = min(x_range,y_range)/8
-
-        for i in range(self.n_x):
-            for j in range(self.n_y):
-                x_val = (i + 0.5) * self.delta_x - x_range/2
-                y_val = (j + 0.5) * self.delta_y - y_range/2
-
-                # homogeneous fuel
-                #self.material_matrix[i,j] = "fuel"
+        # custom geometry
+        if (self.geometry_name[:7] == "custom:"):
+            geometry_filename = self.geometry_name[7:]
+            i = 0
+            with open(geometry_filename, 'r') as file:
+                lines = file.readlines()
+                for line in lines:
+                    for word in line.split():
+                        indices = self.roll_index(i)[1:]
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict[word]
+                        i+=1
+                assert(i == self.G * math.prod(self.n))
+        else:
+            # pre-baked geometries       
+            for index in range(math.prod(self.n)):
+                indices = self.roll_index(index)[1:]
                 
-                # fuel at center
-                '''if (math.sqrt(x_val * x_val + y_val * y_val) < fuel_radius):
-                    # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
-                    
-                else:
-                    # use moderator XSs
-                    self.material_matrix[i,j] = "water"'''
+                if(self.geometry_name == "homogeneous_fuel"):
+                    self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
+                elif (self.geometry_name == "single_pin_cell_2d"):
+                    fuel_radius = min(ranges)/4
+                    coordinates = (indices + 0.5) * self.h - ranges/2
 
-                # 4 fuel pins
-                if (math.sqrt(math.pow(abs(x_val)-x_range/4,2) + math.pow(abs(y_val)-y_range/4,2)) < fuel_radius):
-                    # use fuel XSs
-                    self.material_matrix[i,j] = "fuel"
-                else:
-                    # use moderator XSs
-                    self.material_matrix[i,j] = "water"
+                    if (np.linalg.norm(coordinates) < fuel_radius):
+                        # use fuel XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
+                        
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
+                elif (self.geometry_name == "single_square_pin"):
+                    fuel_radius = min(ranges)/8 # radius of central fuel section
+                    coordinates = (indices + 0.5) * self.h - ranges/2 # position of center of finite volume
+
+                    if (np.all(abs(coordinates) <= fuel_radius)):
+                        # use fuel XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["fuel"]
+                        
+                    else:
+                        # use moderator XSs
+                        self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
         return
 
     def initialize_materials(self):
         self.materials = {}
+        mat_index = 0
         for _, dirs, _ in os.walk(self.xs_folder):
             for mat in dirs:
                 xs_file = self.xs_folder + "/" + mat + "/xs.txt"
-                self.materials[mat] = Material(mat, xs_file, self.G, self.n_x, self.n_y)
-                
-    # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
+                self.mat_name_dict[mat] = mat_index
+                self.materials[mat_index] = Material(mat, xs_file, self.G)
+                mat_index += 1
+    
     def diffusion_construct_A_matrix(self, A_mat_size):
         fd_order = 2
         A_matrix = np.zeros((A_mat_size, A_mat_size))
         b_vector = np.zeros(A_mat_size)
-        for g in range(self.G):
-            for x_i in range(self.n_x):
-                for y_i in range(self.n_y):
-                    mat = self.materials[self.material_matrix[x_i,y_i]]
-                    i = self.unroll_index([g, x_i, y_i])
-                    if(x_i == 0): # left BC, normal vector = (-1,0)
-                        J_x_minus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_minus = self.get_av_D("x",x_i-1,y_i, g) * self.delta_y
-                        A_matrix[i,self.unroll_index([g, x_i-1, y_i])] =  -J_x_minus # (i-1,j) terms
-                    if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                        J_x_plus = self.get_edge_D(x_i ,y_i, g, self.delta_x) * self.delta_y
-                    else:
-                        J_x_plus = self.get_av_D("x",x_i,y_i, g) * self.delta_y
-                        A_matrix[i,self.unroll_index([g, x_i+1, y_i])] =  -J_x_plus # (i+1,j) terms
-                    if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                        J_y_minus = self.get_edge_D(x_i ,y_i, g,self.delta_y)* self.delta_x
-                    else:
-                        J_y_minus = self.get_av_D("y",y_i-1,x_i, g) * self.delta_x
-                        A_matrix[i,self.unroll_index([g, x_i, y_i-1])] =  -J_y_minus # (i,j-1) terms
-                    if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
-                        J_y_plus = self.get_edge_D(x_i ,y_i, g,self.delta_y) * self.delta_x
-                    else:
-                        J_y_plus = self.get_av_D("y",y_i,x_i, g) * self.delta_x
-                        A_matrix[i,self.unroll_index([g, x_i, y_i+1])] =  -J_y_plus # (i,j+1) terms
-                    A_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (mat.sigma_t[g]) * self.delta_x * self.delta_y
-                    for g_p in range(self.G): # group to group scattering and fission terms
-                        A_matrix[i,self.unroll_index([g_p, x_i, y_i])] += -(mat.sigma_sgg[g_p, g] + mat.chi[g] * mat.nu_sigma_f[g_p]) * self.delta_x * self.delta_y
-                    b_vector[i] = mat.Q[g] * self.delta_x * self.delta_y
-        #for row in range(len(A_matrix)):
-        #    print("row: ", A_matrix[row])
+        delta_V = math.prod(self.h)
+        for i in range(self.G * math.prod(self.n)):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    D_left = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_left = -D_left
+                    A_matrix[i,i] += -J_left * delta_V / self.h[d]
+                else: # internal edge on left side of finite volume
+                    D_left = self.get_av_D(d,x_i-1,indices[1:], g)
+                    A_matrix[i,i] += D_left * delta_V / self.h[d] # (i) term
+
+                    left_indices = np.array(indices)
+                    left_indices[d+1] -= 1
+                    A_matrix[i,self.unroll_index(left_indices)] +=  -D_left * delta_V / self.h[d] # (i-1) term
+                if(x_i == self.n[d] - 1): # right BC, normal vector = (1,0)
+                    D_right = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_right = D_right
+                    A_matrix[i,i] += J_right * delta_V / self.h[d]
+                else: # internal edge on right side of finite volume
+                    D_right = self.get_av_D(d,x_i,indices[1:], g)
+                    A_matrix[i,i] += D_right * delta_V / self.h[d] # (i) term
+
+                    right_indices = np.array(indices)
+                    right_indices[d+1] += 1
+                    A_matrix[i,self.unroll_index(right_indices)] +=  -D_right * delta_V / self.h[d] # (i+1) term
+            for g_p in range(self.G): # group to group scattering and fission terms
+                group_indices = np.array(indices)
+                group_indices[0] = g_p
+                A_matrix[i,self.unroll_index(group_indices)] -= (mat.sigma_sgg[g_p, g]) * delta_V
+                A_matrix[i,self.unroll_index(group_indices)] -= (mat.chi[g] * mat.nu_sigma_f[g_p]) * delta_V
+            A_matrix[i,i] += (mat.sigma_t[g]) * delta_V
+            b_vector[i] = mat.Q[g] * delta_V
         return A_matrix, b_vector
     
-    # use finite volume method to construct the A matrix representing the diffusion equation in the form Ax=b, O(N)
+    # use finite volume discretization with edge-averaged diffusion coefficients at internal edges
+    # and albedo BCs at boundaries
     def diffusion_construct_L_F_matrices(self, A_mat_size):
         fd_order = 2
         L_matrix = np.zeros((A_mat_size, A_mat_size))
         F_matrix = np.zeros((A_mat_size, A_mat_size))
-        for x_i in range(self.n_x):
-            for y_i in range(self.n_y):
-                i = unroll_index([x_i, y_i], self.n_y)
+        delta_V = math.prod(self.h)
+        for i in range(self.G * math.prod(self.n)):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
                 if(x_i == 0): # left BC, normal vector = (-1,0)
-                    J_x_minus = self.get_edge_D(x_i ,y_i,self.delta_x) * self.delta_y
+                    D_left = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_left = -D_left
+                    L_matrix[i,i] += -J_left * delta_V / self.h[d]
+                else: # internal edge on left side of finite volume
+                    D_left = self.get_av_D(d,x_i-1,indices[1:], g)
+                    L_matrix[i,i] += D_left * delta_V / self.h[d] # (i) term
+
+                    left_indices = np.array(indices)
+                    left_indices[d+1] -= 1
+                    L_matrix[i,self.unroll_index(left_indices)] +=  -D_left * delta_V / self.h[d] # (i-1) term
+                if(x_i == self.n[d] - 1): # right BC, normal vector = (1,0)
+                    D_right = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_right = D_right
+                    L_matrix[i,i] += J_right * delta_V / self.h[d]
+                else: # internal edge on right side of finite volume
+                    D_right = self.get_av_D(d,x_i,indices[1:], g)
+                    L_matrix[i,i] += D_right * delta_V / self.h[d] # (i) term
+
+                    right_indices = np.array(indices)
+                    right_indices[d+1] += 1
+                    L_matrix[i,self.unroll_index(right_indices)] +=  -D_right * delta_V / self.h[d] # (i+1) term
+            for g_p in range(self.G): # group to group scattering and fission terms
+                group_indices = np.array(indices)
+                group_indices[0] = g_p
+                L_matrix[i,self.unroll_index(group_indices)] += -(mat.sigma_sgg[g_p, g]) * delta_V
+                F_matrix[i,self.unroll_index(group_indices)] += (mat.chi[g] * mat.nu_sigma_f[g_p]) * delta_V
+            L_matrix[i,i] += (mat.sigma_t[g]) * delta_V
+        return L_matrix, F_matrix
+    
+    # use finite difference discretization with spatially-varying diffusion coefficient
+    # 0 Dirichlet BCs
+    def diffusion_FD_construct_L_F_matrices(self):
+        A_mat_size = math.prod(self.n) * self.G
+        L_matrix = np.zeros((A_mat_size, A_mat_size))
+        F_matrix = np.zeros((A_mat_size, A_mat_size))
+        for i in range(A_mat_size):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
+                L_matrix[i,i] +=  2 * mat.D[g] / (self.h[d]**2) # diffusion term
+
+                left_indices = np.array(indices)
+                left_indices[d+1] -= 1
+                right_indices = np.array(indices)
+                right_indices[d+1] += 1
+
+                # find the material at the neighboring points, set the material at the ghost points 
+                # on the boundaries to be the same as the closest internal points
+                if(x_i == 0): # else left BC, point to the left is 0
+                    mat_left = mat
                 else:
-                    J_x_minus = self.get_av_D("x",x_i-1,y_i) * self.delta_y
-                    L_matrix[i,unroll_index([x_i-1, y_i], self.n_y)] =  -J_x_minus # (i-1,j) terms
-                if(x_i == self.n_x - 1): # right BC, normal vector = (1,0)
-                    J_x_plus = self.get_edge_D(x_i ,y_i,self.delta_x) * self.delta_y
+                    mat_left = self.materials[self.material_matrix[tuple(left_indices[1:])]]
+
+                if(x_i == self.n[d] - 1):
+                    mat_right = mat
                 else:
-                    J_x_plus = self.get_av_D("x",x_i,y_i) * self.delta_y
-                    L_matrix[i,unroll_index([x_i+1, y_i], self.n_y)] =  -J_x_plus # (i+1,j) terms
-                if(y_i == 0): # bottom BC, normal vector = (0,-1)
-                    J_y_minus = self.get_edge_D(x_i ,y_i,self.delta_y)* self.delta_x
-                else:
-                    J_y_minus = self.get_av_D("y",y_i-1,x_i) * self.delta_x
-                    L_matrix[i,unroll_index([x_i, y_i-1], self.n_y)] =  -J_y_minus # (i,j-1) terms
-                if(y_i == self.n_y - 1): # right BC, normal vector = (0,1)
-                    J_y_plus = self.get_edge_D(x_i ,y_i,self.delta_y) * self.delta_x
-                else:
-                    J_y_plus = self.get_av_D("x",y_i,x_i) * self.delta_x
-                    L_matrix[i,unroll_index([x_i, y_i+1], self.n_y)] =  -J_y_plus # (i,j+1) terms
-                L_matrix[i,i] = J_x_minus + J_x_plus + J_y_minus + J_y_plus + (self.sigma_a[i]) * self.delta_x * self.delta_y
-                F_matrix[i,i] = self.nu_sigma_f[i]
-        b_vector = self.Q * self.delta_x * self.delta_y
+                    mat_right = self.materials[self.material_matrix[tuple(right_indices[1:])]]
+
+                # set the off-diagonal values from the diffusion term
+                if(x_i != 0): # else left BC, point to the left is 0
+                    L_matrix[i,self.unroll_index(left_indices)] -=  (mat.D[g] - mat_right.D[g]/4 + mat_left.D[g]/4) / (self.h[d]**2)
+                
+                if(x_i != self.n[d] - 1): # else right BC, point to the right is 0
+                    L_matrix[i,self.unroll_index(right_indices)] -=  (mat.D[g] + mat_right.D[g]/4 - mat_left.D[g]/4) / (self.h[d]**2)
+
+            # add in group to group fission and scattering terms
+            for g_p in range(self.G): # group to group scattering and fission terms
+                group_indices = np.array(indices)
+                group_indices[0] = g_p
+                L_matrix[i,self.unroll_index(group_indices)] += -(mat.sigma_sgg[g_p, g])
+                F_matrix[i,self.unroll_index(group_indices)] += (mat.chi[g] * mat.nu_sigma_f[g_p])
+            L_matrix[i,i] += (mat.sigma_t[g])
         return L_matrix, F_matrix
 
+    
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2
-        beta = 0.5
+        beta = 0.5 # hardcoded vacuum boundary condition
         phi_2_offset = self.G * self.n_x * self.n_y
         A_matrix = np.zeros((A_mat_size, A_mat_size))
         b_vector = np.zeros((A_mat_size))
@@ -354,16 +438,21 @@ class ProblemData:
 
 
 
-    # convert 3D (g,x,y) index to 1D index
+    # convert multidimensional (g,x1,x2...,xD) index to 1D index
     def unroll_index(self, index_vec):
-        return index_vec[0]*self.n_x*self.n_y + index_vec[1]*self.n_y + index_vec[2]
+        t1 = [index_vec[d]*math.prod(self.n[d:]) for d in range(len(index_vec)-1)]
+        return sum([index_vec[d]*math.prod(self.n[d:]) for d in range(len(index_vec)-1)]) + index_vec[-1]
 
-    # convert 1D index to 3D (g,x,y) index
+    # convert 1D index to multidimensional (g,x1,x2...,xD) index
     def roll_index(self, index):
-        g = math.floor(index/(self.n_x * self.n_y))
-        x = math.floor((index % (self.n_x * self.n_y))/(self.n_y))
-        y = index % self.n_y
-        return np.array([g,x,y])
+        indices = np.zeros(1 + self.dim, dtype=int) # 1 index for energy group, self.dim dimensions for spatial dimensions
+        for d in range(self.dim + 1):
+            indices[d] = index
+            if d < self.dim:
+                indices[d] = math.floor(indices[d] / math.prod(self.n[d:]))
+            if d > 0:
+                indices[d] = indices[d] % self.n[d-1]
+        return indices
 
 
 

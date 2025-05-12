@@ -1,0 +1,9 @@
+2
+8
+8
+2.096
+2.096
+homogeneous_fuel
+diffusion
+1
+XS-1group

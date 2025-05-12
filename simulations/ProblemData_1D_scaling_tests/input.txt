@@ -1,0 +1,7 @@
+1
+2
+2
+homogeneous_fuel
+diffusion
+1
+Pu239-XS-1group
