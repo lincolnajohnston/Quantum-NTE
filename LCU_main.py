@@ -32,13 +32,13 @@ elif data.sim_method == "diffusion":
 
 
 # use the material data (like XSs) to make the A matrix for the equation being solved
-'''print("A matrix:")
+print("A matrix:")
 print(A_matrix)
 print("\n b vector: ")
 print(b_vector)
 eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
 print("A eigenvalues: ", eigenvalues)
-print("A condition number: ", max(eigenvalues) / min(eigenvalues))'''
+print("A condition number: ", max(eigenvalues) / min(eigenvalues))
 
 material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
