@@ -149,8 +149,8 @@ class ProblemData:
                         # use moderator XSs
                         self.material_matrix[tuple(indices)] = self.mat_name_dict["water"]
                 elif (self.geometry_name == "single_square_pin"):
-                    fuel_radius = min(ranges)/4
-                    coordinates = (indices + 0.5) * self.h - ranges/2
+                    fuel_radius = min(ranges)/8 # radius of central fuel section
+                    coordinates = (indices + 0.5) * self.h - ranges/2 # position of center of finite volume
 
                     if (np.all(abs(coordinates) <= fuel_radius)):
                         # use fuel XSs
@@ -286,6 +286,54 @@ class ProblemData:
                 F_matrix[i,self.unroll_index(group_indices)] += (mat.chi[g] * mat.nu_sigma_f[g_p]) * delta_V
             L_matrix[i,i] += (mat.sigma_t[g]) * delta_V
         return L_matrix, F_matrix
+    
+    # use finite difference discretization with spatially-varying diffusion coefficient
+    # 0 Dirichlet BCs
+    def diffusion_FD_construct_L_F_matrices(self):
+        A_mat_size = math.prod(self.n) * self.G
+        L_matrix = np.zeros((A_mat_size, A_mat_size))
+        F_matrix = np.zeros((A_mat_size, A_mat_size))
+        for i in range(A_mat_size):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
+                L_matrix[i,i] +=  2 * mat.D[g] / (self.h[d]**2) # diffusion term
+
+                left_indices = np.array(indices)
+                left_indices[d+1] -= 1
+                right_indices = np.array(indices)
+                right_indices[d+1] += 1
+
+                # find the material at the neighboring points, set the material at the ghost points 
+                # on the boundaries to be the same as the closest internal points
+                if(x_i == 0): # else left BC, point to the left is 0
+                    mat_left = mat
+                else:
+                    mat_left = self.materials[self.material_matrix[tuple(left_indices[1:])]]
+
+                if(x_i == self.n[d] - 1):
+                    mat_right = mat
+                else:
+                    mat_right = self.materials[self.material_matrix[tuple(right_indices[1:])]]
+
+                # set the off-diagonal values from the diffusion term
+                if(x_i != 0): # else left BC, point to the left is 0
+                    L_matrix[i,self.unroll_index(left_indices)] -=  (mat.D[g] - mat_right.D[g]/4 + mat_left.D[g]/4) / (self.h[d]**2)
+                
+                if(x_i != self.n[d] - 1): # else right BC, point to the right is 0
+                    L_matrix[i,self.unroll_index(right_indices)] -=  (mat.D[g] + mat_right.D[g]/4 - mat_left.D[g]/4) / (self.h[d]**2)
+
+            # add in group to group fission and scattering terms
+            for g_p in range(self.G): # group to group scattering and fission terms
+                group_indices = np.array(indices)
+                group_indices[0] = g_p
+                L_matrix[i,self.unroll_index(group_indices)] += -(mat.sigma_sgg[g_p, g])
+                F_matrix[i,self.unroll_index(group_indices)] += (mat.chi[g] * mat.nu_sigma_f[g_p])
+            L_matrix[i,i] += (mat.sigma_t[g])
+        return L_matrix, F_matrix
+
     
     def sp3_construct_A_matrix(self, A_mat_size):
         fd_order = 2

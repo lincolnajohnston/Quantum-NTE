@@ -19,6 +19,7 @@ start = time.perf_counter()
 sim_path = 'simulations/Pu239_1G_2D_diffusion_coarse/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
+save_results = False
 
 # make A matrix and b vector
 if data.sim_method == "sp3":
@@ -246,14 +247,15 @@ classical_sol_vec = classical_sol_vec / np.linalg.norm(classical_sol_vec) # scal
 precision = np.linalg.norm(np.abs(state_vec)-classical_sol_vec)
 print("precision: ", precision)
 # save data vectors to files
-i = 0
-while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
-    i += 1
-f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
-f.write("precision: " +  str(precision))
-f.close()
-np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
-np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
+if save_results:
+    i = 0
+    while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+        i += 1
+    f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+    f.write("precision: " +  str(precision))
+    f.close()
+    np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
+    np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
 
 
 # Print results
@@ -296,6 +298,17 @@ if (data.dim == 2):
 
     for g in range(data.G):
         ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Real Solution, Group " + str(g))
+        #plt.savefig('real_sol_g' + str(g) + '.png')
+        plt.figure()
+    
+    # interpolate classical solution to finer grid
+    mult_factor = 8
+    #interp_clas_sol_vec = np.kron(classical_sol_vec[0,:,:],np.ones((mult_factor,mult_factor))) * 0
+    interp_clas_sol_vec = classical_sol_vec[0,:,:] * 0
+    for g in range(data.G):
+        ax = sns.heatmap(interp_clas_sol_vec, linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
         ax.invert_yaxis()
         plt.title("Real Solution, Group " + str(g))
         #plt.savefig('real_sol_g' + str(g) + '.png')

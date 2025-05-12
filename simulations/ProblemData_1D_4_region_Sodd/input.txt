@@ -1,6 +1,6 @@
 1
-8
-0.5
+2
+2
 single_square_pin
 diffusion
 1
