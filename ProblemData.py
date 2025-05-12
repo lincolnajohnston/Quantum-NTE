@@ -213,6 +213,7 @@ class ProblemData:
             b_vector[i] = mat.Q[g] * delta_V
         return A_matrix, b_vector
     
+    
     # use finite volume discretization with edge-averaged diffusion coefficients at internal edges
     # and albedo BCs at boundaries
     def diffusion_construct_L_F_matrices(self, A_mat_size):

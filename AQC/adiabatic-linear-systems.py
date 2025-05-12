@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 import math
 import cmath
@@ -122,10 +125,10 @@ input_file = '1G_diffusion.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * data.G * (data.n_x) * (data.n_y)
+    A_mat_size = 2 * data.G * math.prod(data.n)
     A_matrix, b_vec = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = data.G * (data.n_x) * (data.n_y)
+    A_mat_size = data.G * math.prod(data.n)
     A_matrix, b_vec = data.diffusion_construct_A_matrix(A_mat_size)
 
 # Input which T and M values to test
@@ -193,31 +196,32 @@ print("solver run time: ", time2 - time1)
 plt.show()'''
 
 # get plotting ranges and tickmark locations
-min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
-max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
-xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
-yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
+if len(data.n) == 2:
+    min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
+    max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
+    xticks = np.round(np.array(range(data.n[0]))*data.h[0] - (data.n[0] - 1)*data.h[0]/2,3)
+    yticks = np.round(np.array(range(data.n[1]))*data.h[1] - (data.n[1] - 1)*data.h[1]/2,3)
 
-for g in range(data.G):
-    psi.resize((data.G,data.n_x,data.n_y))
-    ax = sns.heatmap(np.abs(psi[g,:,:]), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
-    ax.invert_yaxis()
-    plt.title("Quantum Solution")
-    plt.savefig('q_sol.png')
-    plt.figure()
+    for g in range(data.G):
+        psi.resize((data.G,data.n[0],data.n[1]))
+        ax = sns.heatmap(np.abs(psi[g,:,:]), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
+        ax.invert_yaxis()
+        plt.title("Quantum Solution")
+        plt.savefig('q_sol.png')
+        plt.figure()
 
-    real_psi_solution.resize((data.G, data.n_x,data.n_y))
-    ax = sns.heatmap(real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
-    ax.invert_yaxis()
-    plt.title("Real Solution")
-    plt.savefig('real_sol.png')
-    plt.figure()
+        real_psi_solution.resize((data.G,data.n[0],data.n[1]))
+        ax = sns.heatmap(real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val, xticklabels=xticks, yticklabels=yticks)
+        ax.invert_yaxis()
+        plt.title("Real Solution")
+        plt.savefig('real_sol.png')
+        plt.figure()
 
-    ax = sns.heatmap(np.abs(psi[g,:,:]) - real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", xticklabels=xticks, yticklabels=yticks)
-    ax.invert_yaxis()
-    plt.title("Error Between Correct Psi and Quantum Solution of Psi")
-    plt.savefig('sol_error.png')
-    plt.figure()
+        ax = sns.heatmap(np.abs(psi[g,:,:]) - real_psi_solution[g,:,:], linewidth=0.5, cmap="jet", xticklabels=xticks, yticklabels=yticks)
+        ax.invert_yaxis()
+        plt.title("Error Between Correct Psi and Quantum Solution of Psi")
+        plt.savefig('sol_error.png')
+        plt.figure()
 
-plt.show()
+    plt.show()
 

@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 import math
 import cmath
@@ -224,19 +227,21 @@ def adiabatic_solver(L_matrix, F_matrix, b_vec, T, M, plot_evolution=False, verb
     return state_vec
 
 # input section for parametric simulations
-data = ProblemData.ProblemData("input.txt")
+input_path = "simulations/AQC_1G_diffusion_small/1G_diffusion.txt"
+data = ProblemData.ProblemData(input_path)
 
 # create the vectors holding the material data at each discretized point
-data.read_input("input.txt")
+data.read_input(input_path)
 data.initialize_BC()
-data.initialize_XSs() 
+data.initialize_materials()
+data.initialize_geometry()
 # make A matrix and b vector
 if data.sim_method == "sp3":
     print("aaaa noooo I didn't implement this :(")
     #A_mat_size = 2 * (data.n_x) * (data.n_y)
     #A_matrix, b_vec = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y)
+    A_mat_size = math.prod(data.n) * data.G
     L_matrix, F_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
 
 eigvals, eigvecs = eigh(L_matrix, F_matrix, eigvals_only=False)
@@ -284,13 +289,13 @@ print("solver run time: ", time2 - time1)
 min_val = min(np.min(np.abs(psi)),np.min(real_psi_solution))
 max_val = min(np.max(np.abs(psi)),np.max(real_psi_solution))
 
-psi.resize((data.n_x,data.n_y))
+psi.resize((data.n))
 ax = sns.heatmap(np.abs(psi), linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
 plt.title("Quantum Solution")
 plt.savefig('q_sol.png')
 plt.figure()
 
-real_psi_solution.resize((data.n_x,data.n_y))
+real_psi_solution.resize((data.n))
 ax = sns.heatmap(real_psi_solution, linewidth=0.5, cmap="jet", vmin=min_val, vmax=max_val)
 plt.title("Real Solution")
 plt.savefig('real_sol.png')
