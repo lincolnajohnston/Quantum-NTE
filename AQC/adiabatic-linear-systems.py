@@ -123,6 +123,7 @@ def adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qi
 sim_path = 'simulations/AQC_1G_diffusion_small/'
 input_file = '1G_diffusion.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
+save_results = False
 # make A matrix and b vector
 if data.sim_method == "sp3":
     A_mat_size = 2 * data.G * math.prod(data.n)
@@ -175,16 +176,16 @@ for j, M in enumerate(M_vec):
     #print("psi error: ", psi - real_psi_solution)
     precision = np.linalg.norm(np.abs(psi)-real_psi_solution)
     print("precision: ", precision)
-
     # save data vectors to files
-    i = 0
-    while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
-        i += 1
-    f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
-    f.write("precision: " +  str(precision))
-    f.close()
-    np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', psi)
-    np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', real_psi_solution)
+    if save_results:
+        i = 0
+        while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+            i += 1
+        f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+        f.write("precision: " +  str(precision))
+        f.close()
+        np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', psi)
+        np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', real_psi_solution)
 time2 = time.perf_counter()
 print("solver run time: ", time2 - time1)
 
