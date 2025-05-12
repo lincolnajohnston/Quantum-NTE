@@ -1,0 +1,9 @@
+2
+8
+8
+0.5
+0.5
+custom:simulations/geometries/square_fuel_pin_8x8.txt
+diffusion
+1
+Pu239-XS-1group

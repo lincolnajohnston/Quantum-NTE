@@ -1,9 +1,9 @@
 2
 4
 4
-0.5
-0.5
+2
+2
 homogeneous_fuel
 diffusion
-8
-XS-8group
+1
+Pu239-XS-1group

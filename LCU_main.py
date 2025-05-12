@@ -1,5 +1,4 @@
 import numpy as np
-import os
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 import matplotlib.pyplot as plt
@@ -17,28 +16,29 @@ np.set_printoptions(threshold=np.inf)
 
 start = time.perf_counter()
 
-sim_path = 'simulations/LCU_1G_sp3_small/'
+sim_path = 'simulations/Pu239_1G_2D_diffusion_coarse/'
 input_file = 'input.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
+save_results = False
 
 # make A matrix and b vector
 if data.sim_method == "sp3":
-    A_mat_size = 2 * (data.n_x) * (data.n_y) * data.G
+    A_mat_size = 2 * math.prod(data.n) * data.G
     A_matrix, b_vector = data.sp3_construct_A_matrix(A_mat_size) 
 elif data.sim_method == "diffusion":
-    A_mat_size = (data.n_x) * (data.n_y) * data.G
+    A_mat_size = math.prod(data.n) * data.G
     A_matrix, b_vector = data.diffusion_construct_A_matrix(A_mat_size)
     
 
 
 # use the material data (like XSs) to make the A matrix for the equation being solved
-'''print("A matrix:")
+print("A matrix:")
 print(A_matrix)
 print("\n b vector: ")
 print(b_vector)
 eigenvalues, eigenvectors = np.linalg.eig(A_matrix)
 print("A eigenvalues: ", eigenvalues)
-print("A condition number: ", max(eigenvalues) / min(eigenvalues))'''
+print("A condition number: ", max(eigenvalues) / min(eigenvalues))
 
 material_initialization_time = time.perf_counter()
 print("Initialization Time: ", material_initialization_time - start)
@@ -202,17 +202,17 @@ op_time = time.perf_counter()
 print("Operator Construction Time: ", op_time - v_mat_time)
 
 # Run circuit using Numpy
-b_state = quantum_b_vector
+'''b_state = quantum_b_vector
 l_state = np.zeros(2**num_LCU_bits)
 l_state[0] = 1
 l_state = V @ l_state
 state_vec = np.kron(l_state, b_state)
 state_vec = U @ state_vec
-state_vec = (np.kron(np.conj(V).T,np.eye(2**nb))) @ state_vec
+state_vec = (np.kron(np.conj(V).T,np.eye(2**nb))) @ state_vec'''
 
 # Run circuit sing Qiskit
 # b vector State preparation
-'''qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
+qc.append(LcuFunctions.get_b_setup_gate(quantum_b_vector, nb), qb[:])
 V_gate = UnitaryGate(V, 'V', False)
 U_gate = UnitaryGate(U, 'U', False)
 V_inv_gate = UnitaryGate(np.conj(V).T, 'V_inv', False)
@@ -226,7 +226,8 @@ new_circuit = transpile(qc, backend)
 job = backend.run(new_circuit)
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
-#print(state_vec[0:A_mat_size])'''
+#print(state_vec[0:A_mat_size])
+#qc.draw('mpl', filename="test_circuit.png")
 
 state_vec = np.real(state_vec[len(quantum_b_vector) - len(b_vector):len(quantum_b_vector)])
 classical_sol_vec = np.linalg.solve(A_matrix, b_vector)
@@ -246,14 +247,15 @@ classical_sol_vec = classical_sol_vec / np.linalg.norm(classical_sol_vec) # scal
 precision = np.linalg.norm(np.abs(state_vec)-classical_sol_vec)
 print("precision: ", precision)
 # save data vectors to files
-i = 0
-while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
-    i += 1
-f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
-f.write("precision: " +  str(precision))
-f.close()
-np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
-np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
+if save_results:
+    i = 0
+    while os.path.exists(sim_path + 'saved_data/stats' + str(i) + '.txt'):
+        i += 1
+    f = open(sim_path + 'saved_data/stats' + str(i) + '.txt', "w")
+    f.write("precision: " +  str(precision))
+    f.close()
+    np.savetxt(sim_path + 'saved_data/psi' + str(i) + '.npy', state_vec)
+    np.savetxt(sim_path + 'saved_data/real_psi_solution' + str(i) + '.npy', classical_sol_vec)
 
 
 # Print results
@@ -272,42 +274,55 @@ solve_time = time.perf_counter()
 print("Total time: ", solve_time - start)
 
 # Make graphs of results
-state_vec.resize((data.G, data.n_x,data.n_y))
-classical_sol_vec = classical_sol_vec[:int(data.G * data.n_x * data.n_y)]
-classical_sol_vec.resize((data.G, data.n_x,data.n_y))
+state_vec.resize(tuple([data.G] + list(data.n)))
+classical_sol_vec = classical_sol_vec[:int(A_mat_size)]
+classical_sol_vec.resize(tuple([data.G] + list(data.n)))
 
-xticks = np.round(np.array(range(data.n_x))*data.delta_x - (data.n_x - 1)*data.delta_x/2,3)
-yticks = np.round(np.array(range(data.n_y))*data.delta_y - (data.n_y - 1)*data.delta_y/2,3)
+if (data.dim == 2):
 
-flux_mins = np.zeros((data.G,1))
-flux_maxes = np.zeros((data.G,1))
-for g in range(data.G):
-    flux_maxes[g] = max(np.max(state_vec[g,:,:]), np.max(classical_sol_vec[g,:,:]))
-    flux_mins[g] = min(np.min(state_vec[g,:,:]), np.min(classical_sol_vec[g,:,:]))
+    xticks = np.round(np.array(range(data.n[0]))*data.h[0] - (data.n[0] - 1)*data.h[0]/2,3)
+    yticks = np.round(np.array(range(data.n[1]))*data.h[1] - (data.n[1] - 1)*data.h[1]/2,3)
 
-for g in range(data.G):
-    ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
-    ax.invert_yaxis()
-    plt.title("Quantum Solution, Group " + str(g))
-    #plt.savefig('quantum_sol_g' + str(g) + '.png')
-    plt.figure()
+    flux_mins = np.zeros((data.G,1))
+    flux_maxes = np.zeros((data.G,1))
+    for g in range(data.G):
+        flux_maxes[g] = max(np.max(state_vec[g,:,:]), np.max(classical_sol_vec[g,:,:]))
+        flux_mins[g] = min(np.min(state_vec[g,:,:]), np.min(classical_sol_vec[g,:,:]))
 
-for g in range(data.G):
-    ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
-    ax.invert_yaxis()
-    plt.title("Real Solution, Group " + str(g))
-    #plt.savefig('real_sol_g' + str(g) + '.png')
-    plt.figure()
+    for g in range(data.G):
+        ax = sns.heatmap(state_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Quantum Solution, Group " + str(g))
+        #plt.savefig('quantum_sol_g' + str(g) + '.png')
+        plt.figure()
 
-'''sol_rel_error.resize((data.G, data.n_x,data.n_y))
-for g in range(data.G):
-    ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
-    ax.invert_yaxis()
-    plt.title("Relative error between quantum and real solution, Group " + str(g))
-    plt.figure()'''
+    for g in range(data.G):
+        ax = sns.heatmap(classical_sol_vec[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Real Solution, Group " + str(g))
+        #plt.savefig('real_sol_g' + str(g) + '.png')
+        plt.figure()
+    
+    # interpolate classical solution to finer grid
+    mult_factor = 8
+    #interp_clas_sol_vec = np.kron(classical_sol_vec[0,:,:],np.ones((mult_factor,mult_factor))) * 0
+    interp_clas_sol_vec = classical_sol_vec[0,:,:] * 0
+    for g in range(data.G):
+        ax = sns.heatmap(interp_clas_sol_vec, linewidth=0.5, xticklabels=xticks, yticklabels=yticks, vmin=flux_mins[g], vmax=flux_maxes[g])
+        ax.invert_yaxis()
+        plt.title("Real Solution, Group " + str(g))
+        #plt.savefig('real_sol_g' + str(g) + '.png')
+        plt.figure()
 
-'''for g in range(data.G):
-    ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
-    plt.title("Actual error between quantum and real solution, Group " + str(g))
-    plt.figure()'''
-plt.show()
+    '''sol_rel_error.resize((data.G, data.n_x,data.n_y))
+    for g in range(data.G):
+        ax = sns.heatmap(sol_rel_error[g,:,:], linewidth=0.5, xticklabels=xticks, yticklabels=yticks)
+        ax.invert_yaxis()
+        plt.title("Relative error between quantum and real solution, Group " + str(g))
+        plt.figure()'''
+
+    '''for g in range(data.G):
+        ax = sns.heatmap(sol_error[g,:,:], linewidth=0.5)
+        plt.title("Actual error between quantum and real solution, Group " + str(g))
+        plt.figure()'''
+    plt.show()

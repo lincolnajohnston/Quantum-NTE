@@ -1,7 +1,9 @@
-16
-16
+2
+4
+4
 0.2
 0.2
+homogeneous_fuel
 sp3
 1
 XS-1group
