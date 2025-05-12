@@ -1,5 +1,4 @@
 import numpy as np
-import os
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 import matplotlib.pyplot as plt
