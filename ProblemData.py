@@ -213,8 +213,39 @@ class ProblemData:
             b_vector[i] = mat.Q[g] * delta_V
         return A_matrix, b_vector
     
-    # use finite volume discretization with edge-averaged diffusion coefficients at internal edges
-    # and albedo BCs at boundaries
+    def diffusion_construct_diffusion_operator(self, A_mat_size):
+        L_matrix = np.zeros((A_mat_size, A_mat_size))
+        delta_V = math.prod(self.h)
+        for i in range(self.G * math.prod(self.n)):
+            indices = self.roll_index(i)
+            g = indices[0] # current energy group
+            mat = self.materials[self.material_matrix[tuple(indices[1:])]]
+            for d in range(self.dim): # apply terms for neutron current in each spatial dimension
+                x_i = indices[d+1] # index of position in the spatial dimension for which the current term is being created in this iteration
+                if(x_i == 0): # left BC, normal vector = (-1,0)
+                    D_left = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_left = -D_left
+                    L_matrix[i,i] += -J_left * delta_V / self.h[d]
+                else: # internal edge on left side of finite volume
+                    D_left = self.get_av_D(d,x_i-1,indices[1:], g)
+                    L_matrix[i,i] += D_left * delta_V / self.h[d] # (i) term
+
+                    left_indices = np.array(indices)
+                    left_indices[d+1] -= 1
+                    L_matrix[i,self.unroll_index(left_indices)] +=  -D_left * delta_V / self.h[d] # (i-1) term
+                if(x_i == self.n[d] - 1): # right BC, normal vector = (1,0)
+                    D_right = self.get_edge_D(indices[1:], g, self.h[d])
+                    J_right = D_right
+                    L_matrix[i,i] += J_right * delta_V / self.h[d]
+                else: # internal edge on right side of finite volume
+                    D_right = self.get_av_D(d,x_i,indices[1:], g)
+                    L_matrix[i,i] += D_right * delta_V / self.h[d] # (i) term
+
+                    right_indices = np.array(indices)
+                    right_indices[d+1] += 1
+                    L_matrix[i,self.unroll_index(right_indices)] +=  -D_right * delta_V / self.h[d] # (i+1) term
+        return L_matrix
+    
     def diffusion_construct_L_F_matrices(self, A_mat_size):
         fd_order = 2
         L_matrix = np.zeros((A_mat_size, A_mat_size))
