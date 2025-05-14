@@ -16,7 +16,7 @@ from typing import Optional
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-import LcuFunctions
+from QLSS import LcuFunctions
 
 from qiskit.circuit.library import QFT
 import numpy as np

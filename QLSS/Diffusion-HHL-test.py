@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 #from linear_solvers import HHL
 from linear_solvers.hhl import HHL

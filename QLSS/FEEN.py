@@ -1,10 +1,12 @@
-import numpy as np
+import sys
 import os
+sys.path.append(os.getcwd())
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import time
-import ProblemData
+#from helpers.ProblemData import ProblemData
 import LcuFunctions
 import math
 
@@ -14,9 +16,9 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Q
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Statevector
-from QPE import PhaseEstimation
+from QPE.QPE import PhaseEstimation
 from qiskit import Aer
-import fable
+from helpers import fable, ProblemData
 
 ########## Comments/Thoughts ##########
 # What needs to be done, in approximate order
