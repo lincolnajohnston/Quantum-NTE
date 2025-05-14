@@ -1,5 +1,7 @@
-import numpy as np
+import sys
 import os
+sys.path.append(os.getcwd())
+import numpy as np
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 import matplotlib.pyplot as plt

@@ -1,5 +1,7 @@
-import numpy as np
+import sys
 import os
+sys.path.append(os.getcwd())
+import numpy as np
 import matplotlib.pyplot as plt
 import math
 np.set_printoptions(threshold=np.inf)
