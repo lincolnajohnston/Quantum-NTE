@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 from qiskit.quantum_info import Statevector
 from qiskit import transpile, execute

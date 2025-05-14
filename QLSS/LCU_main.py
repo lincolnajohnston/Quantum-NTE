@@ -1,4 +1,6 @@
+import sys
 import os
+sys.path.append(os.getcwd())
 import numpy as np
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
@@ -6,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
 import time
-import ProblemData
+from helpers.ProblemData import ProblemData
 import LcuFunctions
 import math
 
@@ -19,7 +21,7 @@ start = time.perf_counter()
 
 sim_path = 'simulations/Pu239_1G_2D_diffusion_coarse/'
 input_file = 'input.txt'
-data = ProblemData.ProblemData(sim_path + input_file)
+data = ProblemData(sim_path + input_file)
 save_results = False
 
 # make A matrix and b vector

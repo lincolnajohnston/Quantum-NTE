@@ -1,9 +1,13 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 import cmath
 import math
-import LcuFunctions
+from helpers import ProblemData, fable
+from QLSS import LcuFunctions
 from QPE import PhaseEstimation
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -13,7 +17,6 @@ from qiskit_aer.aerprovider import QasmSimulator
 from qiskit import transpile
 from scipy.linalg import eigh
 import random
-import ProblemData
 
 # Code Description:
 # Script for plotting the scaling of the theoretical upper limit on the probability of FEEN/QPE success based on the size of the coarse and fine mesh grids
@@ -24,14 +27,14 @@ def getStateFromCounts(counts_vec):
     return np.sqrt(counts_vec) / norm
 
 def get_success_prob(coarse_data, fine_data):
-        A_coarse_mat_size = (coarse_data.n_x) * (coarse_data.n_y) * coarse_data.G
-        A_coarse_x_bits = math.ceil(math.log2(coarse_data.n_x))
-        A_coarse_y_bits = math.ceil(math.log2(coarse_data.n_y))
+        A_coarse_mat_size = math.prod(coarse_data.n) * coarse_data.G
+        A_coarse_x_bits = math.ceil(math.log2(coarse_data.n[0]))
+        A_coarse_y_bits = math.ceil(math.log2(coarse_data.n[1]))
         A_coarse_G_bits = math.ceil(math.log2(coarse_data.G))
         A_coarse_bits = A_coarse_x_bits + A_coarse_y_bits + A_coarse_G_bits
-        A_mat_size = (fine_data.n_x) * (fine_data.n_y) * fine_data.G
-        A_x_bits = math.ceil(math.log2(fine_data.n_x))
-        A_y_bits = math.ceil(math.log2(fine_data.n_y))
+        A_mat_size = math.prod(fine_data.n) * fine_data.G
+        A_x_bits = math.ceil(math.log2(fine_data.n[0]))
+        A_y_bits = math.ceil(math.log2(fine_data.n[1]))
         A_G_bits = math.ceil(math.log2(fine_data.G))
         A_bits = A_x_bits + A_y_bits + A_G_bits
         interpolation_bits = A_bits - A_coarse_bits
@@ -64,7 +67,7 @@ def get_success_prob(coarse_data, fine_data):
         # solve problem classically to compare to quantum results
         eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
         eigenvector_fine = eigvecs[:,eig_index] / np.linalg.norm(eigvecs[:,eig_index])
-        coarse_eigvec_expanded = math.pow((1/math.sqrt(2)), x_bits_diff + y_bits_diff + G_bits_diff) * np.kron(eigenvector_input.reshape(coarse_data.n_x, coarse_data.n_y, coarse_data.G), np.ones((int(math.pow(2,x_bits_diff)), int(math.pow(2,y_bits_diff)), int(math.pow(2,G_bits_diff))))).reshape(A_mat_size)
+        coarse_eigvec_expanded = math.pow((1/math.sqrt(2)), x_bits_diff + y_bits_diff + G_bits_diff) * np.kron(eigenvector_input.reshape(coarse_data.n[0], coarse_data.n[1], coarse_data.G), np.ones((int(math.pow(2,x_bits_diff)), int(math.pow(2,y_bits_diff)), int(math.pow(2,G_bits_diff))))).reshape(A_mat_size)
         state_overlap = np.dot(coarse_eigvec_expanded.conj(), eigenvector_fine)
         print("projected probability of success: ", state_overlap ** 2)
         return state_overlap ** 2

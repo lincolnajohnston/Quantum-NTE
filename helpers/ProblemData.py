@@ -1,7 +1,10 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 import math
 import os
-from Material import Material
+from helpers.Material import Material
 import scipy.sparse as sp
 
 

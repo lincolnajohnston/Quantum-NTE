@@ -1,11 +1,14 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import time
-import ProblemData
-import LcuFunctions
+from helpers import ProblemData, fable
+from QLSS import LcuFunctions
 import math
 
 from qiskit import transpile
@@ -16,7 +19,6 @@ from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Statevector
 from QPE import PhaseEstimation
 from qiskit import Aer
-import fable
 ########## Comments/Thoughts ##########
 # What needs to be done, in approximate order
 # -solve coarse matrix, interpolate eigenvector to fine mesh, run the rest of the algorithm on it
@@ -31,6 +33,7 @@ def getStateFromCounts(counts_vec):
     return np.sqrt(counts_vec) / norm
 
 ########## Read input, set up variables ##########
+# ASSUME 2D PROBLEM FOR ALL OF THIS
 
 #sim_path = 'simulations/LCU_8G_diffusion/'
 coarse_sim_path = 'simulations/test_1G_diffusion_coarse/'
@@ -39,14 +42,14 @@ coarse_input_file = 'input.txt'
 fine_input_file = 'input.txt'
 coarse_data = ProblemData.ProblemData(coarse_sim_path + coarse_input_file)
 fine_data = ProblemData.ProblemData(fine_sim_path + fine_input_file)
-A_coarse_mat_size = (coarse_data.n_x) * (coarse_data.n_y) * coarse_data.G
-A_coarse_x_bits = math.ceil(math.log2(coarse_data.n_x))
-A_coarse_y_bits = math.ceil(math.log2(coarse_data.n_y))
+A_coarse_mat_size = math.prod(coarse_data.n) * coarse_data.G
+A_coarse_x_bits = math.ceil(math.log2(coarse_data.n[0]))
+A_coarse_y_bits = math.ceil(math.log2(coarse_data.n[1]))
 A_coarse_G_bits = math.ceil(math.log2(coarse_data.G))
 A_coarse_bits = A_coarse_x_bits + A_coarse_y_bits + A_coarse_G_bits
-A_mat_size = (fine_data.n_x) * (fine_data.n_y) * fine_data.G
-A_x_bits = math.ceil(math.log2(fine_data.n_x))
-A_y_bits = math.ceil(math.log2(fine_data.n_y))
+A_mat_size = math.prod(fine_data.n) * fine_data.G
+A_x_bits = math.ceil(math.log2(fine_data.n[0]))
+A_y_bits = math.ceil(math.log2(fine_data.n[1]))
 A_G_bits = math.ceil(math.log2(fine_data.G))
 A_bits = A_x_bits + A_y_bits + A_G_bits
 interpolation_bits = A_bits - A_coarse_bits
@@ -219,18 +222,18 @@ elif method == "counts":
     print("eigenvalue found: ", (index_max) / n_eig_eval_states)
     print("expected eigenvalue: ", eigvals[eig_index])
 
-ax = sns.heatmap(np.abs(input_state_collapsed).reshape(fine_data.n_x, fine_data.n_y), linewidth=0.5)
+ax = sns.heatmap(np.abs(input_state_collapsed).reshape(fine_data.n[0], fine_data.n[1]), linewidth=0.5)
 ax.invert_yaxis()
 plt.title("Input (Coarse) Solution")
 plt.figure()
 
-ax = sns.heatmap(np.abs(eigenvector_fine).reshape(fine_data.n_x, fine_data.n_y), linewidth=0.5)
+ax = sns.heatmap(np.abs(eigenvector_fine).reshape(fine_data.n[0], fine_data.n[1]), linewidth=0.5)
 ax.invert_yaxis()
 plt.title("Actual Fine Solution")
 plt.figure()
 
 error_vector = np.abs(input_state_collapsed) - np.abs(eigenvector_fine)
-ax = sns.heatmap(error_vector.reshape(fine_data.n_x, fine_data.n_y), linewidth=0.5)
+ax = sns.heatmap(error_vector.reshape(fine_data.n[0], fine_data.n[1]), linewidth=0.5)
 ax.invert_yaxis()
 plt.title("Error")
 plt.show()

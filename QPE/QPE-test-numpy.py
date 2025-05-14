@@ -1,11 +1,13 @@
-import numpy as np
+import sys
 import os
+sys.path.append(os.getcwd())
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import time
-import ProblemData
-import LcuFunctions
+from helpers import ProblemData, fable
+from QLSS import LcuFunctions
 import math
 import cmath
 
@@ -17,7 +19,6 @@ from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Operator
 from QPE import PhaseEstimation
 from qiskit import Aer
-import fable
 
 # from a vector of counts for each basis vector, return the normalized state representing the amplitudes for each of the basis vectors
 def getStateFromCounts(counts_vec):
@@ -72,7 +73,7 @@ last_time = time.time()
 sim_path = 'simulations/test_1G_diffusion/'
 input_file = 'input-exact-eigenvalue.txt'
 data = ProblemData.ProblemData(sim_path + input_file)
-A_mat_size = (data.n_x) * (data.n_y) * data.G
+A_mat_size = math.prod(data.n) * data.G
 A_bits = math.ceil(math.log2(A_mat_size))
 n_eig_eval_bits = 5  # number of bits to represent the final eigenvalue
 n_eig_eval_states = int(math.pow(2,n_eig_eval_bits))
