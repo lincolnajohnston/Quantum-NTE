@@ -7,17 +7,16 @@ import scipy.sparse as sp
 
 
 class ProblemData:
-    def __init__(self, input_file="", geom_string='4_pin', input_data={}):
+    def __init__(self, input_file="", input_data={}):
         if input_file == "":
-            self.n_x = input_data["n_x"]
-            self.n_pts_x = self.n_x + 2
-            self.n_y = input_data["n_y"]
-            self.n_pts_y = self.n_y + 2
-            self.delta_x = input_data["delta_x"]
-            self.delta_y = input_data["delta_y"]
+            self.n = input_data["n"]
+            self.dim = len(self.n)
+            self.h = input_data["h"]
             self.sim_method = input_data["sim_method"]
             self.G = input_data["G"]
             self.xs_folder = input_data["xs_folder"]
+            self.geometry_name = input_data["geometry_name"]
+            self.mat_name_dict = {}
         else:
             self.read_input(input_file)
         self.initialize_BC()

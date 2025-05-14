@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
