@@ -2,12 +2,23 @@ import numpy as np
 import math
 import os
 from Material import Material
+import scipy.sparse as sp
 
 
 
 class ProblemData:
-    def __init__(self, input_file):
-        self.read_input(input_file)
+    def __init__(self, input_file="", input_data={}):
+        if input_file == "":
+            self.n = input_data["n"]
+            self.dim = len(self.n)
+            self.h = input_data["h"]
+            self.sim_method = input_data["sim_method"]
+            self.G = input_data["G"]
+            self.xs_folder = input_data["xs_folder"]
+            self.geometry_name = input_data["geometry_name"]
+            self.mat_name_dict = {}
+        else:
+            self.read_input(input_file)
         self.initialize_BC()
         self.initialize_materials()
         self.initialize_geometry()
