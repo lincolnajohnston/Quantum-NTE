@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers.ProblemData import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -89,7 +89,7 @@ input_file = 'input.txt'
 x_range = 4
 
 # create and modify input file
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 data.n = np.array([N] * n_dim)
 data.h = x_range / data.n
 data.initialize_BC()
