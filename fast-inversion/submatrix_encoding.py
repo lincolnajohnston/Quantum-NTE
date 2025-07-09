@@ -118,26 +118,32 @@ qc = QuantumCircuit(n+1)
 initial_state = np.random.rand(2)
 initial_state = initial_state / np.linalg.norm(initial_state)
 eigvec_input_state = StatePreparation(initial_state)
-qc.append(eigvec_input_state, [0])
+qc.append(eigvec_input_state, [0]) # initial state in the 0th qubit
 
-# Apply U to q0
+# U gate
+# Apply U to q0, requires n-1 ancillas initilized to |0>
 for i,b in enumerate(block_position):
     if b == 1:
         qc.x(n-i-1)
 
-#apply the A_inv gate
+#apply the A_inv gate to the first n qubits
 A_gate = UnitaryGate(A_inv_mat)
 qc.append(A_gate, list(range(n)))  # Apply the inverse of the diffusion operator
 
 
-# Step 4: Make all other states 0
+# V gate. 1 ancilla qubit at the end of the circuit initialized to |0>
+
+# apply X gates to match the bit representation of the location of the 2x2 submatrix in the larger NxN matrix
+# used to make the controlled X gate in the next step perform correctly
 for i,b in enumerate(block_position):
     if b == 0:
         qc.x(n-i-1)
 
+# apply an x gate to the ancilla, controlled on gates [1,n] of the circuit
 controlled_X = XGate().control(n-1)
 qc.append(controlled_X, list(range(1,n+1)))  # controlled-X from ancilla to q0
 
+# unapply the X gates previously applied
 for i,b in enumerate(block_position):
     if b == 0:
         qc.x(n-i-1)

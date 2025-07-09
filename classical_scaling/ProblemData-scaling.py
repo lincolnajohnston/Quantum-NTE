@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers.ProblemData import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,7 +13,7 @@ import math
 # Equation Diffusion
 # Geometry: Square Fuel Pin
 # Notes: 
-n_dim = 1
+'''n_dim = 1
 input_folder = 'simulations/ProblemData_1D_scaling_tests_fuel_pin/'
 min_qubits = 1
 max_qubits = 10
@@ -98,7 +98,7 @@ eigenvalue_error = eigenvalue_results - closest_eig
 #eigenvector_error = eigenvector_results - closest_eigenvector
 eigenvector_diffs = [eigenvector_results[i,:] - closest_eigenvector for i in range(max_qubits - min_qubits + 1)]
 eigenvector_l2_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector) for i in range(max_qubits - min_qubits + 1)])
-eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])
+eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])'''
 
 
 ############# 2D Diffusion eigenvalue results ###############
@@ -230,7 +230,7 @@ eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - clos
 # Notes: Benchmark PUa-l-0-SL from https://www.sciencedirect.com/science/article/pii/S0149197002000987
 # Notes: if you set the x_range to a large number, we get a k-eig almost exactly right at 2.613 (compared to the PUa-l-O-IN benchmark's 2.6129)
 # Notes: but the finite slab benchmarks has significantly different eigenvalues
-'''input_folder = 'simulations/ProblemData_1D_scaling_tests/'
+input_folder = 'simulations/ProblemData_1D_scaling_tests/'
 n_dim = 1
 min_qubits = 1
 max_qubits = 8
@@ -241,7 +241,7 @@ input_file = 'input.txt'
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = x_range / data.n
@@ -250,6 +250,7 @@ for i in range(min_qubits, max_qubits + 1):
     A_mat_size = math.prod(data.n) * data.G
     A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
     eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
+    A_mat_eigenvalues, A_mat_eigenvecs = np.linalg.eig(A_matrix)
     eigenvalue_results[i - min_qubits] = eigvals[0]
     eigenvector_results[i - min_qubits,:] = np.kron(eigvecs[:,0].reshape(tuple([int(math.pow(2,i)) for d in range(n_dim)])),np.ones(tuple([int(max_dim_size/int(math.pow(2,i))) for d in range(n_dim)]))).flatten() * eigvecs[0,0] / abs(eigvecs[0,0]) # extend/interpolate eigenvectors onto finest grid and make first value positive
 
@@ -260,7 +261,7 @@ eigenvalue_error = eigenvalue_results - closest_eig
 #eigenvector_error = eigenvector_results - closest_eigenvector
 eigenvector_diffs = [eigenvector_results[i,:] - closest_eigenvector for i in range(max_qubits - min_qubits + 1)]
 eigenvector_l2_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector) for i in range(max_qubits - min_qubits + 1)])
-eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])'''
+eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])
 
 
 ############# 1D Diffusion FD eigenvalue results ###############

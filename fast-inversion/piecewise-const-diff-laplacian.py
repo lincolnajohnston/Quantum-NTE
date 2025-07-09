@@ -84,6 +84,9 @@ for n_i,n in enumerate(n_list):
         V_mat[i,m+i] = 1 
         U_mat[m+i,i] = 1
     A_inv_sub = V_mat @ A_mat_inv @ U_mat
+    _, s1, _ = np.linalg.svd(A_inv_sub)
+    A_inv_sub_inv = np.linalg.inv(A_inv_sub)
+    _, s2, _ = np.linalg.svd(A_inv_sub_inv)
 
     C_mat = np.array([[-D0/h2 + D_01/h[n_i] + k_0*sigma_a_mat[m-1,m-1],D0/h2-D_01/h[n_i]],[D1/h2-D_01/h[n_i],-D1/h2 + D_01/h[n_i] + k_1*sigma_a_mat[m,m]]]) # each element in this 2x2 matrix scales as O(1/h^2)
     C_mat_inv = np.linalg.inv(C_mat) # elements in this matrix are O(1) w.r.t. h as h->0
