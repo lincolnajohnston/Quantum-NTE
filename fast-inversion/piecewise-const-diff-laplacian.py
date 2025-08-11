@@ -8,7 +8,7 @@ import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import math
 
-# Create the matrices needed to apply the inverse of the diffusion term in the diffusion equation
+# Create the matrices needed to apply the inverse of the diffusion term in the diffusion equation using the Woodbury correction matrix
 # Assume a 1-D, 2-material problem with constant D and sigma_a within each material, and constant h (cell width)
 # throughout the problem domain
 
