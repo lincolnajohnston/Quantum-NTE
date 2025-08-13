@@ -80,7 +80,9 @@ import math
 # Same as previous function, just making sure it was implemented correctly, adding an n_min
 def getL(n_min, n_max):
     N_max = int(math.pow(2,n_max))
-    L = np.zeros((N_max-1,N_max-1))
+    N_min = int(math.pow(2,n_min))
+    #L = np.zeros((N_max-1,N_max-1))
+    L = np.zeros((N_max-1,N_max-N_min))
 
     s = 0
     j = 1
@@ -109,7 +111,8 @@ def getL(n_min, n_max):
         j *= 2
         ref += N_cur
 
-    for i in range(n_max-n_min, n_max):
+    # set all of the remaining rows (levels below the set lowest level) to 1
+    '''for i in range(n_max-n_min, n_max):
         N_cur = int(N_max * math.pow(2,-i-1))
 
         # columns [1,N-2]
@@ -118,17 +121,19 @@ def getL(n_min, n_max):
 
         s += j
         j *= 2
-        ref += N_cur
+        ref += N_cur'''
 
     return L
 
 
 # (NxN) is size of D_inv matrix
 # n is the number of indices for sets of wavelet basis matrices
-def getD_inv(N, n):
-    D_inv = np.zeros((N,N))
+def getD_inv(n_min, n_max):
+    N_max = int(math.pow(2,n_max))
+    N_min = int(math.pow(2,n_min))
+    D_inv = np.zeros((N_max - N_min,N_max - N_min))
     m = 0
-    for i in range(n-1,-1,-1):
+    for i in range(n-1,n_min-1,-1):
         for j in range(int(math.pow(2,i))):
             D_inv[m,m] = math.pow(2,-i)
             m += 1
@@ -179,9 +184,14 @@ c = np.linalg.inv(A_n) @ f_n # solve the system for the coefficients on the func
 
 # do the wavelet preconditioning
 #L = getL(int((N_A-1)/2+1))
-L = getL(1,n)
+n_min = 1
+L = getL(n_min,n)
 
-D_inv = getD_inv(N_A,n)
+# test the L matrix (basis change from hats to wavelets)
+test_vec = np.arange(len(L))
+trans_test_vec = np.transpose(L) @ test_vec
+
+D_inv = getD_inv(n_min,n)
 #D_inv = getD_inv(N_A, 1, n)
 
 A_n_tilde = D_inv @ np.transpose(L) @ A_n @ L @ D_inv
