@@ -19,85 +19,29 @@ import math
 # TODO: how are piecewise constant diffusion coefficients handled? (instead of a continuously varying function)
     # Case 5 from section 6 of the paper shows that discontinuous diffusion coefficients with the BPX preconditioner will be alright, the preconditioner still works the same
 
-# L matrix where the psi values are defined all according to the most fine phi discretization
-'''def getL(N):
-    L = np.zeros((2*N-1,N))
-
-    # column 0:
-    L[0,0] = 9/10
-    L[1,0] = -3/5
-    L[2,0] = 1/10
-
-    # columns [1,N-2]
-    for l in range(1,N-1):
-        L[2*l-2,l] = 1/10
-        L[2*l-1,l] = -3/5
-        L[2*l,l] = 1
-        L[2*l+1,l] = -3/5
-        L[2*l+2,l] = 1/10
-
-    # Column N-1
-    L[2*N-4,N-1] = 1/10
-    L[2*N-3,N-1] = -3/5
-    L[2*N-2,N-1] = 9/10
-
-    return L'''
-
-# L matrix where the psi points are defined only according to the phi discretization with the same level of fineness as psi
-'''def getL(N):
-    L = np.zeros((2*N-1,2*N-1))
-
-    s = 0
-    j = 1
-    ref = 0
-    for i in range(int(math.log2(N))):
-        N_cur = int(N * math.pow(2,-i))
-        # column 0:
-        L[s+0*j,ref+0] = 9/10
-        L[s+1*j,ref+0] = -3/5
-        L[s+2*j,ref+0] = 1/10
-
-        # columns [1,N-2]
-        for l in range(1,N_cur-1):
-            L[s+j*(2*l-2),ref+l] = 1/10
-            L[s+j*(2*l-1),ref+l] = -3/5
-            L[s+j*(2*l),ref+l] = 1
-            L[s+j*(2*l+1),ref+l] = -3/5
-            L[s+j*(2*l+2),ref+l] = 1/10
-
-        # Column N-1
-        L[s+j*(2*N_cur-4),ref+N_cur-1] = 1/10
-        L[s+j*(2*N_cur-3),ref+N_cur-1] = -3/5
-        L[s+j*(2*N_cur-2),ref+N_cur-1] = 9/10
-
-        s += j
-        j *= 2
-        ref += N_cur
-
-    L[N-1,ref] = 1
-    return L'''
 
 # Same as previous function, just making sure it was implemented correctly, adding an n_min
 def getL(n_min, n_max):
-    N_max = int(math.pow(2,n_max))
-    N_min = int(math.pow(2,n_min))
-    #L = np.zeros((N_max-1,N_max-1))
-    L = np.zeros((N_max-1,N_max-N_min))
+    N_max = int(math.pow(2,n_max)) # size of most fine wavelet set
+    N_min = int(math.pow(2,n_min)) # size of most coarse wavelet set
+    L = np.zeros((N_max-1,N_max-N_min)) # Basis transformation matrix from wavelet to nodal hat function basis
 
-    s = 0
-    j = 1
-    ref = 0
+    s = 0 # leftmost row index in stencil
+    j = 1 # jump between discrete points on wavelet stencil grid (in terms of number of points on finest grid)
+    ref = 0 # current column
     for i in range(n_max-n_min):
-        N_cur = int(N_max * math.pow(2,-i-1))
-        dilation_range = int(2**(i+1) - 1) # range of finest hat functions needed to define each wavelet function
-        dilation_radius = int(2**i - 1)
+        N_cur = int(N_max * math.pow(2,-i-1)) # size of wavelet set at the current level
+        dilation_radius = int(2**i - 1) # radius of points at which the fine nodal basis is needed to represent the current wavelet
         dilation_list = 1/(2**i) * np.array(list(range(1,2**(i)+1,1)) + list(range(2**(i)-1,0,-1)))
-        # column 0:
-        #L[s+0*j,ref+0] = 9/10
-        #L[s+1*j,ref+0] = -3/5
-        #L[s+2*j,ref+0] = 1/10
 
-        # column 0:
+        # special case for most coarse wavelet (only one point)
+        if (n_min == 0 and i == n_max -1):
+            for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
+                L[s + 0*j + off,ref+0] += dilation_list[dil_index]
+            continue
+            
+
+        # column 0 (left boundary):
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
             L[s + 0*j + off,ref+0] += dilation_list[dil_index] * 9/10
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
@@ -105,14 +49,8 @@ def getL(n_min, n_max):
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
             L[s + 2*j + off,ref+0] += dilation_list[dil_index] * 1/10
 
-        # columns [1,N-2]
+        # columns [1,N-2] (interior points):
         for l in range(1,N_cur-1):
-            #L[s+j*(2*l-2),ref+l] = 1/10
-            #L[s+j*(2*l-1),ref+l] = -3/5
-            #L[s+j*(2*l),ref+l] = 1
-            #L[s+j*(2*l+1),ref+l] = -3/5
-            #L[s+j*(2*l+2),ref+l] = 1/10
-
             for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
                 L[s+j*(2*l-2) + off,ref+l] += dilation_list[dil_index] * 1/10
             for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
@@ -124,11 +62,7 @@ def getL(n_min, n_max):
             for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
                 L[s+j*(2*l+2) + off,ref+l] += dilation_list[dil_index] * 1/10
 
-        # Column N-1
-        #L[s+j*(2*N_cur-4),ref+N_cur-1] = 1/10
-        #L[s+j*(2*N_cur-3),ref+N_cur-1] = -3/5
-        #L[s+j*(2*N_cur-2),ref+N_cur-1] = 9/10
-
+        # column N-1 (right boundary):
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
             L[s+j*(2*N_cur-4) + off,ref+N_cur-1] += dilation_list[dil_index] * 1/10
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
@@ -137,20 +71,8 @@ def getL(n_min, n_max):
             L[s+j*(2*N_cur-2) + off,ref+N_cur-1] += dilation_list[dil_index] * 9/10
 
         s += j
-        j *= 2
+        j *= 2 # double jump size for next (coarser) grid
         ref += N_cur
-
-    # set all of the remaining rows (levels below the set lowest level) to 1
-    '''for i in range(n_max-n_min, n_max):
-        N_cur = int(N_max * math.pow(2,-i-1))
-
-        # columns [1,N-2]
-        for l in range(0,N_cur):
-            L[s+j*(2*l),ref+l] = 1
-
-        s += j
-        j *= 2
-        ref += N_cur'''
 
     return L
 
@@ -218,87 +140,114 @@ def getD_inv(n_min, n_max, coarse_to_fine=False):
             m += 1
     return D_inv
 
-# (NxN) is size of D_inv matrix
-# n is the number of indices for sets of wavelet basis matrices
-'''def getD_inv(n_min, n_max):
-    N = 2**(n_max - n_min)
-    D_inv = np.zeros((N,N))
-    for n in range(n_min, n_max + 1):
-        jump = int(math.pow(2,n_max - n + 1))
-        start = int(math.pow(2,n_max - n)) - 1
-        for j in range(start,N,jump):
-            D_inv[j,j] = jump / math.pow(2,n_max - n_min)
-    return D_inv'''
+# get the stiffness matrix for the diffusion equation
+# N is the size of the system
+# size of p_vals must be N/(2^m) where m is an integer
+def getA(N, p_vals_coarse):
+    p_vals = np.kron(p_vals_coarse, np.ones(int(N / len(p_vals_coarse))))
+    N_A = N-1
+    A_n = np.zeros((N_A,N_A))
+    for i in range(N_A):
+        A_n[i,i] = p_vals[i] + p_vals[i+1]
+        if i > 0:
+            A_n[i,i-1] = -p_vals[i]
+        if i < N_A-1:
+            A_n[i,i+1] = -p_vals[i+1]
+    
+    return A_n
 
 a = 0
 b = 1
 
-n = 8 # number of qubits to represent the number of FV regions
-N = int(math.pow(2,n)) # max index of points defining domain
-N_A = N-1 # number of points excluding boundaries (size of the A matrix)
-dx = (b - a) / (N)
+n_mat = 0
+N_mat = 2**n_mat
+#f_vals = 10 * np.random.random(N_mat - 1)
 
-f = 1
-f_n = f * dx * np.ones(N_A)
+#p_vals = np.random.random(N_mat)
+p_vals = [0.1, 0.5, 1.5, 0.3] # use for n_mat = 2
+#p_vals = np.ones(N_mat)
+print(p_vals)
 
-trial_space_pts = np.linspace(a,b,N+1)
-test_space_pts = [a] + list(np.linspace(a+dx/2,b-dx/2,N)) + [b]
-#print(trial_space_pts)
-#print(test_space_pts)
+n_list = [5,6,7,8] # number of qubits to represent the number of FV regions
+A_n_cond_list = np.zeros(len(n_list))
+A_n_tilde_cond_list = np.zeros(len(n_list))
+for n_i,n in enumerate(n_list):
+    N = int(math.pow(2,n)) # max index of points defining domain
+    N_A = N-1 # number of points excluding boundaries (size of the A matrix)
+    dx = (b - a) / (N)
 
-#p_vals = np.random.rand(N)
-p_vals = 3 * np.ones(N) # value of diffusion coefficient in each finite volume
+    # right side of the equation, is on the test space not the trial space, TODO: need to figure out how to do this correctly
+    f_n = dx * np.ones(N_A)
 
-A_n = np.zeros((N_A,N_A))
-for i in range(N_A):
-    A_n[i,i] = p_vals[i] + p_vals[i+1]
-    if i > 0:
-        A_n[i,i-1] = -p_vals[i]
-    if i < N-2:
-        A_n[i,i+1] = -p_vals[i+1]
+    trial_space_pts = np.linspace(a,b,N+1) # points at the center of the nodal (hat function) basis
+    test_space_pts = [a] + list(np.linspace(a+dx/2,b-dx/2,N)) + [b] # points at the center of the piecewise constant basis
 
-A_n_cond = np.linalg.cond(A_n)
-print("A_N condition number: ", A_n_cond)
+    # value of diffusion coefficient in each colume defined by the trial space points
+    #p_vals = 3 * np.ones(N)
 
-c = np.linalg.inv(A_n) @ f_n # solve the system for the coefficients on the functions in the trial basis
+    A_n = getA(N,p_vals)
 
-n_min = 1
+    A_n_cond = np.linalg.cond(A_n)
+    print("A_N condition number: ", A_n_cond)
+    A_n_cond_list[n_i] = A_n_cond
 
-# do the wavelet preconditioning
-#L = getL(int((N_A-1)/2+1))
-L = getL(n_min,n) # basis change from wavelet to hat function
-D_inv = getD_inv(n_min,n, coarse_to_fine=False)
+    c = np.linalg.inv(A_n) @ f_n # solve the system for the coefficients on the functions in the trial basis
 
-# Using coarse to fine indexing for the wavelet bases, from the ChatGPT wavelet transform function
-#L, meta = prewavelet_transform_matrix(2**n_min, n - n_min)
-#D_inv = getD_inv(n_min,n, coarse_to_fine=True)
+    n_min = 0
 
-# test the L matrix (basis change from hats to wavelets)
-#test_vec = np.arange(len(L))
-test_vec = np.zeros(len(L[0]))
-test_vec[1] = 1
-trans_test_vec = L @ test_vec
+    # do the wavelet preconditioning
+    #L = getL(int((N_A-1)/2+1))
+    L = getL(n_min,n) # basis change from wavelet to hat function
 
-#A_n_tilde = D_inv @ np.transpose(L) @ A_n @ L @ D_inv # Use the transpose of the basis change matrix because it is easier to calculte (but doesnt precondition as well)
-A_n_tilde = D_inv @ np.linalg.pinv(L) @ A_n @ L @ D_inv # Use exact inverse of basis change matrix to get maximum decrease in condition number
-#A_n_tilde = np.transpose(L) @ A_n @ L
+    L_inv = np.linalg.inv(L) # exact inverse of the wavelet to nodal basis
+    #L_inv = np.transpose(L) # "approximate inverse" of the wavelet to nodal basis
 
-A_n_tilde_cond = np.linalg.cond(A_n_tilde)
-print("A_n_tilde condition number: ", A_n_tilde_cond)
+    D_inv = getD_inv(n_min,n, coarse_to_fine=False)
 
-#f_n_tilde = D_inv @ np.transpose(L) @ f_n
-f_n_tilde = np.transpose(L) @ f_n
-#c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
-c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
-c = L @ c_tilde
-#c = L @ D_inv @ c_tilde
+    # Using coarse to fine indexing for the wavelet bases, from the ChatGPT wavelet transform function
+    #L, meta = prewavelet_transform_matrix(2**n_min, n - n_min)
+    #D_inv = getD_inv(n_min,n, coarse_to_fine=True)
 
-# Use coefficients on the trial basis functions to recreate the solution in the domain
-u = np.zeros((N+1, N+1))
-for i in range(1,N):
-    u[i] += c[i-1]
+    # test the L matrix (basis change from hats to wavelets)
+    #test_vec = np.arange(len(L))
+    test_vec = np.zeros(len(L[0]))
+    test_vec[1] = 1
+    trans_test_vec = L @ test_vec
 
-plt.plot(trial_space_pts, u)
+    A_n_tilde = D_inv @ L_inv @ A_n @ L @ D_inv # Use exact inverse of basis change matrix to get maximum decrease in condition number
+
+    A_n_tilde_cond = np.linalg.cond(A_n_tilde)
+    print("A_n_tilde condition number: ", A_n_tilde_cond)
+    A_n_tilde_cond_list[n_i] = A_n_tilde_cond
+
+    f_n_tilde = D_inv @ L_inv @ f_n
+
+    #c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
+    c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
+
+    #c = L @ c_tilde
+    c_precond = L @ D_inv @ c_tilde
+
+    # Use coefficients on the trial basis functions to recreate the solution in the domain
+    #u = np.zeros((N+1, N+1))
+    #for i in range(1,N):
+    #    u[i] += c[i-1]
+
+    u_original = np.array([0] + list(c) + [0])
+    u_precond = np.array([0] + list(c_precond) + [0])
+
+    #normalize solutions
+    u_original = u_original / np.linalg.norm(u_original)
+    u_precond = u_precond / np.linalg.norm(u_precond)
+
+    '''plt.plot(trial_space_pts, u_original)
+    plt.plot(trial_space_pts, u_precond)
+    plt.legend(["Original Solution", "Preconditioned solution"])
+    plt.title("Solutions for diffusion equation with n=" + str(n))
+    plt.show()'''
+
+plt.semilogy(n_list, A_n_cond_list)
+plt.semilogy(n_list, A_n_tilde_cond_list)
+plt.legend(["A_n condition number", "A_n_tilde condition number"])
 plt.show()
-
 print("done")
