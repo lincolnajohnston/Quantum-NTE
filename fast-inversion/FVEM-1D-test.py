@@ -20,7 +20,7 @@ import math
     # Case 5 from section 6 of the paper shows that discontinuous diffusion coefficients with the BPX preconditioner will be alright, the preconditioner still works the same
 
 
-# Same as previous function, just making sure it was implemented correctly, adding an n_min
+# Returns the matrix that does a basis transform from the wavelet basis to the hat function nodal basis
 def getL(n_min, n_max):
     N_max = int(math.pow(2,n_max)) # size of most fine wavelet set
     N_min = int(math.pow(2,n_min)) # size of most coarse wavelet set
@@ -133,7 +133,7 @@ def getD_inv(n_min, n_max, coarse_to_fine=False):
     N_min = int(math.pow(2,n_min))
     D_inv = np.zeros((N_max - N_min,N_max - N_min))
     m = 0
-    n_list = range(n_min, n) if coarse_to_fine else range(n-1,n_min-1,-1)
+    n_list = range(n_min, n_max) if coarse_to_fine else range(n_max-1,n_min-1,-1)
     for i in n_list:
         for j in range(int(math.pow(2,i))):
             D_inv[m,m] = math.pow(2,-i)
@@ -169,6 +169,7 @@ p_vals = [0.1, 0.5, 1.5, 0.3] # use for n_mat = 2
 print(p_vals)
 
 n_list = [5,6,7,8] # number of qubits to represent the number of FV regions
+#n_list = [8]
 A_n_cond_list = np.zeros(len(n_list))
 A_n_tilde_cond_list = np.zeros(len(n_list))
 for n_i,n in enumerate(n_list):
@@ -221,6 +222,9 @@ for n_i,n in enumerate(n_list):
     A_n_tilde_cond_list[n_i] = A_n_tilde_cond
 
     f_n_tilde = D_inv @ L_inv @ f_n
+
+    I = np.transpose(L) @ L
+    print(I)
 
     #c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
     c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
