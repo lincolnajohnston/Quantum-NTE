@@ -166,7 +166,7 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
 
     #qc.measure(ancilla_2_index_list, range(2)) # LCU block-encoding succeeds when this measurement is two zero states
 
-n=3
+n=4
 N = int(2**n)
 L = getL(0,n) # basis change from wavelet to hat function
 
@@ -201,11 +201,11 @@ L_total = L_expanded
     #E_expanded = np.kron(control_prefix, E_expanded)
 #E_expanded[N*N/2:N*N/2+N,N:N*N/2+N] = E
 
-qc = QuantumCircuit(4*(n),2)
+qc = QuantumCircuit(5*n-3,2)
 
 # b vector state preparation
 x_state = np.zeros(int(N))
-x_val = 6
+x_val = 14
 x_state[x_val] = 1
 
 #x_state = np.array([0,1/math.sqrt(6),0,2/math.sqrt(6),0,1/math.sqrt(6),0,0]) # just for testing!
@@ -217,7 +217,7 @@ qc.append(x_state_prep, list(range(n)))
 # Use CNOTs instead of comparators to create the flag states?
 for i in range(1,n):
     x_gate = XGate().control(n-i)
-    qc.append(x_gate, list(range(n-1,i-1,-1)) + [3*n+i])
+    qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-3+i])
 
 # compare the b vector state to pre-set integers, put result in flag qubits
 #int_comp_1 = IntegerComparator(num_state_qubits=n, value=M, geq=True)
@@ -235,7 +235,7 @@ qc.append(LuGate,list(range(n)))
 
 # apply the E gate
 for i in range(1,n):
-    apply_E_operator(qc, n, list(range(n)), list(range(n,2*n)), list(range(2*(n+i-1),2*(n+i))), [3*n+i], offset=int(2**(n-i-1)))
+    apply_E_operator(qc, n, list(range(n)), list(range(n,2*n)), list(range(2*(n+i-1),2*(n+i))), [4*n-3+i], offset=int(2**(n-i-1)))
 
 qc.save_statevector()
 
