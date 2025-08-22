@@ -12,7 +12,7 @@ from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate, IntegerComparator, DraperQFTAdder
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, ZGate, QFT, HGate, RYGate, U1Gate, IntegerComparator, DraperQFTAdder
 from qiskit.quantum_info import Statevector
 from qiskit_aer import Aer, AerSimulator
 from qiskit.quantum_info import Operator
@@ -89,9 +89,14 @@ def get_Lu(n, full=False):
 
 def get_E(N, offset = 1):
     matrix = np.zeros((N, N))
-    matrix[0:N-1,0:N-1] += np.diag(np.ones(N-1))
-    matrix[0:N-1,0:N-1] += np.diag(0.5 * np.ones(N-1-offset), k=offset)  # k=1 for superdiagonal
-    matrix[0:N-1,0:N-1] += np.diag(0.5 * np.ones(N-1-offset), k=-offset) # k=-1 for subdiagonal
+    matrix[0:N,0:N] += np.diag(np.ones(N)) # diagonal terms
+
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=offset)  # k=1 for superdiagonal
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=N-offset)  # k=N-1 for superdiagonal
+
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=-offset) # k=-1 for subdiagonal
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=offset-N) # k=-1 for subdiagonal
+
     matrix[N-1,N-1] = 1
     return matrix
 
@@ -109,10 +114,10 @@ def get_E_mod(N):
 # index_list is the qubits of qc to apply E to, c_index is a control qubit (-1 if no control)
 # ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
 # ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
+# ancilla_3_index_listis a single index of the extra qubit needed to apply the E gate(the dilator matrix) so that the terms on the edge of the bit shift matrix doesn't mess up the results
 def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1):
     # set the state for the LCU linear combination
     N = int(2**n)
-    #ancilla_2_state = [2/math.sqrt(6), 1/math.sqrt(6), 1/math.sqrt(6), 0]
     ancilla_2_state = [1/math.sqrt(2), 1/2, 1/2, 0]
     ancilla_2_state_prep = StatePreparation(ancilla_2_state)
     qc.append(ancilla_2_state_prep, ancilla_2_index_list)
@@ -152,6 +157,9 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
     for b_i,b in enumerate(binary_offset_list):
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
+    
+    phase_change_gate = ZGate().control(1, ctrl_state='0')
+    #qc.append(phase_change_gate, ancilla_2_index_list[::-1])
 
     ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
     qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
@@ -166,8 +174,9 @@ L = getL(0,n) # basis change from wavelet to hat function
 Lu = get_Lu(n, full=True)
 E1 = get_E(N, offset=1)
 E2 = get_E(N, offset=2)
+E4 = get_E(N, offset=4)
 
-E = E1 @ E2
+E = E1 #@ E2# @ E4
 test = E @ Lu
 
 L_expanded = np.kron(np.eye(N),Lu)
@@ -192,20 +201,23 @@ L_total = L_expanded
     #E_expanded = np.kron(control_prefix, E_expanded)
 #E_expanded[N*N/2:N*N/2+N,N:N*N/2+N] = E
 
-qc = QuantumCircuit(3*(n)+2,2)
+qc = QuantumCircuit(4*(n),2)
 
 # b vector state preparation
 x_state = np.zeros(int(N))
 x_val = 6
 x_state[x_val] = 1
+
+#x_state = np.array([0,1/math.sqrt(6),0,2/math.sqrt(6),0,1/math.sqrt(6),0,0]) # just for testing!
+
 x_state_prep = StatePreparation(x_state)
 qc.append(x_state_prep, list(range(n)))
 
 
 # Use CNOTs instead of comparators to create the flag states?
-for i in range(n):
+for i in range(1,n):
     x_gate = XGate().control(n-i)
-    qc.append(x_gate, list(range(n-1,i-1,-1)) + [2*n+2+i])
+    qc.append(x_gate, list(range(n-1,i-1,-1)) + [3*n+i])
 
 # compare the b vector state to pre-set integers, put result in flag qubits
 #int_comp_1 = IntegerComparator(num_state_qubits=n, value=M, geq=True)
@@ -216,9 +228,14 @@ for i in range(n):
 LuGate = UnitaryGate(Lu, label="L_u Gate")
 qc.append(LuGate,list(range(n)))
 
+
+# switch flag states for testing:
+#qc.x(3*n+2)
+#qc.x(3*n+3)
+
 # apply the E gate
-for i in range(n):
-    apply_E_operator(qc, n, list(range(n)), list(range(n,2*n)), list(range(2*n,2*n+2)), [2*n+2+i], offset=int(2**(n-i-1)))
+for i in range(1,n):
+    apply_E_operator(qc, n, list(range(n)), list(range(n,2*n)), list(range(2*(n+i-1),2*(n+i))), [3*n+i], offset=int(2**(n-i-1)))
 
 qc.save_statevector()
 
