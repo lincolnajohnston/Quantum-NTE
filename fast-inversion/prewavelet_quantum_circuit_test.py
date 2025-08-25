@@ -111,10 +111,9 @@ def get_E_mod(N):
     return matrix
 
 # Apply the E operator of size (N-1 x N-1) to the quantum circuit, qc
-# index_list is the qubits of qc to apply E to, c_index is a control qubit (-1 if no control)
+# index_list is the qubits of qc to apply E to, c_index is a control qubit
 # ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
 # ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
-# ancilla_3_index_listis a single index of the extra qubit needed to apply the E gate(the dilator matrix) so that the terms on the edge of the bit shift matrix doesn't mess up the results
 def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1):
     # set the state for the LCU linear combination
     N = int(2**n)
@@ -166,7 +165,106 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
 
     #qc.measure(ancilla_2_index_list, range(2)) # LCU block-encoding succeeds when this measurement is two zero states
 
-n=4
+# Apply the F operator of size (N-1 x N-1) to the quantum circuit, qc
+# F_index_list is the qubits of qc to apply F to, c_index is a control qubit
+# ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
+# ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
+def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1):
+    # set the state for the LCU linear combination
+    N = int(2**n)
+    ancilla_2_state = [1/math.sqrt(2.4), 1/2, 1/2, 1/math.sqrt(24), 1/math.sqrt(24), 0, 0, 0]
+    ancilla_2_state_prep = StatePreparation(ancilla_2_state)
+    qc.append(ancilla_2_state_prep, ancilla_2_index_list)
+
+    # create a state in the ancilla_1 register to represent the integer 'offset'
+    binary_offset = bin(offset)  # binary of offset
+    binary_offset_list = [int(digit) for digit in binary_offset[2:].zfill(n)]
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # positive offset 0.6 shift
+    qc.x(ancilla_2_index_list[1])
+    qc.x(ancilla_2_index_list[2])
+    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.6 up shift').control(4)
+    qc.append(adder_plus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
+    qc.x(ancilla_2_index_list[1])
+    qc.x(ancilla_2_index_list[2])
+
+    # uncompute the ancilla_1 register to all zeros
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # create a state in the ancilla_1 register to represent the integer N-offset, adding this is the same as subtracting offset
+    binary_offset = bin(N-offset)  # binary of offset
+    binary_offset_list = [int(digit) for digit in binary_offset[2:].zfill(n)]
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # negative offset 0.6 shift
+    qc.x(ancilla_2_index_list[0])
+    qc.x(ancilla_2_index_list[2])
+    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.6 down shift').control(4)
+    qc.append(adder_minus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
+    qc.x(ancilla_2_index_list[0])
+    qc.x(ancilla_2_index_list[2])
+
+    # uncompute ancilla_1 register
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+    
+    # apply phase change to make the 0.6 values negative
+    phase_change_gate = ZGate().control(2, ctrl_state='00')
+    qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-2,-3]])
+
+    phase_change_gate = ZGate().control(2, ctrl_state='00')
+    qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-3,-2]])
+
+    # create a state in the ancilla_1 register to represent the integer 'offset'
+    binary_offset = bin(2*offset)  # binary of offset
+    binary_offset_list = [int(digit) for digit in binary_offset[2:].zfill(n)]
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # positive offset 0.1 shift
+    qc.x(ancilla_2_index_list[2])
+    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.1 up shift').control(4)
+    qc.append(adder_plus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
+    qc.x(ancilla_2_index_list[2])
+
+    # uncompute the ancilla_1 register to all zeros
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # create a state in the ancilla_1 register to represent the integer N-offset, adding this is the same as subtracting offset
+    binary_offset = bin(N-2*offset)  # binary of offset
+    binary_offset_list = [int(digit) for digit in binary_offset[2:].zfill(n)]
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    # negative offset 0.1 shift
+    qc.x(ancilla_2_index_list[0])
+    qc.x(ancilla_2_index_list[1])
+    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.1 down shift').control(4)
+    qc.append(adder_minus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
+    qc.x(ancilla_2_index_list[0])
+    qc.x(ancilla_2_index_list[1])
+
+    # uncompute ancilla_1 register
+    for b_i,b in enumerate(binary_offset_list):
+        if b:
+            qc.x(ancilla_1_index_list[-1-b_i])
+
+    ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
+    qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
+
+n=3
 N = int(2**n)
 L = getL(0,n) # basis change from wavelet to hat function
 
@@ -175,82 +273,79 @@ Lu = get_Lu(n, full=True)
 E1 = get_E(N, offset=1)
 E2 = get_E(N, offset=2)
 E4 = get_E(N, offset=4)
-
 E = E1 #@ E2# @ E4
 test = E @ Lu
 
-L_expanded = np.kron(np.eye(N),Lu)
-L_total = L_expanded
 
-'''for i in range(n):
-    E_expanded = np.eye(int(2**(i+1))*N)
-    E_expanded[int(2**(i+1))*N-N:int(2**(i+1))*N,int(2**(i+1))*N-N:int(2**(i+1))*N] = E
-    E_expanded = np.kron(np.eye(int(2**(n-i-1))*N), E_expanded)
-    L_total = E_expanded @ L_total'''
+x_vals = list(range(int(N/2),int(N/2)+1))
+#x_vals = [1]
 
-'''for i in range(n):
-    E_expanded = E
-    for j in range(i):
-        E_expanded = np.kron(np.eye(2),E_expanded)
-    E_expanded_temp = np.eye(int(2**(i+1))*N)
-    E_expanded_temp[int(2**(i))*N:,int(2**(i))*N:] = E_expanded
-    E_expanded = E_expanded_temp
-    for j in range(i+1,n):
-        E_expanded = np.kron(np.eye(2),E_expanded)
-    L_total = E_expanded @ L_total'''
-    #E_expanded = np.kron(control_prefix, E_expanded)
-#E_expanded[N*N/2:N*N/2+N,N:N*N/2+N] = E
+for x_val in x_vals:
+    # b vector state preparation
+    x_state = np.zeros(int(N))
+    x_state[x_val] = 1
+    #x_state = [1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0]
+    #x_state = np.array([0,0,0,0,1.0,0,0,0])
 
-qc = QuantumCircuit(5*n-3,2)
+    # set up the quantum circuit
+    qc = QuantumCircuit(6*n+2,2)
 
-# b vector state preparation
-x_state = np.zeros(int(N))
-x_val = 14
-x_state[x_val] = 1
-
-#x_state = np.array([0,1/math.sqrt(6),0,2/math.sqrt(6),0,1/math.sqrt(6),0,0]) # just for testing!
-
-x_state_prep = StatePreparation(x_state)
-qc.append(x_state_prep, list(range(n)))
+    x_state_prep = StatePreparation(x_state)
+    qc.append(x_state_prep, list(range(n)))
 
 
-# Use CNOTs instead of comparators to create the flag states?
-for i in range(1,n):
-    x_gate = XGate().control(n-i)
-    qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-3+i])
+    # Use CNOTs to create the flag states for the E dilator
+    for i in range(1,n):
+        x_gate = XGate().control(n-i)
+        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-1+i])
 
-# compare the b vector state to pre-set integers, put result in flag qubits
-#int_comp_1 = IntegerComparator(num_state_qubits=n, value=M, geq=True)
-#int_comp_2 = IntegerComparator(num_state_qubits=n+1, value=2*N-1, geq=True)
-#qc.append(int_comp_1, list(range(n)) + list(range(2*n, 3*n)))
-#qc.append(int_comp_2, list(range(n+1)) + list(range(2*(n+1)+1, 3*(n+1)+1)))
+    # Use CNOTs to create the flag states for the F expansion
+    for i in range(n):
+        x_gate = XGate().control(i+1, ctrl_state='0'+'1'*i)
+        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+2+i])
 
-LuGate = UnitaryGate(Lu, label="L_u Gate")
-qc.append(LuGate,list(range(n)))
+    LuGate = UnitaryGate(Lu, label="L_u Gate")
+    qc.append(LuGate,list(range(n)))
 
 
-# switch flag states for testing:
-#qc.x(3*n+2)
-#qc.x(3*n+3)
+    # switch flag states for testing:
+    #qc.x(3*n+2)
+    #qc.x(3*n+3)
 
-# apply the E gate
-for i in range(1,n):
-    apply_E_operator(qc, n, list(range(n)), list(range(n,2*n)), list(range(2*(n+i-1),2*(n+i))), [4*n-3+i], offset=int(2**(n-i-1)))
 
-qc.save_statevector()
+    # apply the F gates
+    for i in range(0,n):
+        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(5*n-1,5*n+2)), [5*n+2+i], offset=int(2**(i)))
 
-# Run emulator
-backend = QasmSimulator(method="statevector")
-new_circuit = transpile(qc, backend)
-print(dict(new_circuit.count_ops())) # print the counts of each type of gate
-job = backend.run(new_circuit)
-job_result = job.result()
+    # apply the E gates
+    for i in range(1,n):
+        apply_E_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
 
-# print statevector of non-junk qubits
-state_vec = job_result.get_statevector(qc).data
-print(state_vec)
-print("index of max value of statevector: ", np.argmax(state_vec))
-print("binary of that index: ", bin(np.argmax(state_vec))[2:])
+
+    ##### reverse the flag bits, just for easier viewing of the statevector during testing #####
+    # reverse E dilator flag qubits
+    for i in range(1,n):
+        if x_val >= N-2**i:
+            qc.x([4*(n)-1+i])
+    # reverse the F expansion matrix flag qubit
+    qc.x(6*n+2-math.ceil(math.log2(N-x_val)))
+
+
+    qc.save_statevector()
+
+    # Run emulator
+    backend = QasmSimulator(method="statevector")
+    new_circuit = transpile(qc, backend)
+    #print(dict(new_circuit.count_ops())) # print the counts of each type of gate
+    job = backend.run(new_circuit)
+    job_result = job.result()
+
+    # print statevector of non-junk qubits
+    state_vec = job_result.get_statevector(qc).data
+    out_state = state_vec[:N]
+    print("Input state: ", np.round(x_state,decimals=3))
+    print("Output state: ", np.round(out_state, decimals=5), "\n")
+
 
 qc.draw('mpl', filename="prewavelet-basis-change-test.png")
 
