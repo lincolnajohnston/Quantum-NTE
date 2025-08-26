@@ -315,7 +315,7 @@ for x_state in x_states:
     # b vector state preparation
 
     # set up the quantum circuit
-    qc = QuantumCircuit(6*n+4,2)
+    qc = QuantumCircuit(6*n+2,2)
 
     x_state_prep = StatePreparation(x_state)
     qc.append(x_state_prep, list(range(n)))
@@ -324,12 +324,12 @@ for x_state in x_states:
     # Use CNOTs to create the flag states for the E dilator
     for i in range(1,n):
         x_gate = XGate().control(n-i)
-        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)+1+i])
+        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-1+i])
 
     # Use CNOTs to create the flag states for the F expansion
     for i in range(n-1):
         x_gate = XGate().control(i+1, ctrl_state='0'+'1'*i)
-        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+4+i])
+        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+2+i])
 
     LuGate = UnitaryGate(Lu, label="L_u Gate")
     qc.append(LuGate,list(range(n)))
@@ -342,18 +342,18 @@ for x_state in x_states:
 
     # apply the F gates
     for i in range(0,n-1):
-        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+2,2*n+3)), list(range(5*n+1,5*n+4)), [5*n+4+i], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
+        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(5*n-1,5*n+2)), [5*n+2+i], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
 
     # ad hoc fix: flip the (N-1) through 2Nth amplitudes using another ancilla to avoid it leaking into the (N-1) x (N-1) submatrix in the E dilator step
     x_gate = XGate().control(n+1, ctrl_state='0' + '1'*n)
-    qc.append(x_gate, list(range(n+1)) + [6*n+3])
+    qc.append(x_gate, list(range(n+1)) + [6*n+1])
     x_gate = XGate().control(1)
-    qc.append(x_gate, [n, 6*n+3])
+    qc.append(x_gate, [n, 6*n+1])
 
 
     # apply the E gates
     for i in range(1,n):
-        apply_E_operator(qc, n, list(range(n)), list(range(n+2,2*n+2)), list(range(2*(n+i-1)+4,2*(n+i)+4)), [4*n+1+i], offset=int(2**(n-i-1)))
+        apply_E_operator(qc, n, list(range(n)), list(range(n+1,2*n+1)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
 
 
     ##### reverse the flag bits, just for easier viewing of the statevector during testing, only works for computational basis input #####
@@ -373,7 +373,7 @@ for x_state in x_states:
             continue
         binary_c_i = bin(c_i)  # binary of offset
         binary_c_i_list = [int(digit) for digit in binary_c_i[2:].zfill(n)]
-        F_offset = int(math.pow(2,6*n+4-math.ceil(math.log2(N-c_i))))
+        F_offset = int(math.pow(2,6*n+2-math.ceil(math.log2(N-c_i))))
         #F_offset = min(int(math.pow(2,6*n+2)), F_offset) # make sure the F_offset doesn't exceed the max possible, fixes the edge case for the last column of L
         if c_i >= N-2:
             F_offset = 0
@@ -392,7 +392,7 @@ for x_state in x_states:
         for bin_i, b in enumerate(binary_c_i_list):
             if b == 0:
                 break
-            E_offset += int(math.pow(2,4*n+3-bin_i))
+            E_offset += int(math.pow(2,4*n+1-bin_i))
         if abs(last_E_offset - E_offset) > 1E-10:
             E_offsets.append(E_offset)
             last_E_offset = E_offset
