@@ -276,16 +276,19 @@ E4 = get_E(N, offset=4)
 E = E1 #@ E2# @ E4
 test = E @ Lu
 
+# x_state for every computational basis state [0,N-1)
+'''#x_vals = list(range(N-1)) # every computational basis state
+x_vals = [0] # just one computational basis state
+x_states = [np.zeros(int(N)) for i in range(len(x_vals))]
+for i in range(len(x_vals)):
+    x_states[i][int(x_vals[i])] = 1'''
 
-x_vals = list(range(int(N/2),int(N/2)+1))
-#x_vals = [1]
+#x_states = [np.array(8*[1/math.sqrt(8)])]
+x_states = [np.array([0,0,0,0,0,1,0,0])]
+#x_states = [np.array([1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0])]
 
-for x_val in x_vals:
+for x_state in x_states:
     # b vector state preparation
-    x_state = np.zeros(int(N))
-    x_state[x_val] = 1
-    #x_state = [1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0]
-    #x_state = np.array([0,0,0,0,1.0,0,0,0])
 
     # set up the quantum circuit
     qc = QuantumCircuit(6*n+2,2)
@@ -319,17 +322,48 @@ for x_val in x_vals:
 
     # apply the E gates
     for i in range(1,n):
-        apply_E_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
+        apply_E_operator(qc, n, list(range(n)), list(range(n+1,2*n+1)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
 
 
-    ##### reverse the flag bits, just for easier viewing of the statevector during testing #####
+    ##### reverse the flag bits, just for easier viewing of the statevector during testing, only works for computational basis input #####
     # reverse E dilator flag qubits
-    for i in range(1,n):
+    '''for i in range(1,n):
         if x_val >= N-2**i:
             qc.x([4*(n)-1+i])
     # reverse the F expansion matrix flag qubit
-    qc.x(6*n+2-math.ceil(math.log2(N-x_val)))
+    qc.x(6*n+2-math.ceil(math.log2(N-x_val)))'''
 
+
+    ###### show the ouptut as a superposition of outputs based on the state of the flags
+    F_offsets = []
+    last_F_offset = -1
+    for c_i,c in enumerate(x_state):
+        if abs(c) < 1E-10: # skip 0 values
+            continue
+        binary_c_i = bin(c_i)  # binary of offset
+        binary_c_i_list = [int(digit) for digit in binary_c_i[2:].zfill(n)]
+        F_offset = int(math.pow(2,6*n+2-math.ceil(math.log2(N-c_i))))
+        if abs(last_F_offset - F_offset) > 1E-10:
+            F_offsets.append(F_offset)
+            last_F_offset = F_offset
+
+    E_offsets = []
+    last_E_offset = -1
+    for c_i,c in enumerate(x_state):
+        if abs(c) < 1E-10: # skip 0 values
+            continue
+        binary_c_i = bin(c_i)  # binary of offset
+        binary_c_i_list = [int(digit) for digit in binary_c_i[2:].zfill(n)]
+        E_offset = 0
+        for bin_i, b in enumerate(binary_c_i_list):
+            if b == 0:
+                break
+            E_offset += int(math.pow(2,4*n+1-bin_i))
+        if abs(last_E_offset - E_offset) > 1E-10:
+            E_offsets.append(E_offset)
+            last_E_offset = E_offset
+
+    total_offsets = np.array(F_offsets) + np.array(E_offsets)
 
     qc.save_statevector()
 
@@ -342,10 +376,15 @@ for x_val in x_vals:
 
     # print statevector of non-junk qubits
     state_vec = job_result.get_statevector(qc).data
-    out_state = state_vec[:N]
+    '''out_state = state_vec[:N]
     print("Input state: ", np.round(x_state,decimals=3))
-    print("Output state: ", np.round(out_state, decimals=5), "\n")
+    print("Output state: ", np.round(out_state, decimals=5))
+    print("\n")'''
 
+    for i in range(len(total_offsets)):
+        print("State ", i)
+        print("Offset: ", total_offsets[i])
+        print("Output state: ", np.round(state_vec[total_offsets[i]:total_offsets[i]+N], decimals=5))
 
 qc.draw('mpl', filename="prewavelet-basis-change-test.png")
 
