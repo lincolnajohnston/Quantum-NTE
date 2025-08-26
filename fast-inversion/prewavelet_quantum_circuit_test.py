@@ -169,12 +169,17 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
 # F_index_list is the qubits of qc to apply F to, c_index is a control qubit
 # ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
 # ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
-def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1):
+# add state preparation gate if first_F is true, add controlled-Z for negatising the 0.6 values if last_F is true
+def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1, first_F=False, last_F=False):
     # set the state for the LCU linear combination
     N = int(2**n)
     ancilla_2_state = [1/math.sqrt(2.4), 1/2, 1/2, 1/math.sqrt(24), 1/math.sqrt(24), 0, 0, 0]
     ancilla_2_state_prep = StatePreparation(ancilla_2_state)
     qc.append(ancilla_2_state_prep, ancilla_2_index_list)
+
+    '''if first_F:
+        ancilla_2_state_prep = StatePreparation(ancilla_2_state)
+        qc.append(ancilla_2_state_prep, ancilla_2_index_list)'''
 
     # create a state in the ancilla_1 register to represent the integer 'offset'
     binary_offset = bin(offset)  # binary of offset
@@ -215,13 +220,6 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
     for b_i,b in enumerate(binary_offset_list):
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
-    
-    # apply phase change to make the 0.6 values negative
-    phase_change_gate = ZGate().control(2, ctrl_state='00')
-    qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-2,-3]])
-
-    phase_change_gate = ZGate().control(2, ctrl_state='00')
-    qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-3,-2]])
 
     # create a state in the ancilla_1 register to represent the integer 'offset'
     binary_offset = bin(2*offset)  # binary of offset
@@ -261,12 +259,34 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
 
+    '''if last_F:
+        # apply phase change to make the 0.6 values negative
+        phase_change_gate = ZGate().control(2, ctrl_state='00')
+        qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-2,-3]])
+
+        phase_change_gate = ZGate().control(2, ctrl_state='00')
+        qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-3,-2]])'''
+    # apply phase change to make the 0.6 values negative
+    phase_change_gate = ZGate().control(3, ctrl_state='001')
+    qc.append(phase_change_gate, [c_index] + [ancilla_2_index_list[i] for i in [-1,-2,-3]])
+
+    phase_change_gate = ZGate().control(3, ctrl_state='001')
+    qc.append(phase_change_gate, [c_index] + [ancilla_2_index_list[i] for i in [-1,-3,-2]])
+
+    # undo the state preparation for LCU
     ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
     qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
+
 
 n=3
 N = int(2**n)
 L = getL(0,n) # basis change from wavelet to hat function
+
+# get spectral norm of L
+L_norm = np.linalg.norm(L, ord=2)
+#print("L_norm: ", L_norm)
+
+# TODO: make vectors of indices for each register
 
 # Test how to make the L matrix classically
 Lu = get_Lu(n, full=True)
@@ -277,21 +297,25 @@ E = E1 #@ E2# @ E4
 test = E @ Lu
 
 # x_state for every computational basis state [0,N-1)
-'''#x_vals = list(range(N-1)) # every computational basis state
-x_vals = [0] # just one computational basis state
+x_vals = list(range(N-1)) # every computational basis state
+#x_vals = [0] # just one computational basis state
 x_states = [np.zeros(int(N)) for i in range(len(x_vals))]
 for i in range(len(x_vals)):
-    x_states[i][int(x_vals[i])] = 1'''
+    x_states[i][int(x_vals[i])] = 1
 
+# n=3
 #x_states = [np.array(8*[1/math.sqrt(8)])]
-x_states = [np.array([0,0,0,0,0,1,0,0])]
+#x_states = [np.array([0,0,0,0,0,1,0,0])]
 #x_states = [np.array([1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0])]
+
+# n=4
+#x_states = [np.array([1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])]
 
 for x_state in x_states:
     # b vector state preparation
 
     # set up the quantum circuit
-    qc = QuantumCircuit(6*n+2,2)
+    qc = QuantumCircuit(6*n+4,2)
 
     x_state_prep = StatePreparation(x_state)
     qc.append(x_state_prep, list(range(n)))
@@ -300,12 +324,12 @@ for x_state in x_states:
     # Use CNOTs to create the flag states for the E dilator
     for i in range(1,n):
         x_gate = XGate().control(n-i)
-        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-1+i])
+        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)+1+i])
 
     # Use CNOTs to create the flag states for the F expansion
-    for i in range(n):
+    for i in range(n-1):
         x_gate = XGate().control(i+1, ctrl_state='0'+'1'*i)
-        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+2+i])
+        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+4+i])
 
     LuGate = UnitaryGate(Lu, label="L_u Gate")
     qc.append(LuGate,list(range(n)))
@@ -317,12 +341,19 @@ for x_state in x_states:
 
 
     # apply the F gates
-    for i in range(0,n):
-        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(5*n-1,5*n+2)), [5*n+2+i], offset=int(2**(i)))
+    for i in range(0,n-1):
+        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+2,2*n+3)), list(range(5*n+1,5*n+4)), [5*n+4+i], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
+
+    # ad hoc fix: flip the (N-1) through 2Nth amplitudes using another ancilla to avoid it leaking into the (N-1) x (N-1) submatrix in the E dilator step
+    x_gate = XGate().control(n+1, ctrl_state='0' + '1'*n)
+    qc.append(x_gate, list(range(n+1)) + [6*n+3])
+    x_gate = XGate().control(1)
+    qc.append(x_gate, [n, 6*n+3])
+
 
     # apply the E gates
     for i in range(1,n):
-        apply_E_operator(qc, n, list(range(n)), list(range(n+1,2*n+1)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
+        apply_E_operator(qc, n, list(range(n)), list(range(n+2,2*n+2)), list(range(2*(n+i-1)+4,2*(n+i)+4)), [4*n+1+i], offset=int(2**(n-i-1)))
 
 
     ##### reverse the flag bits, just for easier viewing of the statevector during testing, only works for computational basis input #####
@@ -342,7 +373,10 @@ for x_state in x_states:
             continue
         binary_c_i = bin(c_i)  # binary of offset
         binary_c_i_list = [int(digit) for digit in binary_c_i[2:].zfill(n)]
-        F_offset = int(math.pow(2,6*n+2-math.ceil(math.log2(N-c_i))))
+        F_offset = int(math.pow(2,6*n+4-math.ceil(math.log2(N-c_i))))
+        #F_offset = min(int(math.pow(2,6*n+2)), F_offset) # make sure the F_offset doesn't exceed the max possible, fixes the edge case for the last column of L
+        if c_i >= N-2:
+            F_offset = 0
         if abs(last_F_offset - F_offset) > 1E-10:
             F_offsets.append(F_offset)
             last_F_offset = F_offset
@@ -358,7 +392,7 @@ for x_state in x_states:
         for bin_i, b in enumerate(binary_c_i_list):
             if b == 0:
                 break
-            E_offset += int(math.pow(2,4*n+1-bin_i))
+            E_offset += int(math.pow(2,4*n+3-bin_i))
         if abs(last_E_offset - E_offset) > 1E-10:
             E_offsets.append(E_offset)
             last_E_offset = E_offset
@@ -384,7 +418,9 @@ for x_state in x_states:
     for i in range(len(total_offsets)):
         print("State ", i)
         print("Offset: ", total_offsets[i])
-        print("Output state: ", np.round(state_vec[total_offsets[i]:total_offsets[i]+N], decimals=5))
+        print("Output state: ", np.real(np.round(state_vec[total_offsets[i]:total_offsets[i]+4*N], decimals=5)))
+        non_zero_state_indices = np.nonzero(abs(state_vec) > 1E-10)
+        non_zero_state_vec = state_vec[non_zero_state_indices]
 
 qc.draw('mpl', filename="prewavelet-basis-change-test.png")
 
