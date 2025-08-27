@@ -10,12 +10,14 @@ import math
 
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation, CXGate, XGate, ZGate, QFT, HGate, RYGate, U1Gate, IntegerComparator, DraperQFTAdder
 from qiskit.quantum_info import Statevector
 from qiskit_aer import Aer, AerSimulator
 from qiskit.quantum_info import Operator
+from qiskit.visualization import plot_histogram
 import fable
 
 # Returns the matrix that does a basis transform from the wavelet basis to the hat function nodal basis
@@ -163,7 +165,7 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
     ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
     qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
 
-    #qc.measure(ancilla_2_index_list, range(2)) # LCU block-encoding succeeds when this measurement is two zero states
+    #qc.measure(ancilla_2_index_list, range(2*(n-1))) # LCU block-encoding succeeds when this measurement is two zero states
 
 # Apply the F operator of size (N-1 x N-1) to the quantum circuit, qc
 # F_index_list is the qubits of qc to apply F to, c_index is a control qubit
@@ -281,6 +283,8 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
 n=3
 N = int(2**n)
 L = getL(0,n) # basis change from wavelet to hat function
+sim_method = "statevector"
+#sim_method = "measure"
 
 # get spectral norm of L
 L_norm = np.linalg.norm(L, ord=2)
@@ -297,16 +301,17 @@ E = E1 #@ E2# @ E4
 test = E @ Lu
 
 # x_state for every computational basis state [0,N-1)
-x_vals = list(range(N-1)) # every computational basis state
-#x_vals = [0] # just one computational basis state
+x_vals = list(range(int(N))) # every computational basis state
+#x_vals = [6] # just one computational basis state
 x_states = [np.zeros(int(N)) for i in range(len(x_vals))]
 for i in range(len(x_vals)):
     x_states[i][int(x_vals[i])] = 1
 
 # n=3
 #x_states = [np.array(8*[1/math.sqrt(8)])]
-#x_states = [np.array([0,0,0,0,0,1,0,0])]
+#x_states = [np.array([0,0,0,0,0,0,1,0])]
 #x_states = [np.array([1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0])]
+#x_states = [np.array([1/math.sqrt(2),1/math.sqrt(2),0,0,0,0,0,0])]
 
 # n=4
 #x_states = [np.array([1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])]
@@ -315,7 +320,7 @@ for x_state in x_states:
     # b vector state preparation
 
     # set up the quantum circuit
-    qc = QuantumCircuit(6*n+2,2)
+    qc = QuantumCircuit(6*n+2,2*(n-1)+4+n)
 
     x_state_prep = StatePreparation(x_state)
     qc.append(x_state_prep, list(range(n)))
@@ -341,8 +346,11 @@ for x_state in x_states:
 
 
     # apply the F gates
+    F_LCU_ancillas = list(range(5*n-1,5*n+2))
+    adder_ancillas = list(range(n+1,2*n+2))
     for i in range(0,n-1):
-        apply_F_operator(qc, n+1, list(range(n+1)), list(range(n+1,2*n+2)), list(range(5*n-1,5*n+2)), [5*n+2+i], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
+        control_qubit_index = 5*n+2+i
+        apply_F_operator(qc, n+1, list(range(n+1)), adder_ancillas, F_LCU_ancillas, [control_qubit_index], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
 
     # ad hoc fix: flip the (N-1) through 2Nth amplitudes using another ancilla to avoid it leaking into the (N-1) x (N-1) submatrix in the E dilator step
     x_gate = XGate().control(n+1, ctrl_state='0' + '1'*n)
@@ -352,9 +360,28 @@ for x_state in x_states:
 
 
     # apply the E gates
+    E_LCU_ancillas = list(range(2*n+2,4*n))
     for i in range(1,n):
-        apply_E_operator(qc, n, list(range(n)), list(range(n+1,2*n+1)), list(range(2*(n+i-1)+2,2*(n+i)+2)), [4*n-1+i], offset=int(2**(n-i-1)))
+        control_qubit_index = 4*n-1+i
+        E_LCU_ancilla_i = E_LCU_ancillas[2*(i-1):2*i]
+        apply_E_operator(qc, n, list(range(n)), adder_ancillas[:-1], E_LCU_ancilla_i, [control_qubit_index], offset=int(2**(n-i-1)))
 
+    # reverse flag qubits for section s
+    s = 0
+    if s < n-1:
+        qc.x(5*n+2+s)
+    for s_p in range(s):
+        qc.x(5*n-2-s_p)
+    
+    '''# for inputs in section 0:
+    qc.x(6*n-1)
+
+    # for inputs in section 1:
+    qc.x(6*n)
+    qc.x(5*n-1)
+
+    # for inputs in section 2:
+    qc.x(5*n-2)'''
 
     ##### reverse the flag bits, just for easier viewing of the statevector during testing, only works for computational basis input #####
     # reverse E dilator flag qubits
@@ -399,29 +426,53 @@ for x_state in x_states:
 
     total_offsets = np.array(F_offsets) + np.array(E_offsets)
 
-    qc.save_statevector()
+    if sim_method == "statevector":
+        qc.save_statevector()
 
-    # Run emulator
-    backend = QasmSimulator(method="statevector")
-    new_circuit = transpile(qc, backend)
-    #print(dict(new_circuit.count_ops())) # print the counts of each type of gate
-    job = backend.run(new_circuit)
-    job_result = job.result()
+        # Run emulator in statevector mode
+        backend = QasmSimulator(method="statevector")
+        new_circuit = transpile(qc, backend)
+        #print(dict(new_circuit.count_ops())) # print the counts of each type of gate
+        job = backend.run(new_circuit)
+        job_result = job.result()
 
-    # print statevector of non-junk qubits
-    state_vec = job_result.get_statevector(qc).data
-    '''out_state = state_vec[:N]
-    print("Input state: ", np.round(x_state,decimals=3))
-    print("Output state: ", np.round(out_state, decimals=5))
-    print("\n")'''
+        # print statevector of non-junk qubits
+        state_vec = job_result.get_statevector(qc).data
 
-    for i in range(len(total_offsets)):
-        print("State ", i)
-        print("Offset: ", total_offsets[i])
-        print("Output state: ", np.real(np.round(state_vec[total_offsets[i]:total_offsets[i]+4*N], decimals=5)))
-        non_zero_state_indices = np.nonzero(abs(state_vec) > 1E-10)
-        non_zero_state_vec = state_vec[non_zero_state_indices]
+        for i in range(len(total_offsets)):
+            print("State ", i)
+            print("Offset: ", total_offsets[i])
+            print("Output state: ", np.real(np.round(state_vec[total_offsets[i]:total_offsets[i]+4*N], decimals=5)))
+            non_zero_state_indices = np.nonzero(abs(state_vec) > 1E-10)
+            non_zero_states = [bin(i)[2:].zfill(6*n+2) for i in non_zero_state_indices[0]]
+            non_zero_state_vec = state_vec[non_zero_state_indices]
+            state_vec_pairs_short = [(non_zero_states[i], np.real(non_zero_state_vec[i])) for i in range(len(non_zero_states))]
+    elif sim_method == "measure":
+        qc.measure(E_LCU_ancillas, list(range(2*(n-1)))) # LCU block-encoding of F dilators succeeds when this measurement is two zero states
+        qc.measure(F_LCU_ancillas, list(range(2*(n-1),2*(n-1)+3))) # LCU block-encoding of F dilators succeeds when this measurement is two zero states
+        qc.measure([6*n+1], [2*(n-1)+3]) # post select on last qubit (for 0)
+        qc.measure(list(range(n)), list(range(2*(n-1)+4,2*(n-1)+4+n)))
 
+        '''simulator = Aer.get_backend("qasm_simulator")
+        job = execute(circuit, backend=simulator, shots=100)
+        result = job.result()
+        counts = result.get_counts()
+        print(counts)'''
+        simulator = AerSimulator() 
+        compiled_circuit = transpile(qc, simulator)
+        job = simulator.run(compiled_circuit, shots=1000000)
+        result = job.result()
+        counts = result.get_counts(qc)
+        counts_abbreviated = {}
+        amplitudes_abbreviated = {}
+        for r in counts:
+            if r[n:] == '0'*(2*(n-1)+4):
+                counts_abbreviated[r[:n]] = counts[r]
+                amplitudes_abbreviated[r[:n]] = math.sqrt(counts[r])
+        print("Counts:", counts_abbreviated)
+        plot_histogram(counts_abbreviated, filename="prewavelet-basis-change-counts.png")
+        plot_histogram(amplitudes_abbreviated, filename="prewavelet-basis-change-amplitudes.png")
+    print("circuit done")
 qc.draw('mpl', filename="prewavelet-basis-change-test.png")
 
-print("done")
+print("script done")
