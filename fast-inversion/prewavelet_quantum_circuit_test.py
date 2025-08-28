@@ -7,6 +7,7 @@ from matplotlib.collections import LineCollection
 import seaborn as sns
 import pandas as pd
 import math
+import cmath
 
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
@@ -116,7 +117,7 @@ def get_E_mod(N):
 # index_list is the qubits of qc to apply E to, c_index is a control qubit
 # ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
 # ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
-def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1):
+def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_list, c_indices, control_state, offset=1):
     # set the state for the LCU linear combination
     N = int(2**n)
     ancilla_2_state = [1/math.sqrt(2), 1/2, 1/2, 0]
@@ -131,10 +132,8 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # positive offset shift
-    qc.x(ancilla_2_index_list[1])
-    adder_plus = DraperQFTAdder(n, kind='fixed').control(3)
-    qc.append(adder_plus,c_index + ancilla_2_index_list + ancilla_1_index_list + E_index_list)
-    qc.x(ancilla_2_index_list[1])
+    adder_plus = DraperQFTAdder(n, kind='fixed').control(2+len(c_indices), ctrl_state='01'+control_state)
+    qc.append(adder_plus,c_indices + ancilla_2_index_list + ancilla_1_index_list + E_index_list)
 
     # uncompute the ancilla_1 register to all zeros
     for b_i,b in enumerate(binary_offset_list):
@@ -149,18 +148,13 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # negative offset shift
-    qc.x(ancilla_2_index_list[0])
-    adder_minus = DraperQFTAdder(n, kind='fixed').control(3)
-    qc.append(adder_minus,c_index + ancilla_2_index_list + ancilla_1_index_list + E_index_list)
-    qc.x(ancilla_2_index_list[0])
+    adder_minus = DraperQFTAdder(n, kind='fixed').control(2+len(c_indices), ctrl_state='10'+control_state)
+    qc.append(adder_minus,c_indices + ancilla_2_index_list + ancilla_1_index_list + E_index_list)
 
     # reset ancilla_1 register
     for b_i,b in enumerate(binary_offset_list):
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
-    
-    phase_change_gate = ZGate().control(1, ctrl_state='0')
-    #qc.append(phase_change_gate, ancilla_2_index_list[::-1])
 
     ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
     qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
@@ -172,16 +166,12 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
 # ancilla_1_index_list is the ancilla qubits to use for use in the DraperQFTAdder
 # ancilla_2_index_list is the ancilla qubits to use for representing the amplitudes of the unitary matrices in LCU
 # add state preparation gate if first_F is true, add controlled-Z for negatising the 0.6 values if last_F is true
-def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_list, c_index, offset=1, first_F=False, last_F=False):
+def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_list, c_indices, control_state, offset=1):
     # set the state for the LCU linear combination
     N = int(2**n)
     ancilla_2_state = [1/math.sqrt(2.4), 1/2, 1/2, 1/math.sqrt(24), 1/math.sqrt(24), 0, 0, 0]
     ancilla_2_state_prep = StatePreparation(ancilla_2_state)
     qc.append(ancilla_2_state_prep, ancilla_2_index_list)
-
-    '''if first_F:
-        ancilla_2_state_prep = StatePreparation(ancilla_2_state)
-        qc.append(ancilla_2_state_prep, ancilla_2_index_list)'''
 
     # create a state in the ancilla_1 register to represent the integer 'offset'
     binary_offset = bin(offset)  # binary of offset
@@ -191,12 +181,8 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # positive offset 0.6 shift
-    qc.x(ancilla_2_index_list[1])
-    qc.x(ancilla_2_index_list[2])
-    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.6 up shift').control(4)
-    qc.append(adder_plus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
-    qc.x(ancilla_2_index_list[1])
-    qc.x(ancilla_2_index_list[2])
+    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.6 up shift').control(3+len(c_indices), ctrl_state='001'+control_state)
+    qc.append(adder_plus,c_indices + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
 
     # uncompute the ancilla_1 register to all zeros
     for b_i,b in enumerate(binary_offset_list):
@@ -211,12 +197,8 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # negative offset 0.6 shift
-    qc.x(ancilla_2_index_list[0])
-    qc.x(ancilla_2_index_list[2])
-    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.6 down shift').control(4)
-    qc.append(adder_minus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
-    qc.x(ancilla_2_index_list[0])
-    qc.x(ancilla_2_index_list[2])
+    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.6 down shift').control(3+len(c_indices), ctrl_state='010'+control_state)
+    qc.append(adder_minus,c_indices + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
 
     # uncompute ancilla_1 register
     for b_i,b in enumerate(binary_offset_list):
@@ -231,10 +213,8 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # positive offset 0.1 shift
-    qc.x(ancilla_2_index_list[2])
-    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.1 up shift').control(4)
-    qc.append(adder_plus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
-    qc.x(ancilla_2_index_list[2])
+    adder_plus = DraperQFTAdder(n, kind='fixed', name='0.1 up shift').control(3+len(c_indices), ctrl_state='011'+control_state)
+    qc.append(adder_plus,c_indices + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
 
     # uncompute the ancilla_1 register to all zeros
     for b_i,b in enumerate(binary_offset_list):
@@ -249,31 +229,20 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
             qc.x(ancilla_1_index_list[-1-b_i])
 
     # negative offset 0.1 shift
-    qc.x(ancilla_2_index_list[0])
-    qc.x(ancilla_2_index_list[1])
-    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.1 down shift').control(4)
-    qc.append(adder_minus,c_index + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
-    qc.x(ancilla_2_index_list[0])
-    qc.x(ancilla_2_index_list[1])
+    adder_minus = DraperQFTAdder(n, kind='fixed', name='0.1 down shift').control(3+len(c_indices), ctrl_state='100'+control_state)
+    qc.append(adder_minus,c_indices + ancilla_2_index_list + ancilla_1_index_list + F_index_list)
 
     # uncompute ancilla_1 register
     for b_i,b in enumerate(binary_offset_list):
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
 
-    '''if last_F:
-        # apply phase change to make the 0.6 values negative
-        phase_change_gate = ZGate().control(2, ctrl_state='00')
-        qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-2,-3]])
-
-        phase_change_gate = ZGate().control(2, ctrl_state='00')
-        qc.append(phase_change_gate, [ancilla_2_index_list[i] for i in [-1,-3,-2]])'''
     # apply phase change to make the 0.6 values negative
-    phase_change_gate = ZGate().control(3, ctrl_state='001')
-    qc.append(phase_change_gate, [c_index] + [ancilla_2_index_list[i] for i in [-1,-2,-3]])
+    phase_change_gate = ZGate().control(2+len(c_indices), ctrl_state='00'+control_state)
+    #qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-2,-3]])
 
-    phase_change_gate = ZGate().control(3, ctrl_state='001')
-    qc.append(phase_change_gate, [c_index] + [ancilla_2_index_list[i] for i in [-1,-3,-2]])
+    phase_change_gate = ZGate().control(2+len(c_indices), ctrl_state='00'+control_state)
+    #qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-3,-2]])
 
     # undo the state preparation for LCU
     ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
@@ -282,6 +251,7 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
 
 n=3
 N = int(2**n)
+CC_n = math.floor(math.log2(n-1)) + 1
 L = getL(0,n) # basis change from wavelet to hat function
 sim_method = "statevector"
 #sim_method = "measure"
@@ -302,7 +272,7 @@ test = E @ Lu
 
 # x_state for every computational basis state [0,N-1)
 x_vals = list(range(int(N))) # every computational basis state
-#x_vals = [6] # just one computational basis state
+#x_vals = [0] # just one computational basis state
 x_states = [np.zeros(int(N)) for i in range(len(x_vals))]
 for i in range(len(x_vals)):
     x_states[i][int(x_vals[i])] = 1
@@ -320,80 +290,82 @@ for x_state in x_states:
     # b vector state preparation
 
     # set up the quantum circuit
-    qc = QuantumCircuit(6*n+2,2*(n-1)+4+n)
+    qc = QuantumCircuit(6*n+2+CC_n,2*(n-1)+4+n)
 
     x_state_prep = StatePreparation(x_state)
     qc.append(x_state_prep, list(range(n)))
 
-
-    # Use CNOTs to create the flag states for the E dilator
-    for i in range(1,n):
-        x_gate = XGate().control(n-i)
-        qc.append(x_gate, list(range(n-1,i-1,-1)) + [4*(n)-1+i])
-
-    # Use CNOTs to create the flag states for the F expansion
+    # Column Combine section
+    # LCU of entire circuit to combine the columns of the different fineness sections
+    column_combine_LCU_state = []
     for i in range(n-1):
-        x_gate = XGate().control(i+1, ctrl_state='0'+'1'*i)
-        qc.append(x_gate, list(range(n-1,n-2-i,-1)) + [5*(n)+2+i])
+        column_combine_LCU_state.append(2**i)
+    column_combine_LCU_state.append(5/24*2**n)
+    CC_state = np.zeros(int(2**CC_n))
+    alpha = (17/24)*2**n - 1
+    CC_state[:n] = [math.sqrt(i/alpha) for i in column_combine_LCU_state]
+    CC_qubit_list = list(range(6*n+2, 6*n+2+CC_n))
+    CC_state_prep = StatePreparation(CC_state)
+    qc.append(CC_state_prep, CC_qubit_list) # state preparation for the column-combine LCU step
 
-    LuGate = UnitaryGate(Lu, label="L_u Gate")
-    qc.append(LuGate,list(range(n)))
+    # apply section s portion of the L basis change
+    for s in range(n):
+        CC_control_state = bin(s)[2:].zfill(CC_n)
+
+        # Use CNOTs to create the flag states for the E dilator
+        for i in range(1,n):
+            x_gate = XGate().control(n-i+CC_n, ctrl_state='1'*(n-i)+CC_control_state)
+            qc.append(x_gate, CC_qubit_list + list(range(n-1,i-1,-1)) + [4*(n)-1+i])
+
+        # Use CNOTs to create the flag states for the F expansion
+        for i in range(n-1):
+            x_gate = XGate().control(i+1+CC_n, ctrl_state='0'+'1'*i+CC_control_state)
+            qc.append(x_gate, CC_qubit_list + list(range(n-1,n-2-i,-1)) + [5*(n)+2+i])
+
+        LuGate = UnitaryGate(Lu, label="L_u Gate").control(CC_n, ctrl_state=CC_control_state)
+        qc.append(LuGate,CC_qubit_list + list(range(n)))
 
 
-    # switch flag states for testing:
-    #qc.x(3*n+2)
-    #qc.x(3*n+3)
+        # switch flag states for testing:
+        #qc.x(3*n+2)
+        #qc.x(3*n+3)
 
 
-    # apply the F gates
-    F_LCU_ancillas = list(range(5*n-1,5*n+2))
-    adder_ancillas = list(range(n+1,2*n+2))
-    for i in range(0,n-1):
-        control_qubit_index = 5*n+2+i
-        apply_F_operator(qc, n+1, list(range(n+1)), adder_ancillas, F_LCU_ancillas, [control_qubit_index], offset=int(2**(i)), first_F=(i==0), last_F=(i==n-2))
+        # apply the F gates
+        F_LCU_ancillas = list(range(5*n-1,5*n+2))
+        adder_ancillas = list(range(n+1,2*n+2))
+        for i in range(0,n-1):
+            control_qubit_index = 5*n+2+i
+            apply_F_operator(qc, n+1, list(range(n+1)), adder_ancillas, F_LCU_ancillas, [control_qubit_index]+CC_qubit_list, CC_control_state+'1', offset=int(2**(i)))
 
-    # ad hoc fix: flip the (N-1) through 2Nth amplitudes using another ancilla to avoid it leaking into the (N-1) x (N-1) submatrix in the E dilator step
-    x_gate = XGate().control(n+1, ctrl_state='0' + '1'*n)
-    qc.append(x_gate, list(range(n+1)) + [6*n+1])
-    x_gate = XGate().control(1)
-    qc.append(x_gate, [n, 6*n+1])
+        # ad hoc fix: flip the (N-1) through 2Nth amplitudes using another ancilla to avoid it leaking into the (N-1) x (N-1) submatrix in the E dilator step
+        x_gate = XGate().control(n+1+CC_n, ctrl_state='0' + '1'*n + CC_control_state)
+        qc.append(x_gate, CC_qubit_list + list(range(n+1)) + [6*n+1])
+        x_gate = XGate().control(1+CC_n, ctrl_state='1'+CC_control_state)
+        qc.append(x_gate, CC_qubit_list + [n, 6*n+1])
 
 
-    # apply the E gates
-    E_LCU_ancillas = list(range(2*n+2,4*n))
-    for i in range(1,n):
-        control_qubit_index = 4*n-1+i
-        E_LCU_ancilla_i = E_LCU_ancillas[2*(i-1):2*i]
-        apply_E_operator(qc, n, list(range(n)), adder_ancillas[:-1], E_LCU_ancilla_i, [control_qubit_index], offset=int(2**(n-i-1)))
+        # apply the E gates
+        E_LCU_ancillas = list(range(2*n+2,4*n))
+        for i in range(1,n):
+            control_qubit_index = 4*n-1+i
+            E_LCU_ancilla_i = E_LCU_ancillas[2*(i-1):2*i]
+            apply_E_operator(qc, n, list(range(n)), adder_ancillas[:-1], E_LCU_ancilla_i, [control_qubit_index]+CC_qubit_list, CC_control_state+'1', offset=int(2**(n-i-1)))
 
-    # reverse flag qubits for section s
-    s = 0
-    if s < n-1:
-        qc.x(5*n+2+s)
-    for s_p in range(s):
-        qc.x(5*n-2-s_p)
-    
-    '''# for inputs in section 0:
-    qc.x(6*n-1)
+        # reverse flag qubits for section s so that all ancillas are in the zero state
+        if s < n-1:
+            x_gate = XGate().control(CC_n, ctrl_state=CC_control_state)
+            qc.append(x_gate, CC_qubit_list + [5*n+2+s])
+        for s_p in range(s):
+            x_gate = XGate().control(CC_n, ctrl_state=CC_control_state)
+            qc.append(x_gate, CC_qubit_list + [5*n-2-s_p])
 
-    # for inputs in section 1:
-    qc.x(6*n)
-    qc.x(5*n-1)
-
-    # for inputs in section 2:
-    qc.x(5*n-2)'''
-
-    ##### reverse the flag bits, just for easier viewing of the statevector during testing, only works for computational basis input #####
-    # reverse E dilator flag qubits
-    '''for i in range(1,n):
-        if x_val >= N-2**i:
-            qc.x([4*(n)-1+i])
-    # reverse the F expansion matrix flag qubit
-    qc.x(6*n+2-math.ceil(math.log2(N-x_val)))'''
+    CC_state_prep = StatePreparation(CC_state, inverse=True)
+    qc.append(CC_state_prep, list(range(6*n+2, 6*n+2+CC_n))) # state preparation for the column-combine LCU step
 
 
     ###### show the ouptut as a superposition of outputs based on the state of the flags
-    F_offsets = []
+    '''F_offsets = []
     last_F_offset = -1
     for c_i,c in enumerate(x_state):
         if abs(c) < 1E-10: # skip 0 values
@@ -424,7 +396,7 @@ for x_state in x_states:
             E_offsets.append(E_offset)
             last_E_offset = E_offset
 
-    total_offsets = np.array(F_offsets) + np.array(E_offsets)
+    total_offsets = np.array(F_offsets) + np.array(E_offsets)'''
 
     if sim_method == "statevector":
         qc.save_statevector()
@@ -439,14 +411,19 @@ for x_state in x_states:
         # print statevector of non-junk qubits
         state_vec = job_result.get_statevector(qc).data
 
-        for i in range(len(total_offsets)):
+        non_zero_state_indices = np.nonzero(abs(state_vec) > 1E-10)
+        non_zero_states = [bin(i)[2:].zfill(6*n+2) for i in non_zero_state_indices[0]]
+        non_zero_state_vec = state_vec[non_zero_state_indices]
+        non_zero_state_vec = np.round(non_zero_state_vec, decimals=5)
+        #non_zero_state_vec = np.round(non_zero_state_vec / np.exp(1j*cmath.phase(non_zero_state_vec[0])), decimals=5) # make the phase of the first non-zero value 0
+        state_vec_pairs_short = [(non_zero_states[i], non_zero_state_vec[i]) for i in range(len(non_zero_states))]
+        print(state_vec_pairs_short)
+
+        '''for i in range(len(total_offsets)):
             print("State ", i)
             print("Offset: ", total_offsets[i])
-            print("Output state: ", np.real(np.round(state_vec[total_offsets[i]:total_offsets[i]+4*N], decimals=5)))
-            non_zero_state_indices = np.nonzero(abs(state_vec) > 1E-10)
-            non_zero_states = [bin(i)[2:].zfill(6*n+2) for i in non_zero_state_indices[0]]
-            non_zero_state_vec = state_vec[non_zero_state_indices]
-            state_vec_pairs_short = [(non_zero_states[i], np.real(non_zero_state_vec[i])) for i in range(len(non_zero_states))]
+            print("Output state: ", np.real(np.round(state_vec[total_offsets[i]:total_offsets[i]+4*N], decimals=5)))'''
+            
     elif sim_method == "measure":
         qc.measure(E_LCU_ancillas, list(range(2*(n-1)))) # LCU block-encoding of F dilators succeeds when this measurement is two zero states
         qc.measure(F_LCU_ancillas, list(range(2*(n-1),2*(n-1)+3))) # LCU block-encoding of F dilators succeeds when this measurement is two zero states
