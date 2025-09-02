@@ -159,16 +159,15 @@ def getA(N, p_vals_coarse):
 a = 0
 b = 1
 
-n_mat = 0
+n_mat = 2
 N_mat = 2**n_mat
 #f_vals = 10 * np.random.random(N_mat - 1)
 
 #p_vals = np.random.random(N_mat)
-p_vals = [0.1, 0.5, 1.5, 0.3] # use for n_mat = 2
-#p_vals = np.ones(N_mat)
-print(p_vals)
+#p_vals = [0.1, 0.5, 1.5, 0.3] # use for n_mat = 2
 
-n_list = [5,6,7,8] # number of qubits to represent the number of FV regions
+n_list = list(range(3,11))
+#n_list = [5,6,7,8] # number of qubits to represent the number of FV regions
 #n_list = [8]
 A_n_cond_list = np.zeros(len(n_list))
 A_n_tilde_cond_list = np.zeros(len(n_list))
@@ -176,6 +175,7 @@ for n_i,n in enumerate(n_list):
     N = int(math.pow(2,n)) # max index of points defining domain
     N_A = N-1 # number of points excluding boundaries (size of the A matrix)
     dx = (b - a) / (N)
+    p_vals = np.ones(N) + np.sqrt((2*np.array(range(1,N+1))-1) / (2*N)) # p_vals to match example 6.1 from the FVEM paper (the A_n condition numbers do match)
 
     # right side of the equation, is on the test space not the trial space, TODO: need to figure out how to do this correctly
     f_n = dx * np.ones(N_A)
@@ -198,12 +198,35 @@ for n_i,n in enumerate(n_list):
 
     # do the wavelet preconditioning
     #L = getL(int((N_A-1)/2+1))
-    L = getL(n_min,n) # basis change from wavelet to hat function
+    L = getL(n_min,n) # basis change from wavelet to hat function (hat to wavelet for basis vectors, wavelet to hats for vector components)
 
     L_inv = np.linalg.inv(L) # exact inverse of the wavelet to nodal basis
+    '''phi_T = np.array([0.9, -0.6, 0.1] + [0]*(N-4))
+    L_inv_trans = np.transpose(L_inv)
+    oueabg = phi_T @ L_inv_trans'''
+    L_fixed = L
+
+    L_norm = np.linalg.norm(L, ord=2)
+    L_inv_norm = np.linalg.norm(L_inv, ord=2)
+    L_cond = np.linalg.cond(L)
+    print("L_norm: ", L_norm)
+    print("L_inv_norm: ", L_inv_norm)
+    print("L_cond: ", L_cond)
     #L_inv = np.transpose(L) # "approximate inverse" of the wavelet to nodal basis
 
     D_inv = getD_inv(n_min,n, coarse_to_fine=False)
+    D = np.linalg.inv(D_inv)
+
+    P_1 = D_inv @ np.linalg.inv(L_fixed)
+    P_2 = L_fixed @ D_inv # kind of like the inverse of the preconditioner, but not really
+    P_norm = np.linalg.norm(P_1, ord=2)
+    P_2_norm = np.linalg.norm(P_2, ord=2)
+    P_1_cond = np.linalg.cond(P_1)
+    P_2_cond = np.linalg.cond(P_2)
+    print("P_1_norm: ", P_norm)
+    print("P_2_norm: ", P_2_norm)
+    print("P_1_cond: ", P_1_cond)
+    print("P_2_cond: ", P_2_cond)
 
     # Using coarse to fine indexing for the wavelet bases, from the ChatGPT wavelet transform function
     #L, meta = prewavelet_transform_matrix(2**n_min, n - n_min)
@@ -215,16 +238,21 @@ for n_i,n in enumerate(n_list):
     test_vec[1] = 1
     trans_test_vec = L @ test_vec
 
-    A_n_tilde = D_inv @ L_inv @ A_n @ L @ D_inv # Use exact inverse of basis change matrix to get maximum decrease in condition number
+    A_n_tilde = P_1 @ A_n @ P_2 # Use exact inverse of basis change matrix to get maximum decrease in condition number
+    A_n_tilde_inv = np.linalg.inv(A_n_tilde)
 
+    A_n_tilde_norm = np.linalg.norm(A_n_tilde, ord=2)
+    A_n_tilde_inv_norm = np.linalg.norm(A_n_tilde_inv, ord=2)
     A_n_tilde_cond = np.linalg.cond(A_n_tilde)
+    print("A_n_tilde norm: ", A_n_tilde_norm)
+    print("A_n_tilde_inv norm: ", A_n_tilde_inv_norm)
     print("A_n_tilde condition number: ", A_n_tilde_cond)
     A_n_tilde_cond_list[n_i] = A_n_tilde_cond
 
     f_n_tilde = D_inv @ L_inv @ f_n
 
     I = np.transpose(L) @ L
-    print(I)
+    #print(I)
 
     #c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system
     c_tilde = np.linalg.solve(A_n_tilde, f_n_tilde) # solve the preconditioned system

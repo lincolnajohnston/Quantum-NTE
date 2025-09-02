@@ -121,8 +121,8 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
     # set the state for the LCU linear combination
     N = int(2**n)
     ancilla_2_state = [1/math.sqrt(2), 1/2, 1/2, 0]
-    ancilla_2_state_prep = StatePreparation(ancilla_2_state)
-    qc.append(ancilla_2_state_prep, ancilla_2_index_list)
+    ancilla_2_state_prep = StatePreparation(ancilla_2_state).control(len(c_indices), ctrl_state=control_state)
+    qc.append(ancilla_2_state_prep, c_indices + ancilla_2_index_list)
 
     # create a state in the ancilla_1 register to represent the integer 'offset'
     binary_offset = bin(offset)  # binary of offset
@@ -156,8 +156,8 @@ def apply_E_operator(qc, n, E_index_list, ancilla_1_index_list, ancilla_2_index_
         if b:
             qc.x(ancilla_1_index_list[-1-b_i])
 
-    ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
-    qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
+    ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True).control(len(c_indices), ctrl_state=control_state)
+    qc.append(ancilla_2_state_prep_2_inv, c_indices + ancilla_2_index_list)
 
     #qc.measure(ancilla_2_index_list, range(2*(n-1))) # LCU block-encoding succeeds when this measurement is two zero states
 
@@ -170,8 +170,8 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
     # set the state for the LCU linear combination
     N = int(2**n)
     ancilla_2_state = [1/math.sqrt(2.4), 1/2, 1/2, 1/math.sqrt(24), 1/math.sqrt(24), 0, 0, 0]
-    ancilla_2_state_prep = StatePreparation(ancilla_2_state)
-    qc.append(ancilla_2_state_prep, ancilla_2_index_list)
+    ancilla_2_state_prep = StatePreparation(ancilla_2_state).control(len(c_indices), ctrl_state=control_state)
+    qc.append(ancilla_2_state_prep, c_indices + ancilla_2_index_list)
 
     # create a state in the ancilla_1 register to represent the integer 'offset'
     binary_offset = bin(offset)  # binary of offset
@@ -239,22 +239,23 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
 
     # apply phase change to make the 0.6 values negative
     phase_change_gate = ZGate().control(2+len(c_indices), ctrl_state='00'+control_state)
-    #qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-2,-3]])
+    qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-2,-3]])
 
     phase_change_gate = ZGate().control(2+len(c_indices), ctrl_state='00'+control_state)
-    #qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-3,-2]])
+    qc.append(phase_change_gate, c_indices + [ancilla_2_index_list[i] for i in [-1,-3,-2]])
 
     # undo the state preparation for LCU
-    ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True)
-    qc.append(ancilla_2_state_prep_2_inv, ancilla_2_index_list)
+    ancilla_2_state_prep_2_inv = StatePreparation(ancilla_2_state, inverse=True).control(len(c_indices), ctrl_state=control_state)
+    qc.append(ancilla_2_state_prep_2_inv, c_indices + ancilla_2_index_list)
 
 
-n=3
+n=2
 N = int(2**n)
 CC_n = math.floor(math.log2(n-1)) + 1
 L = getL(0,n) # basis change from wavelet to hat function
 sim_method = "statevector"
 #sim_method = "measure"
+#sim_method = "unitary"
 
 # get spectral norm of L
 L_norm = np.linalg.norm(L, ord=2)
@@ -280,8 +281,11 @@ for i in range(len(x_vals)):
 # n=3
 #x_states = [np.array(8*[1/math.sqrt(8)])]
 #x_states = [np.array([0,0,0,0,0,0,1,0])]
+#x_states = [np.array([0,0,0,0,1/math.sqrt(2),1/math.sqrt(2),0,0])]
 #x_states = [np.array([1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0])]
 #x_states = [np.array([1/math.sqrt(2),1/math.sqrt(2),0,0,0,0,0,0])]
+
+#x_states = [np.array([1/math.sqrt(2),1/math.sqrt(2),0,0,0,0,0,0]), np.array([0,0,0,0,1/math.sqrt(2),1/math.sqrt(2),0,0]), np.array([1/math.sqrt(2),0,0,0,1/math.sqrt(2),0,0,0])]
 
 # n=4
 #x_states = [np.array([1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])]
@@ -307,6 +311,7 @@ for x_state in x_states:
     CC_qubit_list = list(range(6*n+2, 6*n+2+CC_n))
     CC_state_prep = StatePreparation(CC_state)
     qc.append(CC_state_prep, CC_qubit_list) # state preparation for the column-combine LCU step
+    #qc.x(CC_qubit_list[0])
 
     # apply section s portion of the L basis change
     for s in range(n):
@@ -324,12 +329,6 @@ for x_state in x_states:
 
         LuGate = UnitaryGate(Lu, label="L_u Gate").control(CC_n, ctrl_state=CC_control_state)
         qc.append(LuGate,CC_qubit_list + list(range(n)))
-
-
-        # switch flag states for testing:
-        #qc.x(3*n+2)
-        #qc.x(3*n+3)
-
 
         # apply the F gates
         F_LCU_ancillas = list(range(5*n-1,5*n+2))
@@ -362,7 +361,7 @@ for x_state in x_states:
 
     CC_state_prep = StatePreparation(CC_state, inverse=True)
     qc.append(CC_state_prep, list(range(6*n+2, 6*n+2+CC_n))) # state preparation for the column-combine LCU step
-
+    #qc.x(CC_qubit_list[0])
 
     ###### show the ouptut as a superposition of outputs based on the state of the flags
     '''F_offsets = []
@@ -417,7 +416,7 @@ for x_state in x_states:
         non_zero_state_vec = np.round(non_zero_state_vec, decimals=5)
         #non_zero_state_vec = np.round(non_zero_state_vec / np.exp(1j*cmath.phase(non_zero_state_vec[0])), decimals=5) # make the phase of the first non-zero value 0
         state_vec_pairs_short = [(non_zero_states[i], non_zero_state_vec[i]) for i in range(len(non_zero_states))]
-        print(state_vec_pairs_short)
+        print(state_vec_pairs_short[:2*N])
 
         '''for i in range(len(total_offsets)):
             print("State ", i)
@@ -449,6 +448,9 @@ for x_state in x_states:
         print("Counts:", counts_abbreviated)
         plot_histogram(counts_abbreviated, filename="prewavelet-basis-change-counts.png")
         plot_histogram(amplitudes_abbreviated, filename="prewavelet-basis-change-amplitudes.png")
+    elif sim_method == "unitary":
+        U = Operator(qc) # even for n=2, this matrix is too big for me to be able to run this
+
     print("circuit done")
 qc.draw('mpl', filename="prewavelet-basis-change-test.png")
 
