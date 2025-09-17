@@ -249,7 +249,7 @@ def apply_F_operator(qc, n, F_index_list, ancilla_1_index_list, ancilla_2_index_
     qc.append(ancilla_2_state_prep_2_inv, c_indices + ancilla_2_index_list)
 
 
-n=2
+n=3
 N = int(2**n)
 CC_n = math.floor(math.log2(n-1)) + 1
 L = getL(0,n) # basis change from wavelet to hat function

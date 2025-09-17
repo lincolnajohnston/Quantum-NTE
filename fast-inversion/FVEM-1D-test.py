@@ -26,58 +26,56 @@ def getL(n_min, n_max):
     N_min = int(math.pow(2,n_min)) # size of most coarse wavelet set
     L = np.zeros((N_max-1,N_max-N_min)) # Basis transformation matrix from wavelet to nodal hat function basis
 
-    s = 0 # leftmost row index in stencil
-    j = 1 # jump between discrete points on wavelet stencil grid (in terms of number of points on finest grid)
     ref = 0 # current column
-    for i in range(n_max-n_min):
+    for i in range(n_max-n_min-1, -1 ,-1):
+    #for i in range(n_max-n_min):
+        j = 2 ** i # jump between discrete points on wavelet stencil grid (in terms of number of points on finest grid)
+        s = j-1 # leftmost row index in stencil
         N_cur = int(N_max * math.pow(2,-i-1)) # size of wavelet set at the current level
         dilation_radius = int(2**i - 1) # radius of points at which the fine nodal basis is needed to represent the current wavelet
         dilation_list = 1/(2**i) * np.array(list(range(1,2**(i)+1,1)) + list(range(2**(i)-1,0,-1)))
 
+        ##### 3 point wavelet stencil ######
+        # stencil weights (original prewavelets)
+        '''left_stencil  = [(0, 0.9), (1, -0.6), (2, 0.1)]
+        mid_stencil   = [(-2, 0.1), (-1, -0.6), (0, 1.0), (1, -0.6), (2, 0.1)]
+        right_stencil = [(-2, 0.1), (-1, -0.6), (0, 0.9)]
         # special case for most coarse wavelet (only one point)
         if (n_min == 0 and i == n_max -1):
             for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
                 L[s + 0*j + off,ref+0] += dilation_list[dil_index]
-            continue
+            ref += N_cur
+            continue'''
+        
+        ###### 1 point wavelet stencil #######
+        # stencil weights (simplified prewavelets)
+        left_stencil  = [(0, 1.0)]
+        mid_stencil   = [(0, 1.0)]
+        right_stencil = [(0, 1.0)]
             
 
         # column 0 (left boundary):
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s + 0*j + off,ref+0] += dilation_list[dil_index] * 9/10
-        for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s + 1*j + off,ref+0] += dilation_list[dil_index] * -3/5
-        for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s + 2*j + off,ref+0] += dilation_list[dil_index] * 1/10
+            for point_pair in left_stencil:
+                L[s + point_pair[0]*j + off,ref+0] += dilation_list[dil_index] * point_pair[1]
 
         # columns [1,N-2] (interior points):
         for l in range(1,N_cur-1):
             for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-                L[s+j*(2*l-2) + off,ref+l] += dilation_list[dil_index] * 1/10
-            for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-                L[s+j*(2*l-1) + off,ref+l] += dilation_list[dil_index] * -3/5
-            for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-                L[s+j*(2*l) + off,ref+l] += dilation_list[dil_index] * 1
-            for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-                L[s+j*(2*l+1) + off,ref+l] += dilation_list[dil_index] * -3/5
-            for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-                L[s+j*(2*l+2) + off,ref+l] += dilation_list[dil_index] * 1/10
+                for point_pair in mid_stencil:
+                    L[s+j*(2*l+point_pair[0]) + off,ref+l] += dilation_list[dil_index] * point_pair[1]
 
         # column N-1 (right boundary):
         for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s+j*(2*N_cur-4) + off,ref+N_cur-1] += dilation_list[dil_index] * 1/10
-        for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s+j*(2*N_cur-3) + off,ref+N_cur-1] += dilation_list[dil_index] * -3/5
-        for dil_index, off in enumerate(range(-dilation_radius,dilation_radius+1)):
-            L[s+j*(2*N_cur-2) + off,ref+N_cur-1] += dilation_list[dil_index] * 9/10
+            for point_pair in right_stencil:
+                L[s+j*(2*N_cur-2+point_pair[0]) + off,ref+N_cur-1] += dilation_list[dil_index] * point_pair[1]
 
-        s += j
-        j *= 2 # double jump size for next (coarser) grid
         ref += N_cur
 
     return L
 
 # ChatGPT function (with modifications) to get the L transform matrix
-def prewavelet_transform_matrix(N0: int, J: int):
+'''def prewavelet_transform_matrix(N0: int, J: int):
     """
     Build the sparse (here dense for simplicity) matrix W that maps fine-grid
     nodal coefficients in V_J to pre-wavelet detail coefficients on levels 1..J.
@@ -123,7 +121,7 @@ def prewavelet_transform_matrix(N0: int, J: int):
         rows.append(r)
 
     W = np.vstack(rows)
-    return np.transpose(W), meta
+    return np.transpose(W), meta'''
 
 
 # (NxN) is size of D_inv matrix
@@ -201,10 +199,6 @@ for n_i,n in enumerate(n_list):
     L = getL(n_min,n) # basis change from wavelet to hat function (hat to wavelet for basis vectors, wavelet to hats for vector components)
 
     L_inv = np.linalg.inv(L) # exact inverse of the wavelet to nodal basis
-    '''phi_T = np.array([0.9, -0.6, 0.1] + [0]*(N-4))
-    L_inv_trans = np.transpose(L_inv)
-    oueabg = phi_T @ L_inv_trans'''
-    L_fixed = L
 
     L_norm = np.linalg.norm(L, ord=2)
     L_inv_norm = np.linalg.norm(L_inv, ord=2)
@@ -214,29 +208,20 @@ for n_i,n in enumerate(n_list):
     print("L_cond: ", L_cond)
     #L_inv = np.transpose(L) # "approximate inverse" of the wavelet to nodal basis
 
-    D_inv = getD_inv(n_min,n, coarse_to_fine=False)
+    D_inv = getD_inv(n_min,n, coarse_to_fine=True)
     D = np.linalg.inv(D_inv)
+    print("D condition number: ", np.linalg.cond(D_inv))
 
-    P_1 = D_inv @ np.linalg.inv(L_fixed)
-    P_2 = L_fixed @ D_inv # kind of like the inverse of the preconditioner, but not really
-    P_norm = np.linalg.norm(P_1, ord=2)
+    P_1 = D_inv @ np.transpose(L)
+    P_2 = L # kind of like the inverse of the preconditioner, but not really
+    '''P_norm = np.linalg.norm(P_1, ord=2)
     P_2_norm = np.linalg.norm(P_2, ord=2)
     P_1_cond = np.linalg.cond(P_1)
     P_2_cond = np.linalg.cond(P_2)
     print("P_1_norm: ", P_norm)
     print("P_2_norm: ", P_2_norm)
     print("P_1_cond: ", P_1_cond)
-    print("P_2_cond: ", P_2_cond)
-
-    # Using coarse to fine indexing for the wavelet bases, from the ChatGPT wavelet transform function
-    #L, meta = prewavelet_transform_matrix(2**n_min, n - n_min)
-    #D_inv = getD_inv(n_min,n, coarse_to_fine=True)
-
-    # test the L matrix (basis change from hats to wavelets)
-    #test_vec = np.arange(len(L))
-    test_vec = np.zeros(len(L[0]))
-    test_vec[1] = 1
-    trans_test_vec = L @ test_vec
+    print("P_2_cond: ", P_2_cond)'''
 
     A_n_tilde = P_1 @ A_n @ P_2 # Use exact inverse of basis change matrix to get maximum decrease in condition number
     A_n_tilde_inv = np.linalg.inv(A_n_tilde)
@@ -249,7 +234,7 @@ for n_i,n in enumerate(n_list):
     print("A_n_tilde condition number: ", A_n_tilde_cond)
     A_n_tilde_cond_list[n_i] = A_n_tilde_cond
 
-    f_n_tilde = D_inv @ L_inv @ f_n
+    f_n_tilde = D_inv @ np.transpose(L) @ f_n
 
     I = np.transpose(L) @ L
     #print(I)
@@ -278,8 +263,9 @@ for n_i,n in enumerate(n_list):
     plt.title("Solutions for diffusion equation with n=" + str(n))
     plt.show()'''
 
-plt.semilogy(n_list, A_n_cond_list)
+#plt.semilogy(n_list, A_n_cond_list)
 plt.semilogy(n_list, A_n_tilde_cond_list)
+#plt.plot(n_list, A_n_tilde_cond_list)
 plt.legend(["A_n condition number", "A_n_tilde condition number"])
 plt.show()
 print("done")
