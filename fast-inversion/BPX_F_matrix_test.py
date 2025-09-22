@@ -234,7 +234,8 @@ for l in range(1,L+1):
     C_l = np.transpose(pi_l) @ pi_l_C_l
 
     T_1D = get_T_1D(l,L)
-    for i in range(1, D):
+    T = np.array([1])
+    for i in range(D):
         T = np.kron(T_1D, T) # kronecker product the T_1D matrix product D times (bottom of page 16 of Deiml paper)
     T = np.transpose(pi_L_star) @ T @ pi_l_star # apply the permutations on  T
 
