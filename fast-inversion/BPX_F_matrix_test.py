@@ -192,21 +192,30 @@ def get_T_1D(l: int, L: int):
     
 
 # the domain goes from 0 to 1
+D = 1
 L = 3 # number of levels of BPX preconditioner
 n_fine = int(math.pow(2,L)) # number of points in finest level
 h_fine = 1/n_fine
+CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
 
 # create the 1-D F matrix preconditioner (defined at the bottom of page 11 of the Deiml paper)
-F = np.zeros((n_fine-1,n_fine * 2 - L - 2))
-fine_x_vals = np.linspace(h_fine,1-h_fine,n_fine-1)
+F = np.zeros(((n_fine-1)**D, sum(CF_col_sections)))
+fine_position_vals = [np.linspace(h_fine,1-h_fine,n_fine-1) for i in range(D)]
+position_meshes = np.meshgrid(*fine_position_vals, indexing='ij')
+position_points = [position_meshes[i].flatten() for i in range(D)]
 col = 0
 for l in range(1,L+1):
     n_coarse = int(math.pow(2,l)) # number of basis functions in current level
     h_coarse = 1/n_coarse
     #triangle_height_weight = math.pow(2,l-L)
     triangle_height_weight = 1 # height of hat function in basis function
-    for i in range(n_coarse - 1): # find values of current column of F
-        weights = [math.pow(2,-l/2) * triangle_height_weight * triangle_wave(x,h_coarse*i,h_coarse*(i+2)) for x in fine_x_vals]
+    for i in range((n_coarse - 1)**D): # find values of current column of F
+        pos_indices = [int(i%(n_coarse-1)**(D-d) / (n_coarse-1)**(D-d-1)) for d in range(D)]
+        pos = [position_points[d][i] for d in range(D)]
+        weights_list = [[math.pow(2,-l/2) * triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
+        weights = weights_list[0]
+        for d in range(1,D):
+            weights = np.kron(weights, weights_list[d])
         #weights = [triangle_height_weight * triangle_wave(x,h_coarse*i,h_coarse*(i+2)) for x in fine_x_vals]
         F[:,col] =  weights
         col += 1
@@ -219,8 +228,6 @@ for l in range(1,L+1):
 #C_l_1D = get_C_l_1D(l)
 #R_l_1D = get_R_l_1D(l)
 #print(C_l_1D)
-
-D = 1
 
 # find C_L (C_l for the finest level)
 pi_l_C_L = np.zeros((D*2**(D*(L+1)), (2**L - 1)**D))
@@ -236,18 +243,11 @@ pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
 pi_L = np.kron(np.eye(D), pi_L_star)
 C_L = np.transpose(pi_L) @ pi_l_C_L
 
-# modified, experimental C_l definition:
-'''C_L = np.zeros((2**(L+1), 2**L - 1))
-for col in range(2**L - 1):
-    C_L[2*col, col] = 2**(L/2)
-    C_L[2*(col+1), col] = -2**(L/2)'''
-
 C_F_test = C_L @ F
 
 
 pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False) # permutation matrix of one of D blocks of C_l 
 pi_L = np.kron(np.eye(D), pi_L_star) #permutation matrix of entire C_l matrix
-CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
 CF = np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
 for l in range(1,L+1):
     pi_l_C_l = np.zeros((D*2**(D*(l+1)), (2**l - 1)**D))
@@ -262,12 +262,6 @@ for l in range(1,L+1):
     pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
     pi_l = np.kron(np.eye(D), pi_l_star)
     C_l = np.transpose(pi_l) @ pi_l_C_l
-
-    # modified, experimental C_l definition:
-    '''C_l = np.zeros((2**(l+1), 2**l - 1))
-    for col in range(2**l - 1):
-        C_l[2*col, col] = 2**(l/2)
-        C_l[2*(col+1), col] = -2**(l/2)'''
 
     T_1D = get_T_1D(l,L)
     T = np.array([1])
@@ -310,6 +304,7 @@ FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
 FSF2 = np.transpose(CF) @ np.kron(D_A, np.eye(2**D)) @ CF # preconditioned system using the CF matrix (should be the same as FSF1)
 FSF_error_mat = FSF1 - FSF2
 FSF_error = np.linalg.norm(FSF_error_mat)
+print("FSF error: ", FSF_error)
 
 print("done")
 
