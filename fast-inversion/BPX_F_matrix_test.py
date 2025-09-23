@@ -28,9 +28,14 @@ def get_C_l_1D(l):
     #M2 = np.concatenate((I_l, N_l), axis=0)
     # M2 is now an operation performing |i> -> 1/sqrt(2) (|2i+1> + |2i+2>)
     M2 = np.zeros((2**(l+1), 2**l - 1))
+    # Lincoln's M2
     for col in range(2**l - 1):
         M2[2*col+1, col] = 1
         M2[2*(col+1), col] = 1
+    # Mahathi's M2
+    '''for col in range(2**l - 1):
+        M2[2*col, col] = 1
+        M2[2*(col)+3, col] = 1'''
     return 2**(l/2) * M1 @ M2
 
 # return the R_{l,1D} matrix at the bottom of page 15 of the Deiml paper 
@@ -192,7 +197,7 @@ def get_T_1D(l: int, L: int):
     
 
 # the domain goes from 0 to 1
-D = 1
+D = 2
 L = 3 # number of levels of BPX preconditioner
 n_fine = int(math.pow(2,L)) # number of points in finest level
 h_fine = 1/n_fine
@@ -212,11 +217,10 @@ for l in range(1,L+1):
     for i in range((n_coarse - 1)**D): # find values of current column of F
         pos_indices = [int(i%(n_coarse-1)**(D-d) / (n_coarse-1)**(D-d-1)) for d in range(D)]
         pos = [position_points[d][i] for d in range(D)]
-        weights_list = [[math.pow(2,-l/2) * triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
+        weights_list = [[2 ** (-l * (2-D) / 2) * triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
         weights = weights_list[0]
         for d in range(1,D):
             weights = np.kron(weights, weights_list[d])
-        #weights = [triangle_height_weight * triangle_wave(x,h_coarse*i,h_coarse*(i+2)) for x in fine_x_vals]
         F[:,col] =  weights
         col += 1
 #print("F condition number:", np.linalg.cond(F))
@@ -295,8 +299,11 @@ print("Max F-remainder: ", np.max(abs(F_remainder)))
 # The CF here (which is the C_l found using the equations in the Deiml paper (page 15) multiplied by the F preconditioner (page 12)) 
 # is not the same as the CF we get from making the full matrix using the steps from the same Deiml paper however, this C_F_test is very
 # close to CF, and both I think can be implemented in logN time, so whichever one is right should be still be able to be encoded quickly
-C_F_test = C_l @ F
+#C_F_test = C_l @ F
 #CF = C_F_test
+
+CF_first_column_sum = np.max(CF[:,0])
+CF_test_first_column_sum = np.max(C_F_test[:,0])
 
 F_test = np.linalg.pinv(C_l) @ CF # The preconditioner F matrix if we assume that we created CF correctly
 CF_test2 = C_l @ F_test
