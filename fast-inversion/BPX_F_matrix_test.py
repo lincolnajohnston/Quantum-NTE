@@ -22,10 +22,15 @@ def triangle_wave(x: float, x_min, x_max) -> float:
 # return the C_{l,1D} matrix at the bottom of page 15 of the Deiml paper 
 def get_C_l_1D(l):
     N = 2 ** l
-    M1 = np.kron(np.eye(N), np.array([[1,-1],[0,0]]))
-    I_l = np.eye(N)[:,:N-1]
-    N_l = np.eye(N)[:,1:N]
-    M2 = np.concatenate((I_l, N_l), axis=0)
+    M1 = np.kron(np.eye(N), np.array([[1,-1],[0,0]])) # TODO: figure out how this works, don't really understand this equation
+    #I_l = np.eye(N)[:,:N-1]
+    #N_l = np.eye(N)[:,1:N]
+    #M2 = np.concatenate((I_l, N_l), axis=0)
+    # M2 is now an operation performing |i> -> 1/sqrt(2) (|2i+1> + |2i+2>)
+    M2 = np.zeros((2**(l+1), 2**l - 1))
+    for col in range(2**l - 1):
+        M2[2*col+1, col] = 1
+        M2[2*(col+1), col] = 1
     return 2**(l/2) * M1 @ M2
 
 # return the R_{l,1D} matrix at the bottom of page 15 of the Deiml paper 
@@ -181,7 +186,7 @@ def get_T_1D(l: int, L: int):
             Z_kron = np.kron(Z_kron, Z)
         return (1/math.sqrt(2)) * np.kron(Z_kron,np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]]))'''
         #return (1/math.sqrt(2)) * np.kron(np.eye(2**(l-1)), np.kron(np.array([[1,0],[0,-1]]),np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]])))
-        return (1/math.sqrt(2)) * np.kron(np.eye(2**l), np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]])) #TODO: Add Z gates here instead of identities, not sure in what way to do this, we just need sign changes in various places
+        return (1/math.sqrt(2)) * np.kron(np.eye(2**l), np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]]))
     else:
         return get_T_1D(L-1,L) @ get_T_1D(l,L-1)
     
@@ -202,6 +207,7 @@ for l in range(1,L+1):
     triangle_height_weight = 1 # height of hat function in basis function
     for i in range(n_coarse - 1): # find values of current column of F
         weights = [math.pow(2,-l/2) * triangle_height_weight * triangle_wave(x,h_coarse*i,h_coarse*(i+2)) for x in fine_x_vals]
+        #weights = [triangle_height_weight * triangle_wave(x,h_coarse*i,h_coarse*(i+2)) for x in fine_x_vals]
         F[:,col] =  weights
         col += 1
 #print("F condition number:", np.linalg.cond(F))
@@ -215,6 +221,30 @@ for l in range(1,L+1):
 #print(C_l_1D)
 
 D = 1
+
+# find C_L (C_l for the finest level)
+pi_l_C_L = np.zeros((D*2**(D*(L+1)), (2**L - 1)**D))
+for s in range(1,D+1):
+    pi_l_C_L_s = np.array([1])
+    for i in range(1,s):
+        pi_l_C_L_s = np.kron(pi_l_C_L_s, get_R_l_1D(L))
+    pi_l_C_L_s = np.kron(pi_l_C_L_s, get_C_l_1D(L))
+    for i in range(s+1, D+1):
+        pi_l_C_L_s = np.kron(pi_l_C_L_s, get_R_l_1D(L))
+    pi_l_C_L[(s-1)*2**(D*(L+1)):s*2**(D*(L+1)), :] = pi_l_C_L_s
+pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
+pi_L = np.kron(np.eye(D), pi_L_star)
+C_L = np.transpose(pi_L) @ pi_l_C_L
+
+# modified, experimental C_l definition:
+'''C_L = np.zeros((2**(L+1), 2**L - 1))
+for col in range(2**L - 1):
+    C_L[2*col, col] = 2**(L/2)
+    C_L[2*(col+1), col] = -2**(L/2)'''
+
+C_F_test = C_L @ F
+
+
 pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False) # permutation matrix of one of D blocks of C_l 
 pi_L = np.kron(np.eye(D), pi_L_star) #permutation matrix of entire C_l matrix
 CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
@@ -233,6 +263,12 @@ for l in range(1,L+1):
     pi_l = np.kron(np.eye(D), pi_l_star)
     C_l = np.transpose(pi_l) @ pi_l_C_l
 
+    # modified, experimental C_l definition:
+    '''C_l = np.zeros((2**(l+1), 2**l - 1))
+    for col in range(2**l - 1):
+        C_l[2*col, col] = 2**(l/2)
+        C_l[2*(col+1), col] = -2**(l/2)'''
+
     T_1D = get_T_1D(l,L)
     T = np.array([1])
     for i in range(D):
@@ -243,6 +279,8 @@ for l in range(1,L+1):
     pi_right = js_swap_perm_matrix(l, D, sparse=False)
     T_squiggle = np.transpose(pi_left) @ np.kron(np.eye(D), T) @ pi_right # top of page 16 of the Deiml paper
     CFl = 2 ** (-l * (2-D) / 2) * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
+    #CFl = T_squiggle @ C_l # section s corresponding to level l of the CF matrix
+
     CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl
 
 #mat_L = 2
