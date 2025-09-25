@@ -6,7 +6,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
+from scipy.sparse import csr_matrix, coo_matrix
+import scipy as sp
 import math
+import itertools
 
 # trying to visualize the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D and make 
 # sure they can be applied effectively and work as preconditioners
@@ -58,7 +61,7 @@ def get_R_l_1D(l):
 
 # ChatGPT function, changed the implementation now, not completely checked for correctness
 # return the Pi_l operator in the middle of page 15 of the Deiml paper
-def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=np.uint8):
+def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=np.uint8, inverse: bool=False):
     """
     build the permutation matrix P such that for a state vector x ordered as
         |j1> ... |jd> |k1> ... |kd>
@@ -96,12 +99,21 @@ def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=
     # Input left-to-right blocks: [ J1(l) ... Jd(l) | K1 ... Kd ] (each K is a single bit)
     # Output left-to-right:       [ J1(l), K1, J2(l), K2, ..., Jd(l), Kd ]
     mapping_left = []
-    J_starts = [i * l for i in range(d)]
-    for i in range(d):
-        # J_i block of length l
-        mapping_left.extend(range(J_starts[i], J_starts[i] + l))
-        # K_i is a single bit at left-position d*l + i in the input
-        mapping_left.append(d * l + i)
+    J_starts = [i * (l + int(inverse)) for i in range(d)]
+    if inverse:
+        for i in range(d):
+            # J_i block of length l
+            mapping_left.extend(range(J_starts[i], J_starts[i] + l))
+        for i in range(d):
+            # K_i is a single bit at left-position d*l + i in the input
+            mapping_left.append(i * (l + 1) + l)
+    else:
+        for i in range(d):
+            # J_i block of length l
+            mapping_left.extend(range(J_starts[i], J_starts[i] + l))
+            # K_i is a single bit at left-position d*l + i in the input
+            mapping_left.append(d * l + i)
+    
 
     mapping_left = np.asarray(mapping_left, dtype=np.int64)  # length n
 
@@ -116,18 +128,7 @@ def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=
         y_bin = [x_bin[dest_bit[i]] for i in range(n)]
         y = int("".join(y_bin), 2)
         rows[x] = y
-
-    if sparse:
-        try:
-            from scipy.sparse import csr_matrix
-        except ImportError as e:
-            raise ImportError("scipy is required for sparse output; install scipy or set sparse=False.") from e
-        data = np.ones(N, dtype=dtype)
-        return csr_matrix((data, (rows, cols)), shape=(N, N), dtype=dtype)
-    else:
-        P = np.zeros((N, N), dtype=dtype)
-        P[rows, cols] = 1
-        return P
+    return rows
 
 # ChatGPT function originally, now reimplemented, not fully checked for correctness still
 # return the pi operator at the top of page 14 of the Deiml paper (except only acts on the first two registers)
@@ -194,12 +195,13 @@ def get_T_1D(l: int, L: int):
 # the domain goes from 0 to 1
 D = 3
 L = 2 # number of levels of BPX preconditioner
+sparse = True
 n_fine = int(math.pow(2,L)) # number of points in finest level
 h_fine = 1/n_fine
 CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
 
 # create the 1-D F matrix preconditioner (defined at the bottom of page 11 of the Deiml paper)
-F = np.zeros(((n_fine-1)**D, sum(CF_col_sections)))
+F = csr_matrix(((n_fine-1)**D, sum(CF_col_sections)), dtype=float) if sparse else np.zeros(((n_fine-1)**D, sum(CF_col_sections))) 
 fine_position_vals = [np.linspace(h_fine,1-h_fine,n_fine-1) for i in range(D)]
 position_meshes = np.meshgrid(*fine_position_vals, indexing='ij')
 position_points = [position_meshes[i].flatten() for i in range(D)]
@@ -214,17 +216,26 @@ for l in range(1,L+1):
         pos = [position_points[d][i] for d in range(D)]
         weights_list = np.array([[triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)])
         #weights_list = [[triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
-        weights = weights_list[0]
+        weights_nonzero_indices = [np.nonzero(weights_list[d])[0] for d in range(D)]
+        for combo in itertools.product(*weights_nonzero_indices):
+            row = int(np.sum([combo[d] * np.prod([len(weights_list[d_p]) for d_p in range(d+1,D)]) for d in range(D)]))
+            weight = [weights_list[d,combo[d]] for d in range(D)]
+            test = np.prod(weight)
+            F[row,col] =  level_weight * np.prod(weight)
+        '''weights = weights_list[0]
         for d in range(1,D):
             weights = np.kron(weights, weights_list[d])
-        F[:,col] =  level_weight * weights
+        for i,w in enumerate(weights):
+            if w:
+                F[i,col] =  level_weight * w'''
         col += 1
 #print("F condition number:", np.linalg.cond(F))
 #print("F matrix norm: ", np.linalg.norm(F))
 #print(F)
 
 # find C_L (C_l for the finest level)
-pi_l_C_L = np.zeros((D*2**(D*(L+1)), (2**L - 1)**D))
+#pi_l_C_L = np.zeros((D*2**(D*(L+1)), (2**L - 1)**D))
+pi_l_C_L = csr_matrix((D*2**(D*(L+1)), (2**L - 1)**D), dtype=float) if sparse else np.zeros((D*2**(D*(L+1)), (2**L - 1)**D)) 
 for s in range(1,D+1):
     pi_l_C_L_s = np.array([1])
     for i in range(1,s):
@@ -232,17 +243,23 @@ for s in range(1,D+1):
     pi_l_C_L_s = np.kron(pi_l_C_L_s, get_C_l_1D(L))
     for i in range(s+1, D+1):
         pi_l_C_L_s = np.kron(pi_l_C_L_s, get_R_l_1D(L))
-    pi_l_C_L[(s-1)*2**(D*(L+1)):s*2**(D*(L+1)), :] = pi_l_C_L_s
-pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
-pi_L = np.kron(np.eye(D), pi_L_star)
-C_L = np.transpose(pi_L) @ pi_l_C_L
+    rows, cols = np.nonzero(pi_l_C_L_s)
+    pi_l_C_L_s_data = pi_l_C_L_s[rows, cols]
+
+    rows_g = rows + (s-1)*2**(D*(L+1))
+    cols_g = cols
+
+    update = coo_matrix((pi_l_C_L_s_data, (rows_g, cols_g)), shape=pi_l_C_L.shape)
+    pi_l_C_L += update.tocsr() 
+    
+    #pi_l_C_L[(s-1)*2**(D*(L+1)):s*2**(D*(L+1)), :] = pi_l_C_L_s
+pi_L_star_new = jk_interleave_permutation_matrix(L, D, sparse=False)
+pi_L_new = np.array([pi_L_star_new + 2**(D*L+D) * d for d in range(D)]).flatten()
+C_L = pi_l_C_L[pi_L_new, :]
 
 C_F_test = C_L @ F
 
-
-pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False) # permutation matrix of one of D blocks of C_l 
-pi_L = np.kron(np.eye(D), pi_L_star) #permutation matrix of entire C_l matrix
-CF = np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
+CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float) if sparse else np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
 for l in range(1,L+1):
     pi_l_C_l = np.zeros((D*2**(D*(l+1)), (2**l - 1)**D))
     for s in range(1,D+1):
@@ -252,22 +269,36 @@ for l in range(1,L+1):
         pi_l_C_l_s = np.kron(pi_l_C_l_s, get_C_l_1D(l))
         for i in range(s+1, D+1):
             pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D(l))
-        pi_l_C_l[(s-1)*2**(D*(l+1)):s*2**(D*(l+1)), :] = pi_l_C_l_s
-    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
-    pi_l = np.kron(np.eye(D), pi_l_star)
-    C_l = np.transpose(pi_l) @ pi_l_C_l
+        rows, cols = np.nonzero(pi_l_C_l_s)
+        pi_l_C_l_s_data = pi_l_C_l_s[rows, cols]
 
-    T_1D = get_T_1D(l,L)
-    T = np.array([1])
+        rows_g = rows + (s-1)*2**(D*(l+1))
+        cols_g = cols
+
+        update = coo_matrix((pi_l_C_l_s_data, (rows_g, cols_g)), shape=pi_l_C_l.shape)
+        pi_l_C_l += update.tocsr() 
+    pi_l_star_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+
+    # apply row permutation pi_l
+    pi_l = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
+    C_l = pi_l_C_l[pi_l, :]
+
+    T_1D = sp.sparse.csr_array(get_T_1D(l,L)) if sparse else get_T_1D(l,L)
+    T = sp.sparse.csr_array([1]) if sparse else np.array([1])
     for i in range(D):
-        T = np.kron(T_1D, T) # kronecker product the T_1D matrix product D times (bottom of page 16 of Deiml paper)
-    T = np.transpose(pi_L_star) @ T @ pi_l_star # apply the permutations on  T
+        #T = np.kron(T_1D, T) # kronecker product the T_1D matrix product D times (bottom of page 16 of Deiml paper)
+        T = sp.sparse.kron(T_1D, T, format="csr") if sparse else np.kron(T_1D, T)
+    T = T[:,pi_l_star_new] # apply column permutation (right of T)
+    T = T[pi_L_star_new,:] # apply row permutation (left of T)
 
-    #pi_left = js_swap_perm_matrix(L, D, sparse=False) # different permutation matrix than pi_l that switches the j and s registers
-    #pi_right = js_swap_perm_matrix(l, D, sparse=False)
-    pi_left = np.eye(D*2**(D*(L+1))) # testing removing these permutation matrices
-    pi_right = np.eye(D*2**(D*(l+1)))
-    T_squiggle = np.transpose(pi_left) @ np.kron(np.eye(D), T) @ pi_right # top of page 16 of the Deiml paper
+    # top of page 16 of the Deiml paper
+    #pi_left = js_swap_perm_matrix_new(L, D, sparse=False) # pi permutations
+    #pi_right = js_swap_perm_matrix_new(l, D, sparse=False)
+    pi_left = np.arange(D*2**(D*(L+1)), dtype=int) # identity permutations because I don't think any permutation is needed here even though it seems like the Deiml paper says so
+    pi_right = np.arange(D*2**(D*(l+1)), dtype=int)
+    T_squiggle = sp.sparse.kron(np.eye(D), T, format="csr") if sparse else np.kron(np.eye(D), T)
+    T_squiggle = T_squiggle[:,pi_right]
+    T_squiggle = T_squiggle[pi_left,:]
     level_weight = 2 ** (-l * (2-D) / 2)
     CFl = level_weight * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
 
@@ -281,12 +312,9 @@ for l in range(1,L+1):
 diffusion_mat = np.diag(np.concatenate((3*np.ones(2**(D*L-1)),5*np.ones(2**(D*L-1))))) # matrix of diffusion coefficients
 D_A = np.kron(diffusion_mat, np.eye(D))
 
-
-S = np.transpose(C_l) @ np.kron(D_A, np.eye(2**D)) @ C_l
-
 # test consistency of solution
-F_remainder = (np.eye(D*2**(D*(l+1))) - C_l @ np.linalg.pinv(C_l)) @ CF # has to be equal to 0 for a solution to exist
-print("Max F-remainder: ", np.max(abs(F_remainder)))
+#F_remainder = (np.eye(D*2**(D*(l+1))) - C_l @ np.linalg.pinv(C_l)) @ CF # has to be equal to 0 for a solution to exist
+#print("Max F-remainder: ", np.max(abs(F_remainder)))
 
 # The CF here (which is the C_l found using the equations in the Deiml paper (page 15) multiplied by the F preconditioner (page 12)) 
 # is not the same as the CF we get from making the full matrix using the steps from the same Deiml paper however, this C_F_test is very
@@ -295,8 +323,9 @@ print("Max F-remainder: ", np.max(abs(F_remainder)))
 #CF = C_F_test
 
 CF_error = C_F_test - CF
-print("CF error: ", np.linalg.norm(CF_error))
+print("CF error: ", sp.sparse.linalg.norm(CF_error) if sparse else np.linalg.norm(CF_error))
 
+S = np.transpose(C_l) @ np.kron(D_A, np.eye(2**D)) @ C_l
 F_test = np.linalg.pinv(C_l) @ CF # The preconditioner F matrix if we assume that we created CF correctly
 CF_test2 = C_l @ F_test
 FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
