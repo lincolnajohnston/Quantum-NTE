@@ -193,8 +193,8 @@ def get_T_1D(l: int, L: int):
     
 
 # the domain goes from 0 to 1
-D = 3
-L = 2 # number of levels of BPX preconditioner
+D = 1
+L = 7 # number of levels of BPX preconditioner
 sparse = True
 n_fine = int(math.pow(2,L)) # number of points in finest level
 h_fine = 1/n_fine
@@ -234,7 +234,6 @@ for l in range(1,L+1):
 #print(F)
 
 # find C_L (C_l for the finest level)
-#pi_l_C_L = np.zeros((D*2**(D*(L+1)), (2**L - 1)**D))
 pi_l_C_L = csr_matrix((D*2**(D*(L+1)), (2**L - 1)**D), dtype=float) if sparse else np.zeros((D*2**(D*(L+1)), (2**L - 1)**D)) 
 for s in range(1,D+1):
     pi_l_C_L_s = np.array([1])
@@ -330,6 +329,23 @@ F_test = np.linalg.pinv(C_l) @ CF # The preconditioner F matrix if we assume tha
 CF_test2 = C_l @ F_test
 FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
 FSF2 = np.transpose(CF) @ np.kron(D_A, np.eye(2**D)) @ CF # preconditioned system using the CF matrix (should be the same as FSF1)
+
+FSF1_inv = np.linalg.pinv(FSF1)
+FSF1_norm = np.linalg.norm(FSF1)
+FSF1_inv_norm = np.linalg.norm(FSF1_inv)
+FSF1_cond = FSF1_norm * FSF1_inv_norm
+print("FSF1 norm: ", FSF1_norm)
+print("FSF1_inv norm: ", FSF1_inv_norm)
+print("FSF1 cond: ", FSF1_cond)
+
+S_inv = np.linalg.pinv(S)
+S_norm = np.linalg.norm(S)
+S_inv_norm = np.linalg.norm(S_inv)
+S_cond = S_norm * S_inv_norm
+print("\nS norm: ", S_norm)
+print("S_inv norm: ", S_inv_norm)
+print("S cond: ", S_cond)
+
 FSF_error_mat = FSF1 - FSF2
 FSF_error = np.linalg.norm(FSF_error_mat)
 print("FSF error: ", FSF_error)
