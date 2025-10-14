@@ -25,7 +25,7 @@ def triangle_wave(x: float, x_min, x_max) -> float:
 # return the C_{l,1D} matrix at the bottom of page 15 of the Deiml paper 
 def get_C_l_1D(l):
     N = 2 ** l
-    M1 = np.kron(np.eye(N), np.array([[1,-1],[0,0]])) # TODO: figure out how this works, don't really understand this equation
+    M1 = np.kron(np.eye(N), np.array([[1,-1],[0,0]]))
     # M2 from the Deiml paper
     #I_l = np.eye(N)[:,:N-1]
     #N_l = np.eye(N)[:,1:N]
@@ -130,8 +130,69 @@ def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=
         rows[x] = y
     return rows
 
-def getC_l(D, l):
-    pi_l_C_l = csr_matrix((D*2**(D*(l+1)), (2**l - 1)**D), dtype=float)
+# ChatGPT function originally, now reimplemented, not fully checked for correctness still
+# return the pi operator at the top of page 14 of the Deiml paper (except only acts on the first two registers)
+# TODO: figure out if this is actually needed for anything, I don't think it is
+def js_swap_perm_matrix(l: int, d: int, sparse: bool = True, dtype=np.uint8):
+    """
+    Return the permutation matrix P that maps |j>|s> -> |s>|j>,
+    with |j| having 2^(d*l) basis states and |s| having d basis states.
+
+    Dimensions:
+      m = 2^(d*l)  (size of the j-register)
+      n = d        (size of the s-register)
+      N = m * n
+
+    Basis ordering convention (standard Kronecker order):
+      input index = j * n + s  (s varies fastest)
+      output index = s * m + j
+
+    Parameters
+    ----------
+    l : int
+        Number of bits per j_i block; j has 2^(d*l) states total.
+    d : int
+        Number of (j_i, k_i) pairs earlier; here it's the size of |s|.
+    sparse : bool
+        If True, return a scipy.sparse.csr_matrix; else a dense ndarray.
+    dtype : numpy dtype
+        Storage type for 1s in the permutation.
+
+    Returns
+    -------
+    P : scipy.sparse.csr_matrix or np.ndarray of shape (N, N)
+    """
+    if l <= 0 or d <= 0:
+        raise ValueError("l and d must be positive integers.")
+    m = 1 << (d * l)   # 2^(d*l)
+    N = m * d
+
+    cols = np.arange(N, dtype=np.int64)             # input basis indices
+    rows = np.array([i%d * m + math.floor(i/d) for i in range(N)])
+
+    if sparse:
+        try:
+            from scipy.sparse import csr_matrix
+        except ImportError as e:
+            raise ImportError("scipy is required for sparse output; install scipy or set sparse=False.") from e
+        data = np.ones(N, dtype=dtype)
+        return csr_matrix((data, (rows, cols)), shape=(N, N), dtype=dtype)
+    else:
+        P = np.zeros((N, N), dtype=dtype)
+        P[rows, cols] = 1
+        return np.kron(P,np.eye(2**d))
+
+# return the product of T_{m,m+1,1D} matrices where m ranges from l to L-1
+def get_T_1D(l: int, L: int):
+    if l == L:
+        return np.eye(2**(l+1))
+    elif l == L-1:
+        return (1/math.sqrt(2)) * np.kron(np.eye(2**l), np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]]))
+    else:
+        return get_T_1D(L-1,L) @ get_T_1D(l,L-1)
+    
+def getC_l(D, l, sparse=True):
+    pi_l_C_l = csr_matrix((D*2**(D*(l+1)), (2**l - 1)**D), dtype=float) if sparse else np.zeros((D*2**(D*(l+1)), (2**l - 1)**D))
     for s in range(1,D+1):
         pi_l_C_l_s = np.array([1])
         for _ in range(1,s):
@@ -149,18 +210,18 @@ def getC_l(D, l):
         pi_l_C_l += update.tocsr() 
         
         #pi_l_C_l[(s-1)*2**(D*(l+1)):s*2**(D*(l+1)), :] = pi_l_C_l_s
-    pi_l_star_new = jk_interleave_permutation_matrix(l, D, sparse=False)
-    pi_l_new = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
-    C_l = pi_l_C_l[pi_l_new, :]
+    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_l = np.array([pi_l_star + 2**(D*l+D) * d for d in range(D)]).flatten()
+    C_l = pi_l_C_l[pi_l, :]
     return C_l
 
-def get_F(D, L):
+def get_F(D, L,sparse=True):
     n_fine = int(math.pow(2,L)) # number of points in finest level
     h_fine = 1/n_fine
     CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
 
     # create the 1-D F matrix preconditioner (defined at the bottom of page 11 of the Deiml paper)
-    F = csr_matrix(((n_fine-1)**D, sum(CF_col_sections)), dtype=float)
+    F = csr_matrix(((n_fine-1)**D, sum(CF_col_sections)), dtype=float) if sparse else np.zeros(((n_fine-1)**D, sum(CF_col_sections)))
     fine_position_vals = [np.linspace(h_fine,1-h_fine,n_fine-1) for i in range(D)]
     position_meshes = np.meshgrid(*fine_position_vals, indexing='ij')
     position_points = [position_meshes[i].flatten() for i in range(D)]
@@ -183,113 +244,88 @@ def get_F(D, L):
             col += 1
     return F
 
+def get_T_squiggle(D, l, L):
+    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
+    #pi_L = np.array([pi_L_star + 2**(D*L+D) * d for d in range(D)]).flatten()
+
+    T_1D = sp.sparse.csr_array(get_T_1D(l,L)) if sparse else get_T_1D(l,L)
+    T = sp.sparse.csr_array([1]) if sparse else np.array([1])
+    for i in range(D):
+        #T = np.kron(T_1D, T) # kronecker product the T_1D matrix product D times (bottom of page 16 of Deiml paper)
+        T = sp.sparse.kron(T_1D, T, format="csr") if sparse else np.kron(T_1D, T)
+    T = T[:,pi_l_star] # apply column permutation (right of T)
+    T = T[pi_L_star,:] # apply row permutation (left of T)
+
+    # top of page 16 of the Deiml paper
+    T_squiggle = sp.sparse.kron(np.eye(D), T, format="csr") if sparse else np.kron(np.eye(D), T)
+    return T_squiggle
+
 # the domain goes from 0 to 1
-D_min = 1
-D_max = 1
-L_min = 3
-L_max = 8
-D_vals = np.array(range(D_min,D_max + 1))
-L_vals = np.array(range(L_min,L_max + 1)) # number of levels of BPX preconditioner
-D_and_L = [D_vals, L_vals]
-FSF_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-S_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-C_F_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-FSF_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-S_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-C_F_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-FSF_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-S_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-C_F_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+D = 1
+L = 5 # number of levels of BPX preconditioner
+sparse = False
+n_fine = int(math.pow(2,L)) # number of points in finest level
+h_fine = 1/n_fine
+CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
 
-mat_L = 3
-diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
+C_L = getC_l(D, L, sparse)
+F = get_F(D, L, sparse)
 
-for combo in itertools.product(*D_and_L):
-    D = combo[0]
-    L = combo[1]
-    # find C_L (C_l for the finest level)
-    C_L = getC_l(D, L)
-    F = get_F(D, L)
-    C_F = C_L @ F
+C_F_test = C_L @ F
 
-    diffusion_mat = np.kron(diffusion_mat_small[D-D_min], np.eye(2**(D*(L - mat_L))))
-    #diffusion_mat = np.diag(np.concatenate((3*np.ones(2**(D*L-1)),5*np.ones(2**(D*L-1))))) # matrix of diffusion coefficients
-    D_A = np.kron(diffusion_mat, np.eye(D))
+CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float) if sparse else np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
+for l in range(1,L+1):
+    C_l = getC_l(D, l)
+    
+    T_squiggle = get_T_squiggle(D, l, L)
+    level_weight = 2 ** (-l * (2-D) / 2)
+    CFl = level_weight * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
 
-    S = np.transpose(C_L) @ np.kron(D_A, np.eye(2**D)) @ C_L
-    FSF = np.transpose(F) @ S @ F # preconditioned system using the F matrix
+    CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl
 
-    # check if S and FSF are normal matrices
-    T1 = np.transpose(S) @ S
-    T2 = S @ np.transpose(S)
-    print("S is " + ("" if np.linalg.norm(T1-T2) < 1E-10 else "not ") + "normal for D=" + str(D) + " and L="+str(L))
-
-    T1 = np.transpose(FSF) @ FSF
-    T2 = FSF @ np.transpose(FSF)
-    print("FSF is " + ("" if np.linalg.norm(T1-T2) < 1E-10 else "not ") + "normal for D=" + str(D) + " and L="+str(L))
-
-    _, FSF_sing_vals, _ = np.linalg.svd(FSF)
-    _, S_sing_vals, _ = np.linalg.svd(S)
-    _, C_F_sing_vals, _ = np.linalg.svd(C_F.toarray())
-    S_sing_vals = S_sing_vals[abs(S_sing_vals) > 1E-12]
-    FSF_sing_vals = FSF_sing_vals[abs(FSF_sing_vals) > 1E-12]
-    C_F_sing_vals = C_F_sing_vals[abs(C_F_sing_vals) > 1E-12]
+# set up the diffusion coefficient matrix
+#mat_L = 2
+#diffusion_mat_small = np.diag(np.random.rand(2**(D*mat_L))) # matrix must be 2^(D*mat_L) X 2^(D*mat_L)
+#diffusion_mat = np.kron(diffusion_mat_small, np.eye(2**(L - mat_L)))
+#diffusion_mat = np.diag(np.random.rand(2**(D*L))) # matrix must be 2^(D*L) X 2^(D*L)
+#diffusion_mat = np.diag(3*np.ones(2**(D*L)))
+diffusion_mat = np.diag(np.concatenate((3*np.ones(2**(D*L-1)),5*np.ones(2**(D*L-1))))) # matrix of diffusion coefficients
+D_A = np.kron(diffusion_mat, np.eye(D))
 
 
-    FSF_norm = np.max(FSF_sing_vals)
-    FSF_inv_norm = np.min(FSF_sing_vals)
-    FSF_cond = FSF_norm / FSF_inv_norm
-    #print("FSF norm: ", FSF_norm)
-    #print("FSF_inv norm: ", FSF_inv_norm)
-    #print("FSF cond: ", FSF_cond)
+############## Assess errors between the two methods of creating the preconditioned system ##########################
 
-    S_norm = np.max(S_sing_vals)
-    S_inv_norm = np.min(S_sing_vals)
-    S_cond = S_norm / S_inv_norm
-    #print("\nS norm: ", S_norm)
-    #print("S_inv norm: ", S_inv_norm)
-    #print("S cond: ", S_cond)
+CF_error = C_F_test - CF
+print("CF error: ", sp.sparse.linalg.norm(CF_error) if sparse else np.linalg.norm(CF_error))
 
-    C_F_norm = np.max(C_F_sing_vals)
-    C_F_inv_norm = np.min(C_F_sing_vals)
-    C_F_cond = C_F_norm / C_F_inv_norm
-    #print("\nS norm: ", S_norm)
-    #print("S_inv norm: ", S_inv_norm)
-    #print("S cond: ", S_cond)
+S = np.transpose(C_l) @ np.kron(D_A, np.eye(2**D)) @ C_l
+F_test = np.linalg.pinv(C_L.toarray()) @ CF # The preconditioner F matrix if we assume that we created CF correctly
+CF_test2 = C_l @ F_test
+FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
+FSF2 = np.transpose(CF) @ np.kron(D_A, np.eye(2**D)) @ CF # preconditioned system using the CF matrix (should be the same as FSF1)
 
-    # store the condition numbers
-    FSF_conds[D-D_min,L-L_min] = FSF_cond
-    S_conds[D-D_min,L-L_min] = S_cond
-    C_F_conds[D-D_min,L-L_min] = C_F_cond
+FSF1_inv = np.linalg.pinv(FSF1)
+FSF1_norm = np.linalg.norm(FSF1)
+FSF1_inv_norm = np.linalg.norm(FSF1_inv)
+FSF1_cond = FSF1_norm * FSF1_inv_norm
+#print("FSF1 norm: ", FSF1_norm)
+#print("FSF1_inv norm: ", FSF1_inv_norm)
+#print("FSF1 cond: ", FSF1_cond)
 
-    # store the matrix norms
-    FSF_norms[D-D_min,L-L_min] = FSF_norm
-    S_norms[D-D_min,L-L_min] = S_norm
-    C_F_norms[D-D_min,L-L_min] = C_F_norm
+S_inv = np.linalg.pinv(S)
+S_norm = np.linalg.norm(S)
+S_inv_norm = np.linalg.norm(S_inv)
+S_cond = S_norm * S_inv_norm
+#print("\nS norm: ", S_norm)
+#print("S_inv norm: ", S_inv_norm)
+#print("S cond: ", S_cond)
 
-    # store the matrix norms of the inverse of the matrice
-    FSF_inv_norms[D-D_min,L-L_min] = FSF_inv_norm
-    S_inv_norms[D-D_min,L-L_min] = S_inv_norm
-    C_F_inv_norms[D-D_min,L-L_min] = C_F_inv_norm
+FSF_error_mat = FSF1 - FSF2
+FSF_error = np.linalg.norm(FSF_error_mat)
+print("FSF error: ", FSF_error)
 
-for D in range(D_min, D_max + 1):
-    plt.semilogy(L_vals, FSF_conds[D-D_min,:])
-    plt.title("Condition Numbers vs L")
-    plt.xlabel("L")
-    print("FSF d = " + str(D) + " norms: ", FSF_norms[D-D_min,:])
-    print("FSF d = " + str(D) + " inverse norms: ", FSF_inv_norms[D-D_min,:])
-    print("FSF d = " + str(D) + " condition numbers: ", FSF_conds[D-D_min,:])
+print("done")
 
-for D in range(D_min, D_max + 1):
-    plt.semilogy(L_vals, S_conds[D-D_min,:])
-    print("S d = " + str(D) + " norms: ", S_norms[D-D_min,:])
-    print("S d = " + str(D) + " inverse norms: ", S_inv_norms[D-D_min,:])
-    print("S d = " + str(D) + " condition numbers: ", S_conds[D-D_min,:])
 
-for D in range(D_min, D_max + 1):
-    print("C_F d = " + str(D) + " norms: ", C_F_norms[D-D_min,:])
-    print("C_F d = " + str(D) + " inverse norms: ", C_F_inv_norms[D-D_min,:])
-    print("C_F d = " + str(D) + " condition numbers: ", C_F_conds[D-D_min,:])
 
-plt.legend(["FSF matrix D=" + str(d) for d in range(D_min, D_max + 1)] + ["S matrix D=" + str(d) for d in range(D_min, D_max + 1)])
-plt.show()

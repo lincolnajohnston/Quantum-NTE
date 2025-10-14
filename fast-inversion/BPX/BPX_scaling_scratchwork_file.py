@@ -11,8 +11,7 @@ import scipy as sp
 import math
 import itertools
 
-# trying to visualize the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D and make 
-# sure they can be applied effectively and work as preconditioners
+# Test python file for proving scaling of spectrla norms of BPX matrices
 
 # return the y value (as fraction of max height) at position x for a triangle wave starting at x_min and ending at x_max
 def triangle_wave(x: float, x_min, x_max) -> float:
@@ -130,67 +129,6 @@ def jk_interleave_permutation_matrix(l: int, d: int, sparse: bool = True, dtype=
         rows[x] = y
     return rows
 
-# ChatGPT function originally, now reimplemented, not fully checked for correctness still
-# return the pi operator at the top of page 14 of the Deiml paper (except only acts on the first two registers)
-# TODO: figure out if this is actually needed for anything, I don't think it is
-def js_swap_perm_matrix(l: int, d: int, sparse: bool = True, dtype=np.uint8):
-    """
-    Return the permutation matrix P that maps |j>|s> -> |s>|j>,
-    with |j| having 2^(d*l) basis states and |s| having d basis states.
-
-    Dimensions:
-      m = 2^(d*l)  (size of the j-register)
-      n = d        (size of the s-register)
-      N = m * n
-
-    Basis ordering convention (standard Kronecker order):
-      input index = j * n + s  (s varies fastest)
-      output index = s * m + j
-
-    Parameters
-    ----------
-    l : int
-        Number of bits per j_i block; j has 2^(d*l) states total.
-    d : int
-        Number of (j_i, k_i) pairs earlier; here it's the size of |s|.
-    sparse : bool
-        If True, return a scipy.sparse.csr_matrix; else a dense ndarray.
-    dtype : numpy dtype
-        Storage type for 1s in the permutation.
-
-    Returns
-    -------
-    P : scipy.sparse.csr_matrix or np.ndarray of shape (N, N)
-    """
-    if l <= 0 or d <= 0:
-        raise ValueError("l and d must be positive integers.")
-    m = 1 << (d * l)   # 2^(d*l)
-    N = m * d
-
-    cols = np.arange(N, dtype=np.int64)             # input basis indices
-    rows = np.array([i%d * m + math.floor(i/d) for i in range(N)])
-
-    if sparse:
-        try:
-            from scipy.sparse import csr_matrix
-        except ImportError as e:
-            raise ImportError("scipy is required for sparse output; install scipy or set sparse=False.") from e
-        data = np.ones(N, dtype=dtype)
-        return csr_matrix((data, (rows, cols)), shape=(N, N), dtype=dtype)
-    else:
-        P = np.zeros((N, N), dtype=dtype)
-        P[rows, cols] = 1
-        return np.kron(P,np.eye(2**d))
-
-# return the product of T_{m,m+1,1D} matrices where m ranges from l to L-1
-def get_T_1D(l: int, L: int):
-    if l == L:
-        return np.eye(2**(l+1))
-    elif l == L-1:
-        return (1/math.sqrt(2)) * np.kron(np.eye(2**l), np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]]))
-    else:
-        return get_T_1D(L-1,L) @ get_T_1D(l,L-1)
-    
 def getC_l(D, l):
     pi_l_C_l = csr_matrix((D*2**(D*(l+1)), (2**l - 1)**D), dtype=float)
     for s in range(1,D+1):
@@ -210,9 +148,9 @@ def getC_l(D, l):
         pi_l_C_l += update.tocsr() 
         
         #pi_l_C_l[(s-1)*2**(D*(l+1)):s*2**(D*(l+1)), :] = pi_l_C_l_s
-    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
-    pi_l = np.array([pi_l_star + 2**(D*l+D) * d for d in range(D)]).flatten()
-    C_l = pi_l_C_l[pi_l, :]
+    pi_l_star_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_l_new = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
+    C_l = pi_l_C_l[pi_l_new, :]
     return C_l
 
 def get_F(D, L):
@@ -230,7 +168,8 @@ def get_F(D, L):
         n_coarse = int(math.pow(2,l)) # number of basis functions in current level
         h_coarse = 1/n_coarse
         triangle_height_weight = 1 # height of hat function in basis function
-        level_weight = 2 ** (-l * (2-D) / 2)
+        #level_weight = 2 ** (-l * (2-D) / 2)
+        level_weight = 1
         for i in range((n_coarse - 1)**D): # find values of current column of F
             pos_indices = [int(i%(n_coarse-1)**(D-d) / (n_coarse-1)**(D-d-1)) for d in range(D)]
             pos = [position_points[d][i] for d in range(D)]
@@ -244,88 +183,13 @@ def get_F(D, L):
             col += 1
     return F
 
-def get_T_squiggle(D, l, L):
-    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
-    pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
-    #pi_L = np.array([pi_L_star + 2**(D*L+D) * d for d in range(D)]).flatten()
+l = 7
+D = 1
+I_l_increment = np.zeros(((2**(l+1)-1)**D,(2**l-1)**D))
+for i in range((2**l-1)**D):
+    I_l_increment[2*(i+1)-1-1,i] = 0.5
+    I_l_increment[2*(i+1)-1,i] = 1.0
+    I_l_increment[2*(i+1)+1-1,i] = 0.5
 
-    T_1D = sp.sparse.csr_array(get_T_1D(l,L)) if sparse else get_T_1D(l,L)
-    T = sp.sparse.csr_array([1]) if sparse else np.array([1])
-    for i in range(D):
-        #T = np.kron(T_1D, T) # kronecker product the T_1D matrix product D times (bottom of page 16 of Deiml paper)
-        T = sp.sparse.kron(T_1D, T, format="csr") if sparse else np.kron(T_1D, T)
-    T = T[:,pi_l_star] # apply column permutation (right of T)
-    T = T[pi_L_star,:] # apply row permutation (left of T)
-
-    # top of page 16 of the Deiml paper
-    T_squiggle = sp.sparse.kron(np.eye(D), T, format="csr") if sparse else np.kron(np.eye(D), T)
-    return T_squiggle
-
-# the domain goes from 0 to 1
-D = 3
-L = 2 # number of levels of BPX preconditioner
-sparse = True
-n_fine = int(math.pow(2,L)) # number of points in finest level
-h_fine = 1/n_fine
-CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
-
-C_L = getC_l(D, L)
-F = get_F(D, L)
-
-C_F_test = C_L @ F
-
-CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float) if sparse else np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
-for l in range(1,L+1):
-    C_l = getC_l(D, l)
-    
-    T_squiggle = get_T_squiggle(D, l, L)
-    level_weight = 2 ** (-l * (2-D) / 2)
-    CFl = level_weight * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
-
-    CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl
-
-# set up the diffusion coefficient matrix
-#mat_L = 2
-#diffusion_mat_small = np.diag(np.random.rand(2**(D*mat_L))) # matrix must be 2^(D*mat_L) X 2^(D*mat_L)
-#diffusion_mat = np.kron(diffusion_mat_small, np.eye(2**(L - mat_L)))
-#diffusion_mat = np.diag(np.random.rand(2**(D*L))) # matrix must be 2^(D*L) X 2^(D*L)
-#diffusion_mat = np.diag(3*np.ones(2**(D*L)))
-diffusion_mat = np.diag(np.concatenate((3*np.ones(2**(D*L-1)),5*np.ones(2**(D*L-1))))) # matrix of diffusion coefficients
-D_A = np.kron(diffusion_mat, np.eye(D))
-
-
-############## Assess errors between the two methods of creating the preconditioned system ##########################
-
-CF_error = C_F_test - CF
-print("CF error: ", sp.sparse.linalg.norm(CF_error) if sparse else np.linalg.norm(CF_error))
-
-S = np.transpose(C_l) @ np.kron(D_A, np.eye(2**D)) @ C_l
-F_test = np.linalg.pinv(C_L.toarray()) @ CF # The preconditioner F matrix if we assume that we created CF correctly
-CF_test2 = C_l @ F_test
-FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
-FSF2 = np.transpose(CF) @ np.kron(D_A, np.eye(2**D)) @ CF # preconditioned system using the CF matrix (should be the same as FSF1)
-
-FSF1_inv = np.linalg.pinv(FSF1)
-FSF1_norm = np.linalg.norm(FSF1)
-FSF1_inv_norm = np.linalg.norm(FSF1_inv)
-FSF1_cond = FSF1_norm * FSF1_inv_norm
-#print("FSF1 norm: ", FSF1_norm)
-#print("FSF1_inv norm: ", FSF1_inv_norm)
-#print("FSF1 cond: ", FSF1_cond)
-
-S_inv = np.linalg.pinv(S)
-S_norm = np.linalg.norm(S)
-S_inv_norm = np.linalg.norm(S_inv)
-S_cond = S_norm * S_inv_norm
-#print("\nS norm: ", S_norm)
-#print("S_inv norm: ", S_inv_norm)
-#print("S cond: ", S_cond)
-
-FSF_error_mat = FSF1 - FSF2
-FSF_error = np.linalg.norm(FSF_error_mat)
-print("FSF error: ", FSF_error)
-
-print("done")
-
-
-
+I_l_inc_norm = np.linalg.norm(I_l_increment, ord=2)
+print("I_l_increment norm: ", I_l_inc_norm)
