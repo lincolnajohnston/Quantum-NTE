@@ -140,21 +140,24 @@ def get_F_us(L, s):
     return Fu
 
 # return the column permutation matrix used for multidimensional F matrices
+# TODO: fill in the rest of the permutation matrix so that it is unitary
 def get_P_c(L,D,s):
     P_c = np.zeros((int(2**(L*D)),int(2**(L*D))))
     N = int(2**(L))
     N_s = int(2**(s+1) - 1)
-    #test = [[N**d_p * math.floor(i%(N_s**(d_p+1)) / N_s**d_p) for d_p in range(D)] for i in range(N_s**D)]
-    offsets = [sum([N**d_p * math.floor(i%(N_s**(d_p+1)) / N_s**d_p) for d_p in range(D)]) for i in range(N_s**D)]
+    #offsets = [sum([N**d_p * math.floor(i%(N_s**(d_p+1)) / N_s**d_p) for d_p in range(D)]) for i in range(N_s**D)] # only fill in the relevant columns (first N_s*D)
+    offsets = [sum([N**d_p * math.floor(i%(N_s**(d_p+1)) / N_s**d_p) for d_p in range(D)]) for i in range(int(2**(L*D)))] # fill in all columns (what gate might actually be block-encoded in a circuit)
     for col, row in enumerate(offsets):
         P_c[row, col] = 1
     return P_c
 
 # return the row permutation matrix used for multidimensional F matrices
+# TODO: fill in the rest of the permutation matrix so that it is unitary
 def get_P_r(L,D,s):
     P_r = np.zeros((int(2**(L*D)),int(2**(L*D))))
     N = int(2**(L))
-    offsets = [sum([N**(d_p) * math.floor(i%((N-1)**(d_p+1)) / (N-1)**d_p) for d_p in range(D)]) for i in range((N-1)**D)]
+    #offsets = [sum([N**(d_p) * math.floor(i%((N-1)**(d_p+1)) / (N-1)**d_p) for d_p in range(D)]) for i in range((N-1)**D)] # only fill in the relevant columns (first N_s*D)
+    offsets = [sum([N**(d_p) * math.floor(i%((N-1)**(d_p+1)) / (N-1)**d_p) for d_p in range(D)]) for i in range(int(2**(L*D)))] # fill in all columns (what gate might actually be block-encoded in a circuit)
     for row, col in enumerate(offsets):
         P_r[row, col] = 1
     return P_r
@@ -166,17 +169,26 @@ def get_P_s(L,D,s):
     P_s = np.diag(np.ones(2**(D*(L+1)) - offset), k=offset)
     return P_s
 
+# dilator matrix that does the transformation E|x> = 0.5|(x-offset) mod N> + 1|x> + 0.5|(x+offset) mod N>
 def get_E(N, offset = 1):
     matrix = np.zeros((N, N))
-    matrix[0:N,0:N] += np.diag(np.ones(N)) # diagonal terms
+    matrix[0:N,0:N] += np.diag(np.ones(N)) # diagonal terms, identity matrix O(1) time to apply
 
-    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=offset)  # k=1 for superdiagonal
-    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=N-offset)  # k=N-1 for superdiagonal
+    # |x> -> 0.5|(x-offset) mod N>
+    # |x> -> 1|(x-offset) mod N> is unitary and can be implemented in O(polylog(N) time)
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=offset)  # |x> -> |x-offset> term when x >= offset
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=offset-N) # |x> -> |x-offset> term when x < offset
 
-    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=-offset) # k=-1 for subdiagonal
-    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=offset-N) # k=-1 for subdiagonal
+    # |x> -> 0.5|(x+offset) mod N>
+    # |x> -> 1|(x+offset) mod N> is unitary and can be implemented in O(polylog(N) time)
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(offset), k=N-offset)  # |x> -> |x+offset> term when x >= N - offset
+    matrix[0:N,0:N] += np.diag(0.5 * np.ones(N-offset), k=-offset) # |x> -> |x+offset> term when x < N - offset
 
-    matrix[N-1,N-1] = 1
+    # Each of the three terms can be implemented as separate unitary matrices. Then LCU can be used to sum them, with alpha values of 0.5, 1, and 0.5
+    # the time complexity of doing LCU is O(alpha) (which I think comes from the post-selection procedure, which you can do amplitude amplification for 
+    # which takes O(alpha) rotations to get a high probability of success).
+    # So alpha=2, E/2 can be block-encoded in O(polylog(N) + alpha) = O(polylog(N)) time
+
     return matrix
 
 # the domain goes from 0 to 1
@@ -216,7 +228,7 @@ for combo in itertools.product(*D_and_L):
         E = np.eye(2**(D*(L)))
         for s_p in range(L-s-1, 0 ,-1):
             E_p_1D = get_E(2**((L)), offset=2**(s_p-1)) # 1D dilator matrices are tridiagonal Toeplitz matrices, can be applied in O(polylogN) time
-            E_p = np.array([1]) # higher dimensional dilator matrices are just kronecker products of the lower dimensional dilator matrices
+            E_p = np.array([1]) # higher dimensional dilator matrices are just kronecker products of the lower dimensional dilator matrices, O(d polylog(N))
             for d in range(D):
                 E_p = np.kron(E_p, E_p_1D)
             E = E @ E_p
@@ -225,6 +237,8 @@ for combo in itertools.product(*D_and_L):
         F_us = E @ F_us # Dilate the F_us matrix
 
         F_u += F_us # combine F_us together with LCU
+        F_us_norm = np.linalg.norm(F_us, ord=2)
+        print("F_u"+str(s)+" norm: " + str(F_us_norm))
 
     F_prime = get_F_prime(D,L)
     F_prime_shape = F_prime.get_shape()

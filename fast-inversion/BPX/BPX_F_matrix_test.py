@@ -275,6 +275,7 @@ F = get_F(D, L, sparse)
 C_F_test = C_L @ F
 
 CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float) if sparse else np.zeros((D * 2**(D*(L+1)), sum(CF_col_sections)))
+CF_fake_inverse = csr_matrix(sum(CF_col_sections), (D * 2**(D*(L+1))), dtype=float) if sparse else np.zeros((sum(CF_col_sections), D * 2**(D*(L+1))))
 for l in range(1,L+1):
     C_l = getC_l(D, l)
     
@@ -283,7 +284,10 @@ for l in range(1,L+1):
     CFl = level_weight * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
 
     CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl
+    CF_fake_inverse[sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l]),:] = np.linalg.pinv(CFl)
 
+CF_inv = np.round(np.linalg.pinv(CF), decimals=5)
+CF_inversion_check = np.round(CF_fake_inverse @ CF, decimals=5)
 # set up the diffusion coefficient matrix
 #mat_L = 2
 #diffusion_mat_small = np.diag(np.random.rand(2**(D*mat_L))) # matrix must be 2^(D*mat_L) X 2^(D*mat_L)
@@ -300,10 +304,17 @@ CF_error = C_F_test - CF
 print("CF error: ", sp.sparse.linalg.norm(CF_error) if sparse else np.linalg.norm(CF_error))
 
 S = np.transpose(C_l) @ np.kron(D_A, np.eye(2**D)) @ C_l
-F_test = np.linalg.pinv(C_L.toarray()) @ CF # The preconditioner F matrix if we assume that we created CF correctly
-CF_test2 = C_l @ F_test
+#F_test = np.linalg.pinv(C_L.toarray()) @ CF # The preconditioner F matrix if we assume that we created CF correctly
+#CF_test2 = C_l @ F_test
 FSF1 = np.transpose(F) @ S @ F # preconditioned system using the F matrix
 FSF2 = np.transpose(CF) @ np.kron(D_A, np.eye(2**D)) @ CF # preconditioned system using the CF matrix (should be the same as FSF1)
+
+# Test if we can use the fast inversion of a normal matrix theorem to invert the FSF system
+normal_test_1 = FSF2 @ np.transpose(FSF2)
+normal_test_2 = np.transpose(FSF2) @ FSF2
+normal_test_diff = normal_test_1 - normal_test_2
+FSF2_inv = np.linalg.pinv(FSF2)
+FSF2_inv_test = np.transpose(CF) @ np.linalg.inv(np.kron(D_A, np.eye(2**D))) @ CF
 
 FSF1_inv = np.linalg.pinv(FSF1)
 FSF1_norm = np.linalg.norm(FSF1)
