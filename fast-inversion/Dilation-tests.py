@@ -23,6 +23,9 @@ import itertools
 # script writing out how each of these dilators would be block-encoded I can understand if and why
 # this method of interpolation/dilation is bad
 
+# Open Questions:
+# Can amplitude amplification make the success probability of 
+
 # dilator matrix that does the transformation E|x> = 0.5|(x-offset) mod N> + 1|x> + 0.5|(x+offset) mod N>
 # BE=true returns the entire unitary matrix that would block encode E
 def get_E(N, offset = 1, BE=False):
@@ -92,14 +95,22 @@ def get_F_us_1D(L, s):
         Fu[row_offset + col*row_jump, col] = 1
     return Fu
 
-l = 4
-L = 9
+l = 3
+L = 4
 Nl = int(2**l)
 NL = int(2**L)
 
+# test the singular values of the E_g matrix
+'''E_1 = get_E(NL, offset=1,BE=False)
+U, s, V = np.linalg.svd(E_1[:int(NL/2), :int(NL/2)])
+sing_min = min(abs(s))
+sing_max = max(abs(s))'''
+
 # create some arbitrary input state represeting the coarse solution
 np.random.seed(931986)
-input_state = np.random.random(Nl)
+#input_state = np.random.random(Nl)
+input_state = np.ones(Nl) # this state should have the highest success probability (eigenvector for max eigenvalue)
+#input_state = np.kron(np.ones(int(Nl/2)), [1,0]) # I think this should be a state that has lower success probability
 input_state[-1] = 0 # last value is zero because actual size of input state is 2**l - 1
 input_state = input_state / np.linalg.norm(input_state)
 
