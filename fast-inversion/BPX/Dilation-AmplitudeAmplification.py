@@ -95,11 +95,11 @@ Nl = int(2**l)
 NL = int(2**L)'''
 
 # find E_g matrix norm
-'''n_test = 4
-E_test = get_E(2**n_test, offset=4, BE=False)
+n_test = 8
+E_test = get_E(2**n_test, offset=1, BE=False)
 E_test_no_periodic = E_test[:int(2**(n_test-1)), :int(2**(n_test-1))]
 E_norm = np.linalg.norm(E_test, ord=2)
-E_no_periodic_norm = np.linalg.norm(E_test_no_periodic, ord=2)'''
+E_no_periodic_norm = np.linalg.norm(E_test_no_periodic, ord=2)
 
 # single E matrix
 offset_max = 1

@@ -232,10 +232,22 @@ def get_C(D, L):
             col += 1
     return C
 
+# return a mass matrix where each term is weighted by a piecewise-constant value (like the absorption cross section)
+# D is number of dimensions, L is number of levels, consts is an array of constants defined in each cell of the FEM discretization
+def get_weighted_mass_matrix(D, L, consts):
+    # make sure consts is the right size
+    if consts.size() != tuple([int(2**L)]*D):
+        raise ValueError("consts matrix is not the correct size/shape")
+    A = np.diag(2*consts[:-1])
+    A += np.diag(2*consts[1:])
+    A += np.diag(consts[1:-1], k=1)
+    A += np.diag(consts[1:-1], k=-1)
+    return A
+
 # the domain goes from 0 to 1
-D_min = 1
-D_max = 1
-L_min = 3
+D_min = 2
+D_max = 2
+L_min = 2
 L_max = 8
 D_vals = np.array(range(D_min,D_max + 1))
 L_vals = np.array(range(L_min,L_max + 1)) # number of levels of BPX preconditioner
@@ -250,8 +262,12 @@ FSF_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 S_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 C_F_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 
-mat_L = 3
-diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
+mat_L = 2
+#diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
+diffusion_mat_small = [np.eye(int(2**(D*mat_L))) for D in D_vals] # all ones diffusion coefficients
+
+absorption_vec_small = [np.random.rand(2**(D*mat_L)) for D in D_vals] # random absorption cross sections
+#absorption_vec_small = [np.ones(int(2**(D*mat_L))) for D in D_vals] # all ones absorption cross sections
 
 for combo in itertools.product(*D_and_L):
     D = combo[0]
@@ -295,6 +311,9 @@ for combo in itertools.product(*D_and_L):
 
     S = np.transpose(C_L) @ np.kron(D_A, np.eye(2**D)) @ C_L
     FSF = np.transpose(F) @ S @ F # preconditioned system using the F matrix
+
+    B = get_weighted_mass_matrix(D, np.kron(absorption_vec_small[D-D_min], np.ones(2**(D*(L - mat_L))))) # absorption cross section FEM operator
+    #M = get_weighted_mass_matrix(D, L-mat_L, np.kron(np.ones(int(2**(D*mat_L))), np.ones(2**(D*(L - mat_L))))) # mass matrix
 
     # check if S and FSF are normal matrices
     T1 = np.transpose(S) @ S
