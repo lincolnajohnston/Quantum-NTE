@@ -170,7 +170,7 @@ def build_shift_isometry_circuit(a):
 
 if __name__ == "__main__":
     # try a small example a = 3
-    a = 3
+    a = 4
     qc, regs = build_shift_isometry_circuit(a)
     print(qc.draw(fold=120))
 

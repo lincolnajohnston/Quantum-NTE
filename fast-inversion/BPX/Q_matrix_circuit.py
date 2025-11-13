@@ -32,58 +32,31 @@ def uncompute_offset_xor(qc, x, T, O, R):
     - R: 2-qubit scratch register (init |00>), R[0] LSB, R[1] MSB
     After this, O returns to |00> and R returns to |00>, T and x unchanged.
     """
-    '''# copy most significant bit of T (which is the remainder of the division by 2) to the R register
-    qc.cx(T[-1], R[0])
 
-    # subtract each bit of R from each bit of O, which returns O to |0> because |R> = |O>
-    qc.cx(R[0], O[0])
-
-    # reverse all of the operations done on |R> so that it goes back to |00>
-    qc.cx(T[-1], R[0])'''
-
-    # controlled-Hadamard to fix up the ancillas for odd x
+    # controlled-Hadamard and cx to fix up the ancillas for odd x
     qc.ch(x[0], O[0]) # x[0] is |1> if x is odd,
-    qc.x(T[-1]) # remainder from T=x/2 is always 1 if x is odd, reset to |0> state
+    qc.cx(x[0], T[-1]) # remainder from T=x/2 is always 1 if x is odd, reset to |0> state
 
     # fix up the even |x> inputs:
-    '''qc.x(x[0])
-    qc.x(T[-1])
-    qc.ccx(x[0], T[-1], O[0])
+
+    # fix the |x> inputs divisible by 4
+    # if x is divisible by 2 (even) and 4 (double-even) and T is odd, switch O register and MSB of T
+    even_fixup = XGate().control(3)
     qc.x(x[0])
-    qc.x(T[-1])'''
-
-    '''qc.x(x[0])
-    qc.x(O[0])
-    qc.ccx(x[0], O[0], T[-1])
+    qc.x(x[1])
+    qc.append(even_fixup, x[:2] + T[:1] + O[:1])
+    qc.append(even_fixup, x[:2] + T[:1] + T[-1:])
     qc.x(x[0])
-    qc.x(O[0])'''
+    qc.x(x[1])
 
+    # fix the |x> inputs divisible by 2 but not 4
+    # if x is divisible by 2 (even) but not 4 (double-even) and T is even, switch O register and MSB of T
     qc.x(x[0])
-    qc.cx(x[0],O[0])
+    qc.x(T[0])
+    qc.append(even_fixup, x[:2] + T[:1] + O[:1])
+    qc.append(even_fixup, x[:2] + T[:1] + T[-1:])
+    qc.x(T[0])
     qc.x(x[0])
-
-    # add each bit of |T> into each bit of |x> (shift |x> by one so they line up)
-    m=len(T)
-    for i in range(m-1):
-        qc.cx(T[i], x[i+1])
-
-    # reverse all |x> bits to control on them being |0>
-    for i in range(m):
-        qc.x(x[i])
-
-    even_correction_gate_1 = XGate().control(m)
-    qc.append(even_correction_gate_1, x[:] + [T[-1]])
-    qc.append(even_correction_gate_1, x[:] + [O[0]])
-
-    # unreverse all |x> bits to control on them being |0>
-    for i in range(m):
-        qc.x(x[i])
-
-    # uncompute the addition of |T> in to |x>
-    for i in range(m-1):
-        qc.cx(T[i], x[i+1])
-    
-
 
 
 def single_controlled_increment(qc: QuantumCircuit, control, T, anc):
@@ -270,7 +243,7 @@ def build_shift_isometry_circuit(a):
 
 if __name__ == "__main__":
     # try a small example a = 3
-    a = 2
+    a = 3
     qc, regs = build_shift_isometry_circuit(a)
     print(qc.draw(fold=120))
 
