@@ -21,6 +21,9 @@ from qiskit.quantum_info import Operator
 from qiskit.visualization import plot_histogram
 import fable
 
+# Quantum Circuit to make the BPX preconditioned diffusion operator system, adapted from the prewavelet attempt of this
+# TODO: actually implement this, might be harder than I initially thought so work on this was postponed
+
 # TODO: remove the non-1 terms
 # Returns the matrix that does a basis transform from the wavelet basis to the hat function nodal basis
 def getL(n_min, n_max):
