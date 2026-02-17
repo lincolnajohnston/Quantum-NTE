@@ -351,20 +351,22 @@ def amplitude_amplification_iteration(sys_reg, anc_reg, states_tracker, iters=1)
     qc.compose(UA,   list(anc_reg)+list(sys_reg), inplace=True)
     states_tracker.append(Statevector.from_instruction(qc))
 
+    # for oblivious amplitude amplification, we should be able to do this iteration without calling the "prep" gate, as
+    # we want to be able to do this on any arbitrary quantum state without knowing the state or being able to prepare it
     for _ in range(iters):
         # STEP 2: O_good
         qc.compose(Og, list(anc_reg)+list(sys_reg), inplace=True)
 
         # STEP 3: U_A^† Prep^†
         qc.compose(UA_dag, list(anc_reg)+list(sys_reg), inplace=True)
-        qc.compose(prep.inverse(), list(anc_reg)+list(sys_reg), inplace=True)
+        #qc.compose(prep.inverse(), list(anc_reg)+list(sys_reg), inplace=True)
 
         # STEP 4: R_init  (this is reflection about |Psi>)
         #qc.compose(R_init, list(anc_reg)+list(sys_reg), inplace=True) # I think R_init and Oall are the same thing
         qc.compose(Oall, list(anc_reg)+list(sys_reg), inplace=True)
 
         # STEP 5: Prep U_A again
-        qc.compose(prep, list(anc_reg)+list(sys_reg), inplace=True)
+        #qc.compose(prep, list(anc_reg)+list(sys_reg), inplace=True)
         qc.compose(UA,   list(anc_reg)+list(sys_reg), inplace=True)
 
         states_tracker.append(Statevector.from_instruction(qc))
@@ -385,7 +387,7 @@ def build_full_experiment(measure=True):
     c_sys = ClassicalRegister(1, 'c_sys')
 
     states_tracker = []
-    aa = amplitude_amplification_iteration(sys, anc, states_tracker, iters=2)
+    aa = amplitude_amplification_iteration(sys, anc, states_tracker, iters=4)
 
     for state in states_tracker:
         #print("State: ", np.round(state.data, decimals=4))

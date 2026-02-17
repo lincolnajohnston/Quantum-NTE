@@ -251,3 +251,57 @@ def get_T_squiggle(D, l, L):
     # top of page 16 of the Deiml paper
     T_squiggle = sp.sparse.kron(np.eye(D), T, format="csr")
     return T_squiggle
+
+# given dimensions D, levels L, and a matrix of diffusion coefficients (which must be able to be divided 
+# evenly onto the FEM grid discretization), return the FEM diffusion matrix
+def get_diffusion_matrix(D, L, diffusion_mat_small):
+    mat_L = int(np.log2(len(diffusion_mat_small)) / D) # level of the material discretization for defining diffusion coefficients
+    # ensure that the length of diffusion mat is equal to a power of 2
+    if np.abs(mat_L % 1) > 0.00000001:
+        return 0
+    # TODO: fix the diffusion matrix code below need to expand the diffusion matrix from the coarse mat_L
+    #  mesh to the finer L mesh, but need to be carfeul about the multidimensional cases and do the kronecker products correctly
+
+    # TODO: for now, I'm going to create the diffusion coefficient matrix incorrectly (for 2+ dimensions) and fix it later
+    dif_mat = np.kron(diffusion_mat_small, np.eye(int(2**(D*(L - mat_L)))))
+
+    D_A = np.kron(dif_mat, np.eye(D))
+    C_L = getC_l(D, L)
+    A = np.transpose(C_L) @ np.kron(D_A, np.eye(2**D)) @ C_L
+    return A
+
+# convert multidimensional (x1,x2...,xD) index to 1D index, first index is most significant
+def unroll_index(N, D, index_vec, xs_mesh=False):
+    roll_N = [N]*D
+    roll_N = roll_N + 1 if xs_mesh else roll_N
+    return sum([index_vec[d]*math.prod(roll_N[d+1:]) for d in range(D)])
+
+ # assume domain is 1 so h = 1/2^L, factor out the h^D term
+def get_mass_matrix_brute_force(L, D, xs):
+    N_1D_FEM = int(2**(L) - 1)
+    N_total = int(N_1D_FEM**D)
+    M = np.zeros((N_total, N_total))
+
+    all_indices = itertools.product(list(range(N_1D_FEM)), repeat=D)
+    for node_index in all_indices: # iterate through all nodes
+        offset_indices = itertools.product(list(range(-1,2)), repeat=D)
+        for node_offset_index in offset_indices: # iterate through each node surrounding the current node
+                row_index = np.array(node_index)
+                col_index = row_index + np.array(node_offset_index)
+
+                # skip the nodes that are outside the domain
+                valid_index = True
+                for d in range(D):
+                    if col_index[d] < 0 or col_index[d] >= N_1D_FEM:
+                        valid_index = False
+                if not valid_index:
+                    continue
+
+                xs_coef = 2**(D-sum(np.abs(np.array(node_offset_index)))) / 6**D # coefficient on each of the cross sections in the matrix
+                sigma_index_lower = row_index + [max(offset, 0) for offset in node_offset_index] # lower index of the xs terms
+                sigma_index_upper = [min(col_index[i], row_index[i]) + 1 for i in range(len(row_index))] # upper index of the xs terms
+                xs_indices_list = [list(range(sigma_index_lower[d], sigma_index_upper[d]+1)) for d in range(D)]
+                xs_indices = itertools.product(*xs_indices_list)
+                for xs_index in xs_indices:
+                    M[unroll_index(N_1D_FEM, D, row_index), unroll_index(N_1D_FEM, D, col_index)] += xs_coef * xs[xs_index]
+    return M   

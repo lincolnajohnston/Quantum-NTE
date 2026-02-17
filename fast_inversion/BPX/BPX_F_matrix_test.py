@@ -11,13 +11,14 @@ import scipy as sp
 import math
 import itertools
 import FEM_BPX_helpers as FEM
+import random
 
 # trying to visualize the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D and make 
 # sure they can be applied effectively and work as preconditioners
 
 # the domain goes from 0 to 1
 D = 1
-L = 5 # number of levels of BPX preconditioner
+L = 4 # number of levels of BPX preconditioner
 sparse = True
 n_fine = int(math.pow(2,L)) # number of points in finest level
 h_fine = 1/n_fine
@@ -25,6 +26,7 @@ CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis 
 
 C_L = FEM.getC_l(D, L)
 F = FEM.get_F(D, L)
+print("F norm: ", np.linalg.norm(F.toarray(), ord=2))
 
 C_F_test = C_L @ F
 
@@ -71,12 +73,48 @@ FSF2_inv = np.linalg.pinv(FSF2)
 FSF2_inv_test = np.transpose(CF) @ np.linalg.inv(np.kron(D_A, np.eye(2**D))) @ CF
 
 FSF1_inv = np.linalg.pinv(FSF1)
-FSF1_norm = np.linalg.norm(FSF1)
-FSF1_inv_norm = np.linalg.norm(FSF1_inv)
+FSF1_norm = np.linalg.norm(FSF1, ord=2)
+FSF1_inv_norm = np.linalg.norm(FSF1_inv, ord=2)
 FSF1_cond = FSF1_norm * FSF1_inv_norm
+# FSF1 condition numbers for levels L=2-7:
+# FSF1 norms for levels L=2-7:            
+print("FSF norm: ", FSF1_norm)
+print("FSF condition number: ", FSF1_cond)
 #print("FSF1 norm: ", FSF1_norm)
 #print("FSF1_inv norm: ", FSF1_inv_norm)
 #print("FSF1 cond: ", FSF1_cond)
+
+############################ Testing the Pseudoinverse using QSVT 12/18/25 ############################
+# get FSF1 eigenvalues and eigenvectors
+G = FSF1 # G is block-encoded with a larger U_G matrix (The projector matrices are in the computational basis)
+G_eigenvals, G_eigenvecs = np.linalg.eig(G)
+W, Sigma, Vh = np.linalg.svd(G) # SVD of the singular matrix, G
+Sigma = Sigma / max(Sigma) # make the maximum singular value of Sigma equal to 1
+A_G = W @ np.diag(Sigma) @ Vh # A_G is G normalized to have a max singular value of 1
+Wh = np.conj(np.transpose(W))
+V = np.conj(np.transpose(Vh))
+n_s = len(S) # size of the stiffness matrix, S, and the rank of G
+n_g = len(G) # size of the G matrix
+
+# perform the QSVT:
+epsilon = 1E-8 # error allowed in the encoding of the pseudoinverse of G
+delta = Sigma[n_s-1] #smallest non-zero singular value (can index like this because the singular values are listed in descending order)
+P_Sigma = np.zeros(len(Sigma)) # create empty array to be filled with the singular values after the polynomial, P_R is applied
+for i in range(len(Sigma)):
+    if Sigma[i] >= delta:
+        P_Sigma[i] = delta/(2*Sigma[i]) + 2*(random.random() - 0.5) * epsilon/3 # apply the function f(x) = delta/(2x) with some added random error
+    elif Sigma[i] > 1E-12: # singular value is between 0 and delta
+        P_Sigma[i] = 2*(random.random() - 0.5) # set P_sigma to a random number between -1 and 1, that is the only bounds we have
+    else: # Sigma[i] == 0
+        P_Sigma[i] = 0 # The P(x) is an odd polynomial expansion so f(0) = 0
+A_G_dagger = V @ np.diag(Sigma) @ Wh # conjugate transpose of A_G
+U_phi = V @ np.diag(P_Sigma) @ Wh # this is the matrix created after applying QSVT to A_G
+A_G_inv = delta/2 * np.linalg.pinv(A_G) # actual pseudoinverse of A_G
+QSVT_error = U_phi - A_G_inv # should be equal if there are no singular values between 0 and delta
+QSVT_error_L2 = np.linalg.norm(QSVT_error)
+print("Error in QSVT of G: ", QSVT_error_L2)
+
+
 
 S_inv = np.linalg.pinv(S)
 S_norm = np.linalg.norm(S)

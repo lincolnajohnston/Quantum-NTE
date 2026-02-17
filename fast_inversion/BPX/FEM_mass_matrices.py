@@ -22,17 +22,31 @@ class MassMatrix:
         self.D = len(self.N)
         self.h = np.array(input_data["h"])
 
-    # return a mass matrix where each term is weighted by a piecewise-constant value (like the absorption cross section)
-    # D is number of dimensions, L is number of levels, consts is an array of constants defined in each cell of the FEM discretization
+    # return a FEM mass matrix where each term is weighted by a piecewise-constant value (like the absorption cross section)
+    # L is number of levels, consts is an array of constants defined in each cell of the FEM discretization
     def get_1D_weighted_mass_matrix(self, L, consts):
         # make sure consts is the right size
         if len(consts) != int(2**(L)):
             raise ValueError("consts matrix is not the correct size/shape")
+        h = 1/(2**L)
         A = np.diag(2*consts[:-1])
         A += np.diag(2*consts[1:])
         A += np.diag(consts[1:-1], k=1)
         A += np.diag(consts[1:-1], k=-1)
-        return A
+        return (h/6)*A # weight the matrix by a scalar
+    
+    # return a FEM laplacian matrix where each term is weighted by a piecewise-constant value (like the diffusion coefficient)
+    # L is number of levels, consts is an array of constants defined in each cell of the FEM discretization
+    def get_1D_weighted_laplacian_matrix(self, L, consts):
+        # make sure consts is the right size
+        if len(consts) != int(2**(L)):
+            raise ValueError("consts matrix is not the correct size/shape")
+        h = 1/(2**L)
+        A = np.diag(consts[:-1])
+        A += np.diag(consts[1:])
+        A += np.diag(consts[1:-1], k=1)
+        A += np.diag(consts[1:-1], k=-1)
+        return (1/h)*A # weight the matrix by a scalar
 
 
     # convert multidimensional (x1,x2...,xD) index to 1D index, first index is most significant
@@ -111,16 +125,18 @@ class MassMatrix:
         all_indices = itertools.product(list(range(2)), repeat=self.D-1) # just the index range for the more significant bits
         for start_indices in all_indices:
             diag = self.get_xs_subvector(xs, [[start_indices[d], self.N[d]-1+start_indices[d]] for d in range(D-1)] + [[1,self.N[D-1]]])
-            M += coef * np.diag(diag)
+            M += coef * np.diag(diag, k=1)
             #print(diag)
-        
+            
         return M
     
             
 
-L_vals = list(range(2,5))
+L_vals = list(range(3,10))
 mat_L = 2
 D = 2
+diffusion_coef = 2
+
 
 for L in L_vals:
     print("Level: ", L)
@@ -129,20 +145,27 @@ for L in L_vals:
 
     mass_mat = MassMatrix(input_data={"n":[N]*D, "h":[h]*D})
 
+    np.random.seed(13398) # set some consistent seed so that results can be repeated
     absorption_vec_small_1D = np.random.rand(2**(mat_L)) # random absorption cross sections
     #absorption_vec_small = np.ones(int(2**(D*mat_L))) # all ones absorption cross sections
+    absorption_vec_small = 6 * diffusion_coef / (h*h) * np.ones(int(2**(D*mat_L))) # constant absorption cross sections scaled
 
-    absorption_vec_small = np.array(range(1,2**(mat_L*D)+1)).reshape([int(2**mat_L)]*D)
-    #absorption_vec_small = np.random.rand(*([2**mat_L]*D)) # random absorption cross sections
+    #absorption_vec_small = np.array(range(1,2**(mat_L*D)+1)).reshape([int(2**mat_L)]*D)
+    #absorption_vec_small = np.random.rand(*([2**mat_L]*D), ) # random absorption cross sections
     absorption_vec_large = np.kron(absorption_vec_small, np.ones([int(2**(L-mat_L))]*D))
+    # set sigma_a such that the offdiagonal elements will be 0.
+    # If sigma_a is set higher, the offdiagonals should be positive
+    #  and if set lower they should be negative
 
     #absorption_vec_large = np.array(range(2**(L*D)))
-    B = h**D * mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large)
+    B = h**D * mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large) # scale the mass matrix appropriately with the diffusion matrix
+    #B = mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large)
     B_inv = np.linalg.inv(B)
-    B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
+    #B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
 
-    diffusion_mat_small = np.eye(int(2**(D*mat_L))) # all ones diffusion coefficients
+    diffusion_mat_small = diffusion_coef * np.eye(int(2**(D*mat_L))) # all ones diffusion coefficients
     diffusion_mat = np.kron(diffusion_mat_small, np.eye(2**(D*(L - mat_L))))
+
     D_A = np.kron(diffusion_mat, np.eye(D))
     C_L = FEM.getC_l(D, L)
     A = np.transpose(C_L) @ np.kron(D_A, np.eye(2**D)) @ C_L # diffusion matrix
@@ -151,6 +174,13 @@ for L in L_vals:
     C_inv = np.linalg.inv(C)
     G = np.eye(len(B)) + A_inv @ B
     G_inv = np.linalg.inv(G)
+
+    #testing the singular values of (I+L^-1 A) in the QCTIP paper
+    # In this context, we are testing (I+A^-1 B) because A is the diffusion matrix and B is the absorption matrix
+    P = np.eye(len(A)) + A_inv @ B
+    P_inv = np.linalg.inv(P)
+    P_max_sing = np.linalg.norm(P, ord=2)
+    P_min_sing = np.linalg.norm(P_inv, ord=2)
 
     B_sing_max = np.linalg.norm(B, ord=2)
     B_sing_min = 1/np.linalg.norm(B_inv, ord=2)

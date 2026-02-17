@@ -13,7 +13,7 @@ import math
 # Equation Diffusion
 # Geometry: Square Fuel Pin
 # Notes: 
-'''n_dim = 1
+n_dim = 1
 input_folder = 'simulations/ProblemData_1D_scaling_tests_fuel_pin/'
 min_qubits = 1
 max_qubits = 10
@@ -32,7 +32,7 @@ B_max_sings = np.zeros(max_qubits - min_qubits + 1)
 B_min_sings = np.zeros(max_qubits - min_qubits + 1)
 condAs = np.zeros(max_qubits - min_qubits + 1)
 condBs = np.zeros(max_qubits - min_qubits + 1)
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = ranges / data.n
@@ -98,7 +98,7 @@ eigenvalue_error = eigenvalue_results - closest_eig
 #eigenvector_error = eigenvector_results - closest_eigenvector
 eigenvector_diffs = [eigenvector_results[i,:] - closest_eigenvector for i in range(max_qubits - min_qubits + 1)]
 eigenvector_l2_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector) for i in range(max_qubits - min_qubits + 1)])
-eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])'''
+eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])
 
 
 ############# 2D Diffusion eigenvalue results ###############
@@ -109,7 +109,7 @@ eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - clos
 '''n_dim = 2
 input_folder = 'simulations/ProblemData_2D_scaling_tests_fuel_pin/'
 min_qubits = 1
-max_qubits = 5
+max_qubits = 6
 max_dim_size = int(math.pow(2,max_qubits))
 ranges = [4.0, 4.0] # the plotting assumes that the ranges in each dimension are all the same
 #input_files = ['input-N=' + str(int(math.pow(2,i))) + '.txt' for i in range(1,max_qubits + 1)]
@@ -119,7 +119,7 @@ fund_eig_index = -1 if invert_equation else 0
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = ranges / data.n
@@ -230,7 +230,7 @@ eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - clos
 # Notes: Benchmark PUa-l-0-SL from https://www.sciencedirect.com/science/article/pii/S0149197002000987
 # Notes: if you set the x_range to a large number, we get a k-eig almost exactly right at 2.613 (compared to the PUa-l-O-IN benchmark's 2.6129)
 # Notes: but the finite slab benchmarks has significantly different eigenvalues
-input_folder = 'simulations/ProblemData_1D_scaling_tests/'
+'''input_folder = 'simulations/ProblemData_1D_scaling_tests/'
 n_dim = 1
 min_qubits = 1
 max_qubits = 8
@@ -261,7 +261,7 @@ eigenvalue_error = eigenvalue_results - closest_eig
 #eigenvector_error = eigenvector_results - closest_eigenvector
 eigenvector_diffs = [eigenvector_results[i,:] - closest_eigenvector for i in range(max_qubits - min_qubits + 1)]
 eigenvector_l2_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector) for i in range(max_qubits - min_qubits + 1)])
-eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])
+eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - closest_eigenvector, ord=np.inf) for i in range(max_qubits - min_qubits + 1)])'''
 
 
 ############# 1D Diffusion FD eigenvalue results ###############
@@ -321,7 +321,7 @@ input_file = 'input.txt'
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = x_range / (data.n + 1)

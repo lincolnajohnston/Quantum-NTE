@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
 import time
-import ProblemData
-import LcuFunctions
+import helpers.ProblemData as ProblemData
+import QLSS.LcuFunctions
 import math
 import scipy.sparse as sp
 from scipy.interpolate import RegularGridInterpolator

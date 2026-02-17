@@ -16,22 +16,22 @@ import FEM_BPX_helpers as FEM
 # sure they can be applied effectively and work as preconditioners
 
 # the domain goes from 0 to 1
-D_min = 2
-D_max = 2
+D_min = 1
+D_max = 1
 L_min = 2
-L_max = 5
+L_max = 7
 D_vals = np.array(range(D_min,D_max + 1))
 L_vals = np.array(range(L_min,L_max + 1)) # number of levels of BPX preconditioner
 D_and_L = [D_vals, L_vals]
 FSF_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 S_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 C_F_conds = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-FSF_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-S_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-C_F_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-FSF_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-S_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
-C_F_inv_norms = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+FSF_max_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+S_max_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+C_F_max_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+FSF_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+S_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
+C_F_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 
 mat_L = 2
 #diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
@@ -105,28 +105,30 @@ for combo in itertools.product(*D_and_L):
     _, FSF_sing_vals, _ = np.linalg.svd(FSF)
     _, S_sing_vals, _ = np.linalg.svd(S)
     _, C_F_sing_vals, _ = np.linalg.svd(C_F.toarray())
+
+    # remove the zero singular values
     S_sing_vals = S_sing_vals[abs(S_sing_vals) > 1E-12]
     FSF_sing_vals = FSF_sing_vals[abs(FSF_sing_vals) > 1E-12]
     C_F_sing_vals = C_F_sing_vals[abs(C_F_sing_vals) > 1E-12]
 
 
-    FSF_norm = np.max(FSF_sing_vals)
-    FSF_inv_norm = np.min(FSF_sing_vals)
-    FSF_cond = FSF_norm / FSF_inv_norm
+    FSF_max_sing = np.max(FSF_sing_vals)
+    FSF_min_sing = np.min(FSF_sing_vals)
+    FSF_cond = FSF_max_sing / FSF_min_sing
     #print("FSF norm: ", FSF_norm)
     #print("FSF_inv norm: ", FSF_inv_norm)
     #print("FSF cond: ", FSF_cond)
 
-    S_norm = np.max(S_sing_vals)
-    S_inv_norm = np.min(S_sing_vals)
-    S_cond = S_norm / S_inv_norm
+    S_max_sing = np.max(S_sing_vals)
+    S_min_sing = np.min(S_sing_vals)
+    S_cond = S_max_sing / S_min_sing
     #print("\nS norm: ", S_norm)
     #print("S_inv norm: ", S_inv_norm)
     #print("S cond: ", S_cond)
 
-    C_F_norm = np.max(C_F_sing_vals)
-    C_F_inv_norm = np.min(C_F_sing_vals)
-    C_F_cond = C_F_norm / C_F_inv_norm
+    C_F_max_sing = np.max(C_F_sing_vals)
+    C_F_min_sing = np.min(C_F_sing_vals)
+    C_F_cond = C_F_max_sing / C_F_min_sing
     #print("\nS norm: ", S_norm)
     #print("S_inv norm: ", S_inv_norm)
     #print("S cond: ", S_cond)
@@ -137,34 +139,50 @@ for combo in itertools.product(*D_and_L):
     C_F_conds[D-D_min,L-L_min] = C_F_cond
 
     # store the matrix norms
-    FSF_norms[D-D_min,L-L_min] = FSF_norm
-    S_norms[D-D_min,L-L_min] = S_norm
-    C_F_norms[D-D_min,L-L_min] = C_F_norm
+    FSF_max_sings[D-D_min,L-L_min] = FSF_max_sing
+    S_max_sings[D-D_min,L-L_min] = S_max_sing
+    C_F_max_sings[D-D_min,L-L_min] = C_F_max_sing
 
     # store the matrix norms of the inverse of the matrice
-    FSF_inv_norms[D-D_min,L-L_min] = FSF_inv_norm
-    S_inv_norms[D-D_min,L-L_min] = S_inv_norm
-    C_F_inv_norms[D-D_min,L-L_min] = C_F_inv_norm
+    FSF_min_sings[D-D_min,L-L_min] = FSF_min_sing
+    S_min_sings[D-D_min,L-L_min] = S_min_sing
+    C_F_min_sings[D-D_min,L-L_min] = C_F_min_sing
     print("-------------------------\n")
 
+# plot and print out the condition numbers of FSF, S, and C_F
 for D in range(D_min, D_max + 1):
     plt.semilogy(L_vals, FSF_conds[D-D_min,:])
     plt.title("Condition Numbers vs L")
     plt.xlabel("L")
-    print("FSF d = " + str(D) + " norms: ", FSF_norms[D-D_min,:])
-    print("FSF d = " + str(D) + " inverse norms: ", FSF_inv_norms[D-D_min,:])
+    print("FSF d = " + str(D) + " Maximum Singular Values: ", FSF_max_sings[D-D_min,:])
+    print("FSF d = " + str(D) + " Minimum Singular Values: ", FSF_min_sings[D-D_min,:])
     print("FSF d = " + str(D) + " condition numbers: ", FSF_conds[D-D_min,:])
 
 for D in range(D_min, D_max + 1):
     plt.semilogy(L_vals, S_conds[D-D_min,:])
-    print("S d = " + str(D) + " norms: ", S_norms[D-D_min,:])
-    print("S d = " + str(D) + " inverse norms: ", S_inv_norms[D-D_min,:])
+    print("S d = " + str(D) + " Maximum Singular Values: ", S_max_sings[D-D_min,:])
+    print("S d = " + str(D) + " Minimum Singular Values: ", S_min_sings[D-D_min,:])
     print("S d = " + str(D) + " condition numbers: ", S_conds[D-D_min,:])
 
 for D in range(D_min, D_max + 1):
-    print("C_F d = " + str(D) + " norms: ", C_F_norms[D-D_min,:])
-    print("C_F d = " + str(D) + " inverse norms: ", C_F_inv_norms[D-D_min,:])
+    print("C_F d = " + str(D) + " Maximum Singular Values: ", C_F_max_sings[D-D_min,:])
+    print("C_F d = " + str(D) + " Minimum Singular Values: ", C_F_min_sings[D-D_min,:])
     print("C_F d = " + str(D) + " condition numbers: ", C_F_conds[D-D_min,:])
 
 plt.legend(["FSF matrix D=" + str(d) for d in range(D_min, D_max + 1)] + ["S matrix D=" + str(d) for d in range(D_min, D_max + 1)])
+plt.figure()
+
+# plot the minimum and maximum singular values of FSF (preconditioned system) and S (unpreconditioned system)
+for D in range(D_min, D_max + 1):
+    plt.semilogy(L_vals, FSF_max_sings[D-D_min,:])
+    plt.semilogy(L_vals, FSF_min_sings[D-D_min,:])
+    plt.title("Condition Numbers vs L")
+    plt.xlabel("L")
+
+for D in range(D_min, D_max + 1):
+    plt.semilogy(L_vals, S_max_sings[D-D_min,:])
+    plt.semilogy(L_vals, S_min_sings[D-D_min,:])
+
+
+plt.legend(["FSF matrix Maximum Singular Values D=" + str(d) for d in range(D_min, D_max + 1)] + ["FSF matrix Minimum Singular Values D=" + str(d) for d in range(D_min, D_max + 1)] + ["S matrix Maximum Singular Values  D=" + str(d) for d in range(D_min, D_max + 1)] + ["S matrix Minimum Singular Values D=" + str(d) for d in range(D_min, D_max + 1)])
 plt.show()
