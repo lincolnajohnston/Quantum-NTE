@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import scipy as sp
+import scipy.sparse as spsp
 from scipy.sparse import csr_matrix, coo_matrix
 import itertools
 
@@ -254,21 +255,16 @@ def get_T_squiggle(D, l, L):
 
 # given dimensions D, levels L, and a matrix of diffusion coefficients (which must be able to be divided 
 # evenly onto the FEM grid discretization), return the FEM diffusion matrix
-def get_diffusion_matrix(D, L, diffusion_mat_small):
-    mat_L = int(np.log2(len(diffusion_mat_small)) / D) # level of the material discretization for defining diffusion coefficients
+def get_diffusion_matrix(D, L, dif_mat):
+    #mat_L = int(np.log2(len(diffusion_mat_small)) / D) # level of the material discretization for defining diffusion coefficients
     # ensure that the length of diffusion mat is equal to a power of 2
-    if np.abs(mat_L % 1) > 0.00000001:
-        return 0
-    # TODO: fix the diffusion matrix code below need to expand the diffusion matrix from the coarse mat_L
-    #  mesh to the finer L mesh, but need to be carfeul about the multidimensional cases and do the kronecker products correctly
-
-    # TODO: for now, I'm going to create the diffusion coefficient matrix incorrectly (for 2+ dimensions) and fix it later
-    dif_mat = np.kron(diffusion_mat_small, np.eye(int(2**(D*(L - mat_L)))))
+    #if np.abs(mat_L % 1) > 0.00000001:
+    #    return 0
 
     D_A = np.kron(dif_mat, np.eye(D))
     C_L = getC_l(D, L)
-    A = np.transpose(C_L) @ np.kron(D_A, np.eye(2**D)) @ C_L
-    return A
+    A = C_L.T @ spsp.kron(D_A, spsp.eye(2**D, format="csr"), format="csr") @ C_L
+    return A.tocsr()
 
 # convert multidimensional (x1,x2...,xD) index to 1D index, first index is most significant
 def unroll_index(N, D, index_vec, xs_mesh=False):
@@ -277,7 +273,8 @@ def unroll_index(N, D, index_vec, xs_mesh=False):
     return sum([index_vec[d]*math.prod(roll_N[d+1:]) for d in range(D)])
 
  # assume domain is 1 so h = 1/2^L, factor out the h^D term
-def get_mass_matrix_brute_force(L, D, xs):
+
+'''def get_mass_matrix_brute_force(L, D, xs):
     N_1D_FEM = int(2**(L) - 1)
     N_total = int(N_1D_FEM**D)
     M = np.zeros((N_total, N_total))
@@ -304,4 +301,89 @@ def get_mass_matrix_brute_force(L, D, xs):
                 xs_indices = itertools.product(*xs_indices_list)
                 for xs_index in xs_indices:
                     M[unroll_index(N_1D_FEM, D, row_index), unroll_index(N_1D_FEM, D, col_index)] += xs_coef * xs[xs_index]
-    return M   
+    return M '''  
+
+# get the mass matrix for the absorption or fission matrix (without the h^D factor in front)
+def get_mass_matrix_brute_force(L, D, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+
+    rows = []
+    cols = []
+    data = []
+
+    all_indices = itertools.product(range(N_1D_FEM), repeat=D)
+
+    for node_index in all_indices:
+        node_index = np.array(node_index)
+
+        for offset in itertools.product(range(-1,2), repeat=D):
+            col_index = node_index + np.array(offset)
+
+            # skip outside domain
+            if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM):
+                continue
+
+            xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # get the coefficient in front of the matrix term
+
+            sigma_index_lower = node_index + [max(o,0) for o in offset]
+            sigma_index_upper = [min(col_index[i],node_index[i])+1 for i in range(D)]
+
+            xs_ranges = [range(sigma_index_lower[d], sigma_index_upper[d]+1) for d in range(D)]
+
+            val = 0.0
+            for xs_index in itertools.product(*xs_ranges):
+                val += xs_coef * xs[xs_index]
+
+            i = unroll_index(N_1D_FEM, D, node_index)
+            j = unroll_index(N_1D_FEM, D, col_index)
+
+            rows.append(i)
+            cols.append(j)
+            data.append(val)
+
+    return coo_matrix((data,(rows,cols)),shape=(N_total,N_total)).tocsr()
+
+def get_2D_diffusion_matrix_brute_force(L, D, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+
+    rows = []
+    cols = []
+    data = []
+
+    all_indices = itertools.product(range(N_1D_FEM), repeat=D)
+
+    for node_index in all_indices:
+        node_index = np.array(node_index)
+
+        for offset in itertools.product(range(-1,2), repeat=D):
+            col_index = node_index + np.array(offset)
+
+            # skip outside domain
+            if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM):
+                continue
+            
+
+            xs_coef = -1/6
+            if offset[0]==0 and offset[1]==0:
+                xs_coef = 2/3
+            
+
+            sigma_index_lower = node_index + [max(o,0) for o in offset]
+            sigma_index_upper = [min(col_index[i],node_index[i])+1 for i in range(D)]
+
+            xs_ranges = [range(sigma_index_lower[d], sigma_index_upper[d]+1) for d in range(D)]
+
+            val = 0.0
+            for xs_index in itertools.product(*xs_ranges):
+                val += xs_coef * xs[xs_index]
+
+            i = unroll_index(N_1D_FEM, D, node_index)
+            j = unroll_index(N_1D_FEM, D, col_index)
+
+            rows.append(i)
+            cols.append(j)
+            data.append(val)
+
+    return coo_matrix((data,(rows,cols)),shape=(N_total,N_total)).tocsr()

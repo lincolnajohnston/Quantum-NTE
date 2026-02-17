@@ -16,8 +16,8 @@ import FEM_BPX_helpers as FEM
 # sure they can be applied effectively and work as preconditioners
 
 # the domain goes from 0 to 1
-D_min = 1
-D_max = 1
+D_min = 2
+D_max = 2
 L_min = 2
 L_max = 7
 D_vals = np.array(range(D_min,D_max + 1))
@@ -34,8 +34,8 @@ S_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 C_F_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 
 mat_L = 2
-#diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
-diffusion_mat_small = [np.eye(int(2**(D*mat_L))) for D in D_vals] # all ones diffusion coefficients
+diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
+#diffusion_mat_small = [np.eye(int(2**(D*mat_L))) for D in D_vals] # all ones diffusion coefficients
 
 absorption_vec_small = [np.random.rand(2**(D*mat_L)) for D in D_vals] # random absorption cross sections
 #absorption_vec_small = [np.ones(int(2**(D*mat_L))) for D in D_vals] # all ones absorption cross sections
