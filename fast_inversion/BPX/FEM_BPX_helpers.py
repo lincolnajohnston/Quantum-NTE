@@ -368,6 +368,8 @@ def get_2D_diffusion_matrix_brute_force(L, D, xs):
             xs_coef = -1/6
             if offset[0]==0 and offset[1]==0:
                 xs_coef = 2/3
+            if abs(offset[0])==1 and abs(offset[1])==1:
+                xs_coef = -1/3
             
 
             sigma_index_lower = node_index + [max(o,0) for o in offset]
@@ -387,3 +389,213 @@ def get_2D_diffusion_matrix_brute_force(L, D, xs):
             data.append(val)
 
     return coo_matrix((data,(rows,cols)),shape=(N_total,N_total)).tocsr()
+
+
+# return a FEM mass matrix where each term is weighted by a piecewise-constant value (like the absorption cross section)
+# L is number of levels, consts is an array of constants defined in each cell of the FEM discretization
+def get_M1(L, consts):
+    # make sure consts is the right size
+    if len(consts) != int(2**(L)):
+        raise ValueError("consts matrix is not the correct size/shape")
+    h = 1/(2**L)
+    A = np.diag(2*consts[:-1])
+    A += np.diag(2*consts[1:])
+    A += np.diag(consts[1:-1], k=1)
+    A += np.diag(consts[1:-1], k=-1)
+    return (h/6)*A # weight the matrix by a scalar
+
+def get_P1(L, consts):
+    # make sure consts is the right size
+    if len(consts) != int(2**(L)):
+        raise ValueError("consts matrix is not the correct size/shape")
+    h = 1/(2**L)
+    A = np.diag(consts[:-1])
+    A += np.diag(consts[1:])
+    A += np.diag(-1*consts[1:-1], k=1)
+    A += np.diag(-1*consts[1:-1], k=-1)
+    return (1/h)*A # weight the matrix by a scalar
+
+
+
+# given a cross section vector, xs, and a list of index ranges ([[x_low, x_high], [y_low, y_high], ...])
+# return the vector of cross sections only within those index ranges
+def get_xs_subvector(D, xs_list, index_ranges):
+    return np.array(xs_list[np.ix_(*[list(range(index_ranges[d][0], index_ranges[d][1]+1)) for d in range(D)])]).flatten()
+
+
+# assume domain is 1 so h = 1/2^L, factor out the h^D term
+# craft the matrix by taking the linear combination of diagonal matrices, each of which 
+# can be efficiently block-encoded and then ocmbined with LCU.
+# This function is uncompleted, just here to show that the fission and absorption FEM
+# matrices can be implemented as the linear combination of 6^D diagonal matrices (with some integer shift |x> -> |x+1>)
+def get_2D_mass_matrix_LCU(D, L, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+    M = np.zeros((N_total, N_total))
+
+    diagonals = [] # list of diagonal arrays
+    offsets = [] # list of offsets corresponding to the diagonals
+
+    ########## main diagonal #########
+    coef = (1/3)**D # each overlapping hat function's integral product is 1/3
+    all_indices = itertools.product(list(range(2)), repeat=D) # starting indices for xs list
+    main_diagonal = np.zeros(N_1D_FEM*N_1D_FEM)
+    for start_indices in all_indices:
+        main_diagonal += coef * get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D)]) # get cross sections for all but one index in each dimension (0...N-1 or 1...N)
+        #M += coef * np.diag(diag) # add the cross sections to the main diagonal
+    diagonals.append(main_diagonal)
+    offsets.append(0)
+
+    ######### 1 offset hat function in x direction #########
+    coef = (1/3)**(D-1) * (1/6)**1 # offset hat functions have a square integral of 1/6
+    # LSB (least significant bit) increment, for D > 0
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the more significant bits
+    diag_len = N_1D_FEM**2 - 1
+    x_offset_diag = np.zeros(diag_len)
+    for start_indices in all_indices:
+        diag = get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D-1)] + [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+        # need to add in the zeros between the sections here
+        diag_zero_inserts = np.zeros(diag_len)
+        mask = np.ones(diag_len, dtype=bool)
+        mask[N_1D_FEM-1::(N_1D_FEM)] = False   # every (n)th position is a zero
+
+        diag_zero_inserts[mask] = diag
+        x_offset_diag += coef * diag_zero_inserts # above the main diagonal
+    diagonals.append(x_offset_diag)
+    diagonals.append(x_offset_diag)
+    offsets.append(1)
+    offsets.append(-1)
+
+    ######### 1 offset hat function in y direction #########
+    coef = (1/3)**(D-1) * (1/6)**1 # offset hat functions have a square integral of 1/6
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the less significant bits
+    y_offset_diag = np.zeros((N_1D_FEM-1)*N_1D_FEM)
+    for start_indices in all_indices:
+        y_offset_diag += coef * get_xs_subvector(D, xs, [[1,N_1D_FEM-1]] + [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D-1)]) # get the diagonal values (except for zero values)
+
+        #M += coef * np.diag(diag, k=N_1D_FEM) # above the main diagonal
+        #M += coef * np.diag(diag, k=-N_1D_FEM) # under the main diagonal
+
+    diagonals.append(y_offset_diag)
+    diagonals.append(y_offset_diag)
+    offsets.append(N_1D_FEM)
+    offsets.append(-N_1D_FEM)
+
+
+    ######## 1 offset hat function in x and y direction ########
+    coef =  (1/6)**2 # offset hat functions have a square integral of 1/6
+    diag = get_xs_subvector(D, xs, [[1,N_1D_FEM-1]] + [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+
+    diag_len_ext = (N_1D_FEM-1) * (N_1D_FEM) - 1
+    diag_len_int = (N_1D_FEM-1) * (N_1D_FEM) + 1
+    # need to add in the zeros between the sections here
+    diag_zero_inserts_int = np.zeros(diag_len_int)
+    diag_zero_inserts_ext = np.zeros(diag_len_ext)
+    mask_interior = np.ones(diag_len_int, dtype=bool)
+    mask_interior[0::(N_1D_FEM)] = False   # every (n-1)th position is a zero
+    mask_exterior = np.ones(diag_len_ext, dtype=bool)
+    mask_exterior[N_1D_FEM-1::(N_1D_FEM)] = False   # every (n-1)th position is a zero
+
+    diag_zero_inserts_int[mask_interior] = diag
+    diag_zero_inserts_ext[mask_exterior] = diag
+
+    # interior diagonals
+    diagonals.append(coef*diag_zero_inserts_int)
+    diagonals.append(coef*diag_zero_inserts_int)
+    offsets.append(N_1D_FEM-1)
+    offsets.append(-N_1D_FEM+1)
+
+    # exterior diagonals
+    diagonals.append(coef*diag_zero_inserts_ext)
+    diagonals.append(coef*diag_zero_inserts_ext)
+    offsets.append(N_1D_FEM+1)
+    offsets.append(-N_1D_FEM-1)
+
+    return spsp.diags(diagonals, offsets)
+
+
+
+def get_2D_diffusion_matrix_LCU(D, L, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+    M = np.zeros((N_total, N_total))
+
+    diagonals = [] # list of diagonal arrays
+    offsets = [] # list of offsets corresponding to the diagonals
+
+    ########## main diagonal #########
+    coef = (2/3) # each overlapping hat function's integral product is 1/3
+    all_indices = itertools.product(list(range(2)), repeat=D) # starting indices for xs list
+    main_diagonal = np.zeros(N_1D_FEM*N_1D_FEM)
+    for start_indices in all_indices:
+        main_diagonal += coef * get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D)]) # get cross sections for all but one index in each dimension (0...N-1 or 1...N)
+        #M += coef * np.diag(diag) # add the cross sections to the main diagonal
+    diagonals.append(main_diagonal)
+    offsets.append(0)
+
+    ######### 1 offset hat function in x direction #########
+    coef = -1/6 # offset hat functions have a square integral of 1/6
+    # LSB (least significant bit) increment, for D > 0
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the more significant bits
+    diag_len = N_1D_FEM**2 - 1
+    x_offset_diag = np.zeros(diag_len)
+    for start_indices in all_indices:
+        diag = get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D-1)] + [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+        # need to add in the zeros between the sections here
+        diag_zero_inserts = np.zeros(diag_len)
+        mask = np.ones(diag_len, dtype=bool)
+        mask[N_1D_FEM-1::(N_1D_FEM)] = False   # every (n)th position is a zero
+
+        diag_zero_inserts[mask] = diag
+        x_offset_diag += coef * diag_zero_inserts # above the main diagonal
+    diagonals.append(x_offset_diag)
+    diagonals.append(x_offset_diag)
+    offsets.append(1)
+    offsets.append(-1)
+
+    ######### 1 offset hat function in y direction #########
+    coef = -1/6 # offset hat functions have a square integral of 1/6
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the less significant bits
+    y_offset_diag = np.zeros((N_1D_FEM-1)*N_1D_FEM)
+    for start_indices in all_indices:
+        y_offset_diag += coef * get_xs_subvector(D, xs, [[1,N_1D_FEM-1]] + [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D-1)]) # get the diagonal values (except for zero values)
+
+        #M += coef * np.diag(diag, k=N_1D_FEM) # above the main diagonal
+        #M += coef * np.diag(diag, k=-N_1D_FEM) # under the main diagonal
+
+    diagonals.append(y_offset_diag)
+    diagonals.append(y_offset_diag)
+    offsets.append(N_1D_FEM)
+    offsets.append(-N_1D_FEM)
+
+
+    ######## 1 offset hat function in x and y direction ########
+    coef =  -1/3# offset hat functions have a square integral of 1/6
+    diag = get_xs_subvector(D, xs, [[1,N_1D_FEM-1]] + [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+
+    diag_len_ext = (N_1D_FEM-1) * (N_1D_FEM) - 1
+    diag_len_int = (N_1D_FEM-1) * (N_1D_FEM) + 1
+    # need to add in the zeros between the sections here
+    diag_zero_inserts_int = np.zeros(diag_len_int)
+    diag_zero_inserts_ext = np.zeros(diag_len_ext)
+    mask_interior = np.ones(diag_len_int, dtype=bool)
+    mask_interior[0::(N_1D_FEM)] = False   # every (n-1)th position is a zero
+    mask_exterior = np.ones(diag_len_ext, dtype=bool)
+    mask_exterior[N_1D_FEM-1::(N_1D_FEM)] = False   # every (n-1)th position is a zero
+
+    diag_zero_inserts_int[mask_interior] = diag
+    diag_zero_inserts_ext[mask_exterior] = diag
+
+    # interior diagonals
+    diagonals.append(coef*diag_zero_inserts_int)
+    diagonals.append(coef*diag_zero_inserts_int)
+    offsets.append(N_1D_FEM-1)
+    offsets.append(-N_1D_FEM+1)
+
+    # exterior diagonals
+    diagonals.append(coef*diag_zero_inserts_ext)
+    diagonals.append(coef*diag_zero_inserts_ext)
+    offsets.append(N_1D_FEM+1)
+    offsets.append(-N_1D_FEM-1)
+
+    return spsp.diags(diagonals, offsets)

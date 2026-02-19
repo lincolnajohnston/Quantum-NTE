@@ -149,19 +149,22 @@ for L in L_vals:
     absorption_vec_small_1D = np.random.rand(2**(mat_L)) # random absorption cross sections
     #absorption_vec_small = np.ones(int(2**(D*mat_L))) # all ones absorption cross sections
     absorption_vec_small = 6 * diffusion_coef / (h*h) * np.ones(int(2**(D*mat_L))) # constant absorption cross sections scaled
+    
 
     #absorption_vec_small = np.array(range(1,2**(mat_L*D)+1)).reshape([int(2**mat_L)]*D)
     #absorption_vec_small = np.random.rand(*([2**mat_L]*D), ) # random absorption cross sections
-    absorption_vec_large = np.kron(absorption_vec_small, np.ones([int(2**(L-mat_L))]*D))
+    #absorption_vec_large = np.kron(absorption_vec_small, np.ones([int(2**(L-mat_L))]*D))
+    absorption_vec_large = np.kron(absorption_vec_small, np.ones((int(2**(L-mat_L)), int(2**(L-mat_L)))))
     # set sigma_a such that the offdiagonal elements will be 0.
     # If sigma_a is set higher, the offdiagonals should be positive
     #  and if set lower they should be negative
 
+    B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
     #absorption_vec_large = np.array(range(2**(L*D)))
     B = h**D * mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large) # scale the mass matrix appropriately with the diffusion matrix
     #B = mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large)
     B_inv = np.linalg.inv(B)
-    #B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
+    
 
     diffusion_mat_small = diffusion_coef * np.eye(int(2**(D*mat_L))) # all ones diffusion coefficients
     diffusion_mat = np.kron(diffusion_mat_small, np.eye(2**(D*(L - mat_L))))
