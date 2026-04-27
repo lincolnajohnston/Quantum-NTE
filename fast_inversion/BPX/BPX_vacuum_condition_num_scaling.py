@@ -12,8 +12,7 @@ import math
 import itertools
 import FEM_BPX_helpers as FEM
 
-# trying to visualize the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D and make 
-# sure they can be applied effectively and work as preconditioners
+# modifying the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D to allow for vacuum BCs (Robin BCs without incoming source terms)
 
 # the domain goes from 0 to 1
 D_min = 1
@@ -33,9 +32,10 @@ FSF_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 S_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 C_F_min_sings = np.zeros((D_max - D_min + 1, L_max - L_min + 1))
 
-mat_L = 2
+mat_L = 3
 #diffusion_mat_small = [np.diag(np.random.rand(2**(D*mat_L))) for D in D_vals]
-diffusion_mat_small = [np.eye(int(2**(D*mat_L))) for D in D_vals] # all ones diffusion coefficients
+#diffusion_mat_small = [np.eye(int(2**(D*mat_L))) for D in D_vals] # all ones diffusion coefficients
+diffusion_mat_small = [np.diag(list(range(1,int(2**(D*mat_L)) + 1))) for D in D_vals]
 
 absorption_vec_small = [np.random.rand(2**(D*mat_L)) for D in D_vals] # random absorption cross sections
 #absorption_vec_small = [np.ones(int(2**(D*mat_L))) for D in D_vals] # all ones absorption cross sections
@@ -44,8 +44,8 @@ for combo in itertools.product(*D_and_L):
     D = combo[0]
     L = combo[1]
     # find C_L (C_l for the finest level)
-    C_L = FEM.getC_l(D, L)
-    F = FEM.get_F(D, L)
+    C_L = FEM.getC_l_v(D, L)
+    F = FEM.get_F_v(D, L)
     C_F = C_L @ F
 
     F_prime = FEM.get_F_prime(D,L)
@@ -86,7 +86,7 @@ for combo in itertools.product(*D_and_L):
 
     FSF_inv = np.linalg.pinv(FSF)
     S_qc_inv = F @ FSF_inv @ np.transpose(F)
-    S_inv = np.linalg.inv(S)
+    S_inv = np.linalg.pinv(S) # pseudoinverse because S is singular
     S_inv_error_mat = S_qc_inv - S_inv
     S_inv_error = np.linalg.norm(S_inv_error_mat, ord=np.inf)
     print("Error between S^-1 on the QC and the actual S^-1: ", S_inv_error)
@@ -107,9 +107,9 @@ for combo in itertools.product(*D_and_L):
     _, C_F_sing_vals, _ = np.linalg.svd(C_F.toarray())
 
     # remove the zero singular values
-    S_sing_vals = S_sing_vals[abs(S_sing_vals) > 1E-12]
-    FSF_sing_vals = FSF_sing_vals[abs(FSF_sing_vals) > 1E-12]
-    C_F_sing_vals = C_F_sing_vals[abs(C_F_sing_vals) > 1E-12]
+    S_sing_vals = S_sing_vals[abs(S_sing_vals) > 1E-10]
+    FSF_sing_vals = FSF_sing_vals[abs(FSF_sing_vals) > 1E-10]
+    C_F_sing_vals = C_F_sing_vals[abs(C_F_sing_vals) > 1E-10]
 
 
     FSF_max_sing = np.max(FSF_sing_vals)

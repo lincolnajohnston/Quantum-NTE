@@ -18,7 +18,7 @@ def triangle_wave(x: float, x_min, x_max) -> float:
 
 def get_C_l_1D(l):
     N = 2 ** l
-    M1 = np.kron(np.eye(N), np.array([[1,-1],[0,0]])) # TODO: figure out how this works, don't really understand this equation
+    M1 = np.kron(np.eye(N), np.array([[-1,1],[0,0]])) # slightly modified from the Deiml paper (switched the 1 and -1), I don't think it majorly affects anything but aligns with my math better
     # M2 from the Deiml paper
     #I_l = np.eye(N)[:,:N-1]
     #N_l = np.eye(N)[:,1:N]
@@ -33,12 +33,13 @@ def get_C_l_1D(l):
     '''for col in range(2**l - 1):
         M2[2*col, col] = 1
         M2[2*(col)+3, col] = 1'''
+    test = 2**(l/2) * M1 @ M2
     return 2**(l/2) * M1 @ M2
 
 # return the R_{l,1D} matrix at the bottom of page 15 of the Deiml paper 
 def get_R_l_1D(l):
     N = 2 ** l
-    M1 = np.kron(np.eye(N), np.array([[1/2,1/2],[-1/(2*math.sqrt(3)),1/(2*math.sqrt(3))]]))
+    M1 = np.kron(np.eye(N), np.array([[1/2,1/2],[-1/(2*math.sqrt(3)),1/(2*math.sqrt(3))]])) # modified from the Deiml paper, but I think this is correct (Deiml paper might just have a different ordering of basis functions?)
 
     # Deiml paper's M2
     #I_l = np.eye(N)[:,:N-1]
@@ -50,6 +51,37 @@ def get_R_l_1D(l):
     for col in range(2**l - 1):
         M2[2*col+1, col] = 1
         M2[2*(col+1), col] = 1
+    test = 2**(-l/2) * M1 @ M2
+    return 2**(-l/2) * M1 @ M2
+
+# C_l_1D for the vacuum boundary condition FEM space
+def get_C_l_1D_v(l):
+    N = 2 ** l
+    M1 = np.kron(np.eye(N), np.array([[-1,1],[0,0]])) # slightly modified from the Deiml paper (switched the 1 and -1), I don't think it majorly affects anything but aligns with my math better
+
+    M2 = np.zeros((2**(l+1), 2**l + 1))
+    # Modified M2 for vacuum BC, now an operation performing |i> -> 1/sqrt(2) (|2i> + |2i-1>) for 0 < i < 2**l and |0> -> 1/sqrt(2) |0> and |2**l> -> 1/sqrt(2)|2**(l+1)-1>
+    for col in range(1,2**l):
+        M2[2*col, col] = 1
+        M2[2*col-1, col] = 1
+    M2[0, 0] = 1
+    M2[2**(l+1)-1, 2**l] = 1
+    test = 2**(l/2) * M1 @ M2
+    return 2**(l/2) * M1 @ M2
+
+def get_R_l_1D_v(l):
+    N = 2 ** l
+    M1 = np.kron(np.eye(N), np.array([[1/2,1/2],[-1/(2*math.sqrt(3)),1/(2*math.sqrt(3))]])) # modified from the Deiml paper, but I think this is correct (Deiml paper might just have a different ordering of basis functions?)
+
+    M2 = np.zeros((2**(l+1), 2**l + 1))
+    # Modified M2 for vacuum BC, now an operation performing |i> -> 1/sqrt(2) (|2i> + |2i-1>) for 0 < i < 2**l and |0> -> 1/sqrt(2) |0> and |2**l> -> 1/sqrt(2)|2**(l+1)-1>
+    for col in range(1,2**l):
+        M2[2*col+1, col] = 1
+        M2[2*(col+1), col] = 1
+    M2[0] = 0
+    M2[2**(l+1)-1] = 2**l
+
+    test = 2**(-l/2) * M1 @ M2
     return 2**(-l/2) * M1 @ M2
 
 # ChatGPT function, changed the implementation now, not completely checked for correctness
@@ -147,6 +179,31 @@ def getC_l(D, l):
     C_l = pi_l_C_l[pi_l_new, :]
     return C_l
 
+# get C_l for vacuum boundary condition
+def getC_l_v(D, l):
+    pi_l_C_l = csr_matrix((D*2**(D*(l+1)), (2**l + 1)**D), dtype=float)
+    for s in range(1,D+1):
+        pi_l_C_l_s = np.array([1])
+        for _ in range(1,s):
+            pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+        pi_l_C_l_s = np.kron(pi_l_C_l_s, get_C_l_1D_v(l))
+        for _ in range(s+1, D+1):
+            pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+        rows, cols = np.nonzero(pi_l_C_l_s)
+        pi_l_C_l_s_data = pi_l_C_l_s[rows, cols]
+
+        rows_g = rows + (s-1)*2**(D*(l+1))
+        cols_g = cols
+
+        update = coo_matrix((pi_l_C_l_s_data, (rows_g, cols_g)), shape=pi_l_C_l.shape)
+        pi_l_C_l += update.tocsr() 
+        
+        #pi_l_C_l[(s-1)*2**(D*(l+1)):s*2**(D*(l+1)), :] = pi_l_C_l_s
+    pi_l_star_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_l_new = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
+    C_l = pi_l_C_l[pi_l_new, :]
+    return C_l
+
 # get the basis change matrix from mutlilevel basis to the basis of the finest level
 def get_F(D, L):
     n_fine = int(math.pow(2,L)) # number of points in finest level
@@ -169,6 +226,37 @@ def get_F(D, L):
             pos_indices = [int(i%(n_coarse-1)**(D-d) / (n_coarse-1)**(D-d-1)) for d in range(D)]
             pos = [position_points[d][i] for d in range(D)]
             weights_list = np.array([[triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)])
+            #weights_list = [[triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
+            weights_nonzero_indices = [np.nonzero(weights_list[d])[0] for d in range(D)]
+            for combo in itertools.product(*weights_nonzero_indices):
+                row = int(np.sum([combo[d] * np.prod([len(weights_list[d_p]) for d_p in range(d+1,D)]) for d in range(D)]))
+                weight = [weights_list[d,combo[d]] for d in range(D)]
+                F[row,col] =  level_weight * np.prod(weight)
+            col += 1
+    return F
+
+# get the basis change matrix from mutlilevel basis to the basis of the finest level with vacuum boundary conditions
+def get_F_v(D, L):
+    n_fine = int(math.pow(2,L)) # number of points in finest level
+    h_fine = 1/n_fine
+    CF_col_sections = [(2**l+1)**D for l in range(1,L+1)] # list of number of basis functions in each level
+
+    # create the 1-D F matrix preconditioner (defined at the bottom of page 11 of the Deiml paper)
+    F = csr_matrix(((n_fine+1)**D, sum(CF_col_sections)), dtype=float)
+    fine_position_vals = [np.linspace(0,1,n_fine+1) for i in range(D)]
+    position_meshes = np.meshgrid(*fine_position_vals, indexing='ij')
+    position_points = [position_meshes[i].flatten() for i in range(D)]
+    col = 0
+    for l in range(1,L+1):
+        n_coarse = int(math.pow(2,l)) # number of basis functions in current level
+        h_coarse = 1/n_coarse
+        triangle_height_weight = 1 # height of hat function in basis function
+        level_weight = 2 ** (-l * (2-D) / 2)
+        #level_weight = 1
+        for i in range((n_coarse + 1)**D): # find values of current column of F
+            pos_indices = [int(i%(n_coarse+1)**(D-d) / (n_coarse+1)**(D-d-1)) for d in range(D)]
+            pos = [position_points[d][i] for d in range(D)]
+            weights_list = np.array([[triangle_height_weight * triangle_wave(x,h_coarse*(pos_indices[d]-1),h_coarse*(pos_indices[d]+1)) for x in fine_position_vals[d]] for d in range(D)])
             #weights_list = [[triangle_height_weight * triangle_wave(x,h_coarse*pos_indices[d],h_coarse*(pos_indices[d]+2)) for x in fine_position_vals[d]] for d in range(D)]
             weights_nonzero_indices = [np.nonzero(weights_list[d])[0] for d in range(D)]
             for combo in itertools.product(*weights_nonzero_indices):
@@ -423,6 +511,75 @@ def get_xs_subvector(D, xs_list, index_ranges):
     return np.array(xs_list[np.ix_(*[list(range(index_ranges[d][0], index_ranges[d][1]+1)) for d in range(D)])]).flatten()
 
 
+def get_1D_mass_matrix_LCU(D, L, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+
+    diagonals = [] # list of diagonal arrays
+    offsets = [] # list of offsets corresponding to the diagonals
+
+    ########## main diagonal #########
+    coef = (1/3)**D # each overlapping hat function's integral product is 1/3
+    all_indices = itertools.product(list(range(2)), repeat=D) # starting indices for xs list
+    main_diagonal = np.zeros(N_1D_FEM)
+    for start_indices in all_indices:
+        main_diagonal += coef * get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D)]) # get cross sections for all but one index in each dimension (0...N-1 or 1...N)
+    diagonals.append(main_diagonal)
+    offsets.append(0)
+
+    ######### 1 offset hat function in x direction #########
+    coef = (1/3)**(D-1) * (1/6)**1 # offset hat functions have a square integral of 1/6
+    # LSB (least significant bit) increment, for D > 0
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the more significant bits
+    diag_len = N_1D_FEM - 1
+    x_offset_diag = np.zeros(diag_len)
+    for start_indices in all_indices:
+        diag = get_xs_subvector(D, xs, [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+
+        diag_zero_inserts = diag
+        x_offset_diag += coef * diag_zero_inserts # above the main diagonal
+    diagonals.append(x_offset_diag)
+    diagonals.append(x_offset_diag)
+    offsets.append(1)
+    offsets.append(-1)
+
+    return spsp.diags(diagonals, offsets)
+
+# does not include 1/h factor in front
+def get_1D_diffusion_matrix_LCU(D, L, xs):
+    N_1D_FEM = 2**L - 1
+    N_total = N_1D_FEM**D
+
+    diagonals = [] # list of diagonal arrays
+    offsets = [] # list of offsets corresponding to the diagonals
+
+    ########## main diagonal #########
+    coef = 1 # each overlapping hat function's integral product is 1/3
+    all_indices = itertools.product(list(range(2)), repeat=D) # starting indices for xs list
+    main_diagonal = np.zeros(N_1D_FEM)
+    for start_indices in all_indices:
+        main_diagonal += coef * get_xs_subvector(D, xs, [[start_indices[d], N_1D_FEM-1+start_indices[d]] for d in range(D)]) # get cross sections for all but one index in each dimension (0...N-1 or 1...N)
+    diagonals.append(main_diagonal)
+    offsets.append(0)
+
+    ######### 1 offset hat function in x direction #########
+    coef = -1 # offset hat functions have a square integral of 1/6
+    # LSB (least significant bit) increment, for D > 0
+    all_indices = itertools.product(list(range(2)), repeat=D-1) # just the index range for the more significant bits
+    diag_len = N_1D_FEM - 1
+    x_offset_diag = np.zeros(diag_len)
+    for start_indices in all_indices:
+        diag = get_xs_subvector(D, xs, [[1,N_1D_FEM-1]]) # get the diagonal values (except for zero values)
+
+        diag_zero_inserts = diag
+        x_offset_diag += coef * diag_zero_inserts # above the main diagonal
+    diagonals.append(x_offset_diag)
+    diagonals.append(x_offset_diag)
+    offsets.append(1)
+    offsets.append(-1)
+
+    return spsp.diags(diagonals, offsets)
+
 # assume domain is 1 so h = 1/2^L, factor out the h^D term
 # craft the matrix by taking the linear combination of diagonal matrices, each of which 
 # can be efficiently block-encoded and then ocmbined with LCU.
@@ -431,7 +588,6 @@ def get_xs_subvector(D, xs_list, index_ranges):
 def get_2D_mass_matrix_LCU(D, L, xs):
     N_1D_FEM = 2**L - 1
     N_total = N_1D_FEM**D
-    M = np.zeros((N_total, N_total))
 
     diagonals = [] # list of diagonal arrays
     offsets = [] # list of offsets corresponding to the diagonals
@@ -518,7 +674,6 @@ def get_2D_mass_matrix_LCU(D, L, xs):
 def get_2D_diffusion_matrix_LCU(D, L, xs):
     N_1D_FEM = 2**L - 1
     N_total = N_1D_FEM**D
-    M = np.zeros((N_total, N_total))
 
     diagonals = [] # list of diagonal arrays
     offsets = [] # list of offsets corresponding to the diagonals
@@ -599,3 +754,35 @@ def get_2D_diffusion_matrix_LCU(D, L, xs):
     offsets.append(-N_1D_FEM-1)
 
     return spsp.diags(diagonals, offsets)
+
+
+# return the mass matrix for a D-dimensional domain with 2^(L_f) node in each dimension
+# xs is the D-dimensional (2^L_m x 2^L_m x ... ) numpy matrix representing the material
+# discretization of the problem 
+def get_mass_matrix_LCU(D, L_f, mat_L, xs):
+    N_f = int(2**L_f)
+    xs_fine = np.kron(xs, np.ones((int(2**(L_f-mat_L)),) * D))
+    mass_matrix = np.zeros(((N_f-1)**D, (N_f-1)**D))
+    for offsets in itertools.product([-1,0,1], repeat=D):
+        idx_starts = [[0,1]]*D # start indices for the submatrices to create the diagonals of the mass matrix
+        xs_fine_temp = xs_fine.copy()
+        for d, offset in enumerate(offsets): # d=0 is most significant 
+            if offset == -1:
+                xs_fine_temp = xs_fine_temp[(slice(None),)*d + (slice(0, N_f-1),)] # leaves the first d dimensions unchanged, removes the last index of dimension d
+                xs_fine_temp[(slice(None),)*d + (slice(0, 1),) + (slice(None),)*(D-d-1)] = 0 # leaves the first d dimensions unchanged, sets index 0 of dimension d to 0, leaves the remaining D-d-1 dimensions unchanged
+                idx_starts[d] = [0]
+            if offset == 1:
+                xs_fine_temp = xs_fine_temp[(slice(None),)*d + (slice(1, None),)] # leaves the first d dimensions unchanged, removes the first index of dimension d
+                xs_fine_temp[(slice(None),)*d + (slice(N_f-2, N_f-1),) + (slice(None),)*(D-d-1)] = 0 # leaves the first d dimensions unchanged, sets the last index of dimension d to 0, leaves the remaining D-d-1 dimensions unchanged
+                idx_starts[d] = [0]
+        diag_vec = np.zeros((N_f-1)**D)
+        for idx_start in itertools.product(*idx_starts):
+            temp_vec = xs_fine_temp[tuple(slice(idx_start[d], idx_start[d] + (N_f - 1)) for d in range(D))]
+            diag_vec += temp_vec.flatten()
+        diag_mat = np.diag(diag_vec)
+        offset_magnitudes = np.array([(N_f-1)**d for d in range(D-1,-1,-1)])
+        offset = sum(np.array(offsets) * offset_magnitudes)
+        diag_mat = np.roll(diag_mat, shift=offset, axis=0)
+        mass_matrix += diag_mat
+    return mass_matrix
+

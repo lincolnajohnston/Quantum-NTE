@@ -14,64 +14,52 @@ import itertools
 from fast_inversion.BPX import FEM_BPX_helpers as FEM
 import time
 
-def get_eigenvalue(D, L, mat_L, diffusion_mat, absorption_xs, nu_fission_xs, f, doPlot=False):
+def get_eigenvalue(D, L, mat_L, R, diffusion_mat, absorption_xs, nu_fission_xs, sigma=0.0, doPlot=False):
     N_1D = int(2**(L))
-    h = 1/N_1D
+    h = R/N_1D
     N_total = int(N_1D**D)
     start_time = time.perf_counter()
 
+    # expand the material data to the finer grid (level L from level mat_L)
     diffusion_mat = np.kron(diffusion_mat, np.ones((int(2**(L-mat_L)),) * D))
-    diffusion_matrix = np.diag(diffusion_mat.flatten())
-    #diffusion_matrix = 2.5 * np.eye(int(2**(D*mat_L)))
     absorption_xs = np.kron(absorption_xs, np.ones((int(2**(L-mat_L)), int(2**(L-mat_L)))))
     nu_fission_xs = np.kron(nu_fission_xs, np.ones((int(2**(L-mat_L)), int(2**(L-mat_L)))))
+
+    ##########find the diffusion matrix ##########
     #L_mat_BPX = FEM.get_diffusion_matrix(D, L, diffusion_matrix)
     #P2 = np.kron(FEM.get_M1(L,np.ones(int(2**L))),FEM.get_P1(L,np.ones(int(2**L)))) + np.kron(FEM.get_P1(L,np.ones(int(2**L))),FEM.get_M1(L,np.ones(int(2**L))))
-    #L_mat = FEM.get_2D_diffusion_matrix_brute_force(L, D, diffusion_mat)
+    #L_mat_slow = FEM.get_2D_diffusion_matrix_brute_force(L, D, diffusion_mat)
     L_mat = FEM.get_2D_diffusion_matrix_LCU(D, L, diffusion_mat)
+    #L_mat_diff = L_mat_slow - L_mat
+    #L_mat_L2_error = np.linalg.norm(L_mat_diff.toarray())
     diffusion_mat_time = time.perf_counter()
 
-    # Assuming P2 is the correct diffusion matrix (but can only handle constant diffusion cross sections), what is the error of L_mat and L_mat_BPX
-    '''L_mat_error = L_mat - P2
-    L_mat_BPX_error = L_mat_BPX - P2
-    L_mat_L2_error = np.linalg.norm(L_mat_error)
-    L_mat_BPX_L2_error = np.linalg.norm(L_mat_BPX_error)'''
-
-    #L_mat = L_mat_BPX
-    #A_mat = FEM.get_mass_matrix_brute_force(L, D, absorption_xs)
-    A_mat = FEM.get_2D_mass_matrix_LCU(D, L, absorption_xs)
-    #C_mat = FEM.get_mass_matrix_brute_force(L, D, nu_fission_xs)
-    C_mat = FEM.get_2D_mass_matrix_LCU(D, L, nu_fission_xs)
+    ##########find the absorption and fission matrices ##########
+    #A_mat_slow = h**2 * FEM.get_mass_matrix_brute_force(L, D, absorption_xs)
+    A_mat = h**2 * FEM.get_2D_mass_matrix_LCU(D, L, absorption_xs)
+    #A_mat_diff = A_mat_slow - A_mat
+    #A_mat_L2_error = np.linalg.norm(A_mat_diff.toarray())
+    #C_mat_slow = h**2 * FEM.get_mass_matrix_brute_force(L, D, nu_fission_xs)
+    C_mat = h**2 * FEM.get_2D_mass_matrix_LCU(D, L, nu_fission_xs)
+    #C_mat_diff = C_mat_slow - C_mat
+    #C_mat_L2_error = np.linalg.norm(C_mat_diff.toarray())
     mass_mat_time = time.perf_counter()
 
-    K = (L_mat + A_mat).tocsr()
-    M = C_mat.tocsr()
-
-    # if a function was made for interpolating a coarser solution to get a good initial guess, use it
-    # Finer grid
-    finer_x = np.linspace(0, 1, N_1D-1)
-    finer_y = np.linspace(0, 1, N_1D-1)
-    # Interpolate
-    finer_mesh = f(finer_x, finer_y)
-    eigvec_guess = finer_mesh.flatten()
+    K = (L_mat + A_mat).tocsr() # left side matrix of generalized eigenvalue problem
+    M = C_mat.tocsr() # right side matrix of generalized eigenvalue problem
 
     if doPlot:
-        eigvals, eigvecs = eigsh(K,k=1,M=M,sigma=0.0,which='LM',tol=1e-6, v0 = eigvec_guess) # smallest eigenvalue (reactor fundamental mode)
+        eigvals, eigvecs = eigsh(K,k=1,M=M,sigma=sigma,which='LM') # find smallest lambda eigenvalue (reactor fundamental mode)
     else:
-        eigvals = eigsh(K,k=1,M=M,sigma=0.0,which='LM',tol=1e-6, return_eigenvectors=False) # smallest eigenvalue (reactor fundamental mode)
+        eigvals = eigsh(K,k=1,M=M,sigma=sigma,which='LM', return_eigenvectors=False) # find smallest lambda eigenvalue (reactor fundamental mode)
     eig_solve_time = time.perf_counter()
 
-    #eigvals_slow, eigvecs_slow = eigh(L_mat.toarray() + A_mat.toarray(), C_mat.toarray(), eigvals_only=False)
+    #eigvals_slow, eigvecs_slow = eigh(L_mat.toarray() + A_mat.toarray(), C_mat.toarray(), eigvals_only=False) # calculate the eigenvalues the slow way
+
+    # plot the eigenvector
     if doPlot:
         main_eigvec = eigvecs
         main_eigvec = main_eigvec.reshape((N_1D-1,) * D)
-
-        # get a good initial guess for the next level by doing interpolation of the current level (only set up for 2D here)
-        # Original coordinates
-        x = np.linspace(0, 1, N_1D-1)
-        y = np.linspace(0, 1, N_1D-1)
-        z = main_eigvec
-        f = interp2d(x, y, z, kind='linear')
 
         plt.imshow(main_eigvec, cmap='jet', interpolation='nearest')
 
@@ -81,41 +69,58 @@ def get_eigenvalue(D, L, mat_L, diffusion_mat, absorption_xs, nu_fission_xs, f, 
         plt.ylabel('y index')
         plt.show()
 
+    # print time it took to perform each task
     plot_time = time.perf_counter()
+    print("----------------------------------")
+    print("L = ", L)
     print("Diffusion matrix time: ", diffusion_mat_time - start_time)
     print("Mass matrix time: ", mass_mat_time - diffusion_mat_time)
     print("Eigenvalue solve time: ", eig_solve_time - diffusion_mat_time)
     print("Plot time: ", plot_time - eig_solve_time)
+    print("----------------------------------\n")
 
-    return eigvals[0], f
+    return eigvals[0]
 
 def main():
-    D = 2
-    L_list = range(3,9)
-    mat_L = 1
-    diffusion_mat = np.array([[1, 200],[200, 1]]) # 2D
-    #diffusion_mat = np.array([[0.1, 200, 0.1, 200],[200, 0.1, 200, 0.1],[0.1, 200, 0.1, 200],[200, 0.1, 200, 0.1],]) # 2D
-    #diffusion_mat = np.array([1,2]) # 1D
-    absorption_xs = np.array([[0.7, 0.6],[0.6, 0.7]])
-    #absorption_xs = np.array([[0.8, 0.8, 0.8, 0.8],[0.8, 0.8, 0.8, 0.8],[0.8, 0.8, 0.8, 0.8],[0.8, 0.8, 0.8, 0.8]])
-    #absorption_xs = np.array([[0, 0],[0, 0]])
-    nu_fission_xs = np.array([[0.9, 0.8],[0.8, 0.9]])
-    #nu_fission_xs = np.array([[0.9, 0.9,0.9,0.9],[0.9, 0.9,0.9,0.9],[0.9, 0.9,0.9,0.9],[0.9, 0.9,0.9,0.9]])
+    D = 2 # dimensions
+    L_list = range(4,11) # list of FEM levels to test
 
-    # set up initial guess
-    x = np.linspace(0, 1, 2)
-    y = np.linspace(0, 1, 2)
-    z = np.ones(4)
-    f = interp2d(x, y, z, kind='linear')
+    # cross sections
+    R = 10 # range of problem (in every dimension)
+    D_1 = 0.1 # diffusion coefficient in region 1 (1/cm)
+    D_2 = 200 # diffusion coefficient in region 2 (1/cm)
+    sigma_a_1 = 0.8 # macroscopic absorption cross section in region 1 (1/cm)
+    sigma_a_2 = 0.5 # macroscopic absorption cross section in region 2 (1/cm)
+    sigma_f_1 = 0.9 # macroscopic nu*fission cross section in region 1 (1/cm)
+    sigma_f_2 = 0.1 # macroscopic nu*fission cross section in region 2 (1/cm)
+    diffusion_mat_base = np.array([[D_1, D_2],[D_2, D_1]]) # 2D, mat_L=1
+    absorption_xs_base = np.array([[sigma_a_1, sigma_a_2],[sigma_a_2, sigma_a_1]]) # 2D, mat_L=1
+    nu_fission_xs_base = np.array([[sigma_f_1, sigma_f_2],[sigma_f_2, sigma_f_1]]) # 2D, mat_L=1
 
+    # set up the 2D matrices of material properties (diffusion coefs and cross sections)
+    mat_L = 2 # the number of checkerboard spaces is 2^(D*mat_L)
+    diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base)
+    absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
+    nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)
 
+    # calculate the eigenvalues for each of the Levels being tested
     eigenvalue_list = []
     for L in L_list:
-        eigenvalue, f = get_eigenvalue(D, L, mat_L, diffusion_mat, absorption_xs, nu_fission_xs, f, doPlot=True)
+        # calculate sigma, a lower bound on the lambda eigenvalue, using the previous eigenvalues found
+        if len(eigenvalue_list) > 1:
+            sigma = eigenvalue_list[-1] - 5*(eigenvalue_list[-2] - eigenvalue_list[-1]) # if there are at least two previous eigenvalues calculated, use those to find a lower bound on the next eigenvalue (this is not precise)
+        else:
+            sigma=0
+        eigenvalue = get_eigenvalue(D, L, mat_L, R, diffusion_mat, absorption_xs, nu_fission_xs, sigma=sigma, doPlot=True) # create the problem matrices and return the principal eigenvalue
         eigenvalue_list.append(eigenvalue)
+
+    # find the exponents, p, on h using the eigenvalues found
     p = []
     for i in range(2,len(eigenvalue_list)):
         p.append(math.log((eigenvalue_list[i-2] - eigenvalue_list[i-1]) / (eigenvalue_list[i-1] - eigenvalue_list[i])) / math.log(4))
+
+
+    # plot results
     plt.plot(L_list, eigenvalue_list)
     plt.title("lambda eigenvalue vs L")
     plt.xlabel("L")
@@ -128,8 +133,14 @@ def main():
     plt.ylabel("p")
     plt.show()
 
+
+    # print results
     print("L values: ", list(L_list[2:]))
-    print("p values: ", p)
+    print("p values: ", p, "\n")
+
+    print("L values: ", list(L_list))
+    print("lambda eigenvalues: ", eigenvalue_list)
+    print("done")
     
     
 if __name__ == "__main__":

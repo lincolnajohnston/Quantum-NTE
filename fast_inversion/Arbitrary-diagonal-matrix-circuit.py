@@ -46,6 +46,7 @@ def controlled_increment(qc, control, T, anc, start=0):
         qc.cx(carry, anc[j - start])
 
 # flip the bits in the "anc" register if the "x" register is in a state between min_state(inclusive) and max_state(exclusive)
+# I think this takes O(n) Clifford + T gates where n is the number of qubits being compared
 def apply_comparators(qc, x, x_anc, anc, min_state=0, max_state=0, backwards=False):
     integer_comp_low = IntegerComparator(num_state_qubits=len(x), value=min_state, geq=True)
     integer_comp_high = IntegerComparator(num_state_qubits=len(x), value=max_state, geq=False)
@@ -58,14 +59,15 @@ def apply_comparators(qc, x, x_anc, anc, min_state=0, max_state=0, backwards=Fal
         qc.append(integer_comp_high, x[:] + anc[2:3] + x_anc[:len(x)-1])
 
 # controlled upon the comparator flag qubits, apply a rotation that sets the diagonal value to sigma/sigma_max
+# We can apply these 2 qubit rotation gates to precision epsilon using log(1/epsilon) Clifford + T gates
 def apply_rotation_to_xs(qc, anc, xs_val):
     rotation_gate = RYGate(2*np.arccos(xs_val)).control(2)
     qc.append(rotation_gate, anc[::-1])
 
 
 L_mat = 2
-L = 3
-N_mat = int(2**L_mat)
+L = 4
+N_mat = int(2**L_mat) # total number of distinct materials (assuming 1 dimension), more generally, the minimum number of blocks of identical diagonal values needed to represent the diagonal matrix 
 N = int(2**L)
 
 xs_list = np.array(range(N_mat))
@@ -77,14 +79,14 @@ x_anc = QuantumRegister(L, 'x_anc') # ancilla qubits used for comparator circuit
 
 qc = QuantumCircuit(x, anc, x_anc)
 dN = int(N/N_mat)
-for i in range(N_mat):
-    apply_comparators(qc, x, x_anc, anc, min_state=i*dN, max_state=(i+1)*dN, backwards=False)
-    apply_rotation_to_xs(qc, anc, xs_list[i]/xs_max)
-    apply_comparators(qc, x, x_anc, anc, min_state=i*dN, max_state=(i+1)*dN, backwards=True) # uncompute comparator flag qubits
+for i in range(N_mat): # O(N_mat * n * log(1/epsilon)) elementary gates
+    apply_comparators(qc, x, x_anc, anc, min_state=i*dN, max_state=(i+1)*dN, backwards=False) # O(n) elementary (Clifford + T) gates
+    apply_rotation_to_xs(qc, anc, xs_list[i]/xs_max) # O(log(1/epsilon)) elementary (Clifford + T) gates
+    apply_comparators(qc, x, x_anc, anc, min_state=i*dN, max_state=(i+1)*dN, backwards=True) # uncompute comparator flag qubits, O(n) elementary (Clifford + T) gates
 
 # get the unitary of the circuit
 U = Operator(qc).data
-#print(U)
+print(U)
 
 # run the circuit, produce statevector results
 print(qc.draw(fold=120)) # print the circuit to the command line
