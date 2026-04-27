@@ -786,3 +786,106 @@ def get_mass_matrix_LCU(D, L_f, mat_L, xs):
         mass_matrix += diag_mat
     return mass_matrix
 
+
+# do the same thing as get_mass_matrix_LCU except use a more similar strategy to what a quantum computer would do,
+# combine a set of offset diagonal matrices, each of which are constructed by testing the input index and applying
+# a rotation to encode a cross section based on that index
+def get_mass_matrix_LCU_vectors_test(D, L_f, mat_L, xs):
+    N_f = int(2**L_f)
+    N_mat = int(2**mat_L)
+    delta_N = int(2**(L_f - mat_L)) # number of dicrete cells in the FEM space per cell in the material grid
+    offset_magnitudes = np.array([(N_f-1)**d for d in range(D-1,-1,-1)])
+    xs_fine = np.kron(xs, np.ones((int(2**(L_f-mat_L)),) * D))
+    mass_matrix_vecs = []
+
+    ## OUTER LOOP: each iteration defines the values in a diagonal (potentially with an offset)
+    for offsets in itertools.product([-1,0,1], repeat=D): # The 3^D different diagonals that make up the mass matrix
+        idx_starts = [] # start indices for the submatrices to create the diagonals of the mass matrix
+        nullified_indices = [] # indices where cross sections are "set to zero" because they are invalid values (outside domain etc)
+        for d, offset in enumerate(offsets): # d=0 is most significant 
+            if offset == -1:
+                 idx_starts.append([0])
+                 nullified_indices.append(0)
+            if offset == 0:
+                idx_starts.append([0,1])
+                nullified_indices.append(-1) # dummy value becasue no indices are nullified
+            if offset == 1:
+                idx_starts.append([1])
+                nullified_indices.append(N_f-1)
+        scale_factor = 2**(sum([off == 0 for off in offsets])) / 6**D # multiplicative factor of 2 for non-offset diagonals (in each dimension), total matrix scaling factor of 1/6^D
+
+        # INNER LOOP: Defines the terms within each diagonal (2^(number of 0 offsets)) per outer loop, 4^D total iterations
+        for idx_start in itertools.product(*idx_starts):
+            diag_vec = np.zeros((N_f-1)**D)
+            for fine_index in range(len(diag_vec)): # iterate through each fine cell, very computationally inefficient classically, but quantumly this can be done coherently with all indices
+                fine_index_rolled = np.array(idx_start) + [(fine_index // (N_f-1)**d) % (N_f-1) for d in reversed(range(D))] # in a quantum circuit, the operations on fine_index are the operation on incoming bit string
+                mat_index_rolled = [fine_index_rolled[i] // delta_N for i in range(D)] # these rolled material indices can then be stored and controlled on to apply a rotation that encodes the cross section for that material region
+                diag_vec[fine_index] = 0 if any(a == b for a, b in zip(fine_index_rolled, nullified_indices)) else xs[*mat_index_rolled]
+            offset = sum(np.array(offsets) * offset_magnitudes)
+            mass_matrix_vecs.append((scale_factor * diag_vec, offset))
+
+    # combine the offset diagonal vectors into a matrix
+    mass_matrix = np.zeros(((N_f-1)**D, (N_f-1)**D))
+    for diag_vec,offset in mass_matrix_vecs:
+        mass_matrix += np.roll(np.diag(diag_vec), shift=offset, axis=0)
+    return mass_matrix
+
+
+
+D = 2 # dimensions
+L = 3
+
+# cross sections
+# data I have been using: R=10. D1=0.1, D2=200, sigma_a_1=0.8, sigma_a_2=0.5, sigma_f_1=0.9, sigma_f_2=0.1
+R = 1 # range of problem (in every dimension)
+D_1 = 1.0 # diffusion coefficient in region 1 (1/cm)
+D_2 = 10.0 # diffusion coefficient in region 2 (1/cm)
+sigma_a_1 = 1.0 # macroscopic absorption cross section in region 1 (1/cm)
+sigma_a_2 = 2.0 # macroscopic absorption cross section in region 2 (1/cm)
+sigma_f_1 = 0.0 # macroscopic nu*fission cross section in region 1 (1/cm)
+sigma_f_2 = 2.0 # macroscopic nu*fission cross section in region 2 (1/cm)
+#diffusion_mat_base = np.array([D_1, D_2]) # 1D, mat_L=1
+#absorption_xs_base = np.array([sigma_a_1, sigma_a_2]) # 1D, mat_L=1
+#nu_fission_xs_base = np.array([sigma_f_1, sigma_f_2]) # 1D, mat_L=1
+diffusion_mat_base = np.array([[D_1, D_2],[D_2, D_1]]) # 2D, mat_L=1
+absorption_xs_base = np.array([[sigma_a_1, sigma_a_2],[sigma_a_2, sigma_a_1]]) # 2D, mat_L=1
+nu_fission_xs_base = np.array([[sigma_f_1, sigma_f_2],[sigma_f_2, sigma_f_1]]) # 2D, mat_L=1
+#diffusion_mat_base = np.array([[[D_1, D_2],[D_2, D_1]],[[D_2, D_1],[D_1, D_2]]]) # 3D, mat_L=1
+#absorption_xs_base = np.array([[[sigma_a_1, sigma_a_2],[sigma_a_2, sigma_a_1]],[[sigma_a_2, sigma_a_1],[sigma_a_1, sigma_a_2]]]) # 3D, mat_L=1
+#nu_fission_xs_base = np.array([[[sigma_f_1, sigma_f_2],[sigma_f_2, sigma_f_1]],[[sigma_f_2, sigma_f_1],[sigma_f_1, sigma_f_2]]]) # 3D, mat_L=1
+
+# set up the 2D matrices of material properties (diffusion coefs and cross sections)
+mat_L = 2 # the number of checkerboard spaces is 2^(D*mat_L)
+'''if mat_L == 0:
+    diffusion_mat = np.array([[D_1]])
+    absorption_xs = np.array([[sigma_a_1]])
+    nu_fission_xs = np.array([[sigma_f_1]])
+else:
+    diffusion_mat = np.kron(np.ones((2**(mat_L-1))), diffusion_mat_base)
+    absorption_xs = np.kron(np.ones((2**(mat_L-1))), absorption_xs_base)
+    nu_fission_xs = np.kron(np.ones((2**(mat_L-1))), nu_fission_xs_base)'''
+if mat_L == 0:
+    diffusion_mat = np.array([[D_1]])
+    absorption_xs = np.array([[sigma_a_1]])
+    nu_fission_xs = np.array([[sigma_f_1]])
+else:
+    diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base) # 2D expansion of material grid
+    absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
+    nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)
+'''if mat_L == 0:
+    diffusion_mat = np.array([[D_1]])
+    absorption_xs = np.array([[sigma_a_1]])
+    nu_fission_xs = np.array([[sigma_f_1]])
+else:
+    diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base) # 3D expansion of material grid
+    absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
+    nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)'''
+
+N_1D = int(2**(L))
+h = R/N_1D
+
+A_mat_old = get_2D_mass_matrix_LCU(D, L, np.kron(absorption_xs, np.ones((int(2**(L-mat_L)),) * D)))
+A_mat = get_mass_matrix_LCU(D, L, mat_L, absorption_xs)
+A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors_test(D, L, mat_L, absorption_xs)
+A_mat_diff = A_mat_diag_vecs_test - A_mat_old.toarray()
+print(A_mat)
