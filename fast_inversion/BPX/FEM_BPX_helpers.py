@@ -790,44 +790,116 @@ def get_mass_matrix_LCU(D, L_f, mat_L, xs):
 # do the same thing as get_mass_matrix_LCU except use a more similar strategy to what a quantum computer would do,
 # combine a set of offset diagonal matrices, each of which are constructed by testing the input index and applying
 # a rotation to encode a cross section based on that index
-def get_mass_matrix_LCU_vectors_test(D, L_f, mat_L, xs):
-    N_f = int(2**L_f)
-    N_mat = int(2**mat_L)
-    delta_N = int(2**(L_f - mat_L)) # number of dicrete cells in the FEM space per cell in the material grid
-    offset_magnitudes = np.array([(N_f-1)**d for d in range(D-1,-1,-1)])
-    xs_fine = np.kron(xs, np.ones((int(2**(L_f-mat_L)),) * D))
-    mass_matrix_vecs = []
+def get_mass_matrix_LCU_vectors(D, L_f, mat_L, xs, BC="Dirichlet"):
+    N = int(2**L_f) # size of the fine FEM cell discretization
 
-    ## OUTER LOOP: each iteration defines the values in a diagonal (potentially with an offset)
-    for offsets in itertools.product([-1,0,1], repeat=D): # The 3^D different diagonals that make up the mass matrix
-        idx_starts = [] # start indices for the submatrices to create the diagonals of the mass matrix
-        nullified_indices = [] # indices where cross sections are "set to zero" because they are invalid values (outside domain etc)
-        for d, offset in enumerate(offsets): # d=0 is most significant 
-            if offset == -1:
-                 idx_starts.append([0])
-                 nullified_indices.append(0)
-            if offset == 0:
-                idx_starts.append([0,1])
-                nullified_indices.append(-1) # dummy value becasue no indices are nullified
-            if offset == 1:
-                idx_starts.append([1])
-                nullified_indices.append(N_f-1)
-        scale_factor = 2**(sum([off == 0 for off in offsets])) / 6**D # multiplicative factor of 2 for non-offset diagonals (in each dimension), total matrix scaling factor of 1/6^D
+    # N_f is the number of FEM basis functions per dimension (size of mass matrix per dimension)
+    if BC == "Dirichlet":
+        N_f = N - 1
+    elif BC == "Vacuum":
+        N_f = N + 1
 
-        # INNER LOOP: Defines the terms within each diagonal (2^(number of 0 offsets)) per outer loop, 4^D total iterations
-        for idx_start in itertools.product(*idx_starts):
-            diag_vec = np.zeros((N_f-1)**D)
-            for fine_index in range(len(diag_vec)): # iterate through each fine cell, very computationally inefficient classically, but quantumly this can be done coherently with all indices
-                fine_index_rolled = np.array(idx_start) + [(fine_index // (N_f-1)**d) % (N_f-1) for d in reversed(range(D))] # in a quantum circuit, the operations on fine_index are the operation on incoming bit string
-                mat_index_rolled = [fine_index_rolled[i] // delta_N for i in range(D)] # these rolled material indices can then be stored and controlled on to apply a rotation that encodes the cross section for that material region
-                diag_vec[fine_index] = 0 if any(a == b for a, b in zip(fine_index_rolled, nullified_indices)) else xs[*mat_index_rolled]
-            offset = sum(np.array(offsets) * offset_magnitudes)
-            mass_matrix_vecs.append((scale_factor * diag_vec, offset))
+    if BC == "Dirichlet":
+        N_mat = int(2**mat_L) # size of the material grid in each dimension
+        delta_N = int(2**(L_f - mat_L)) # number of dicrete cells in the FEM space per cell in the material grid
+        offset_magnitudes = np.array([(N_f)**d for d in range(D-1,-1,-1)])
+        xs_fine = np.kron(xs, np.ones((int(2**(L_f-mat_L)),) * D))
+        mass_matrix_vecs = []
 
-    # combine the offset diagonal vectors into a matrix
-    mass_matrix = np.zeros(((N_f-1)**D, (N_f-1)**D))
-    for diag_vec,offset in mass_matrix_vecs:
-        mass_matrix += np.roll(np.diag(diag_vec), shift=offset, axis=0)
+        ## OUTER LOOP: each iteration defines the values in a diagonal (potentially with an offset)
+        for offsets in itertools.product([-1,0,1], repeat=D): # The 3^D different diagonals that make up the mass matrix
+            idx_starts = [] # start indices for the submatrices to create the diagonals of the mass matrix
+            nullified_indices = [] # indices where cross sections are "set to zero" because they are invalid values (outside domain etc)
+            for d, offset in enumerate(offsets): # d=0 is most significant 
+                if offset == -1:
+                    idx_starts.append([0])
+                    nullified_indices.append(0)
+                if offset == 0:
+                    idx_starts.append([0,1])
+                    nullified_indices.append(-1) # dummy value becasue no indices are nullified
+                if offset == 1:
+                    idx_starts.append([1])
+                    nullified_indices.append(N_f)
+            scale_factor = 2**(sum([off == 0 for off in offsets])) / 6**D # multiplicative factor of 2 for non-offset diagonals (in each dimension), total matrix scaling factor of 1/6^D
+
+            # INNER LOOP: Defines the terms within each diagonal (2^(number of 0 offsets)) per outer loop, 4^D total iterations
+            for idx_start in itertools.product(*idx_starts):
+                diag_vec = np.zeros((N_f)**D)
+                for fine_index in range(len(diag_vec)): # iterate through each fine cell, very computationally inefficient classically, but quantumly this can be done coherently with all indices
+                    fine_index_rolled = np.array(idx_start) + [(fine_index // (N_f)**d) % (N_f) for d in reversed(range(D))] # in a quantum circuit, the operations on fine_index are the operation on incoming bit string
+
+                    # these rolled material indices can then be stored and controlled on to apply a rotation that encodes the cross section for that material region
+                    mat_index_rolled = [fine_index_rolled[i] // delta_N for i in range(D)]
+
+                    valid_index = True # qubit to determine whether to apply the xs
+                    for d in range(D):
+                        if(fine_index_rolled[d] == nullified_indices[d] and valid_index == True): # comparator gate between the fine index for dimension d and a preset register containing the integer nullified_indices[d]
+                            valid_index = False # controlled on the result of the comparator gate, flip this boolean qubit
+
+                    if valid_index:
+                        diag_vec[fine_index] = xs[*mat_index_rolled] # xs rotation
+                    else:
+                        diag_vec[fine_index] = 0 # apply X Pauli gate to make the value 0 in the diagonal
+
+                offset = sum(np.array(offsets) * offset_magnitudes)
+                mass_matrix_vecs.append((scale_factor * diag_vec, offset))
+
+        # combine the offset diagonal vectors into a matrix
+        mass_matrix = np.zeros(((N_f)**D, (N_f)**D))
+        for diag_vec,offset in mass_matrix_vecs:
+            mass_matrix += np.roll(np.diag(diag_vec), shift=offset, axis=0)
+
+    elif BC == "Vacuum":
+        # TODO: figure out how to do the vacuum BC, now the FEM A matrix is bigger than the cell grid matrix, so instead of taking 2 shifted submatrices
+        # for two different terms of the same diagonal when the offset is 0, you take the same entire matrix but offset within the diagonal
+        N_mat = int(2**mat_L) # size of the material grid in each dimension
+        delta_N = int(2**(L_f - mat_L)) # number of dicrete cells in the FEM space per cell in the material grid
+        offset_magnitudes = np.array([(N_f)**d for d in range(D-1,-1,-1)])
+        xs_fine = np.kron(xs, np.ones((int(2**(L_f-mat_L)),) * D))
+        mass_matrix_vecs = []
+
+        ## OUTER LOOP: each iteration defines the values in a diagonal (potentially with an offset)
+        for offsets in itertools.product([-1,0,1], repeat=D): # The 3^D different diagonals that make up the mass matrix
+            idx_starts = [] # start indices for the submatrices to create the diagonals of the mass matrix
+            nullified_indices = [] # indices where cross sections are "set to zero" because they are invalid values (outside domain etc)
+            for d, offset in enumerate(offsets): # d=0 is most significant 
+                if offset == -1:
+                    idx_starts.append([0])
+                    nullified_indices.append(0)
+                if offset == 0:
+                    idx_starts.append([0,1])
+                    nullified_indices.append(-1) # dummy value becasue no indices are nullified
+                if offset == 1:
+                    idx_starts.append([1])
+                    nullified_indices.append(N_f)
+            scale_factor = 2**(sum([off == 0 for off in offsets])) / 6**D # multiplicative factor of 2 for non-offset diagonals (in each dimension), total matrix scaling factor of 1/6^D
+
+            # INNER LOOP: Defines the terms within each diagonal (2^(number of 0 offsets)) per outer loop, 4^D total iterations
+            for idx_start in itertools.product(*idx_starts):
+                diag_vec = np.zeros((N_f)**D)
+                for fine_index in range(len(diag_vec)): # iterate through each fine cell, very computationally inefficient classically, but quantumly this can be done coherently with all indices
+                    fine_index_rolled = np.array(idx_start) + [(fine_index // (N_f)**d) % (N_f) for d in reversed(range(D))] # in a quantum circuit, the operations on fine_index are the operation on incoming bit string
+
+                    # these rolled material indices can then be stored and controlled on to apply a rotation that encodes the cross section for that material region
+                    mat_index_rolled = [fine_index_rolled[i] // delta_N for i in range(D)]
+
+                    valid_index = True # qubit to determine whether to apply the xs
+                    for d in range(D):
+                        if(fine_index_rolled[d] == nullified_indices[d] and valid_index == True): # comparator gate between the fine index for dimension d and a preset register containing the integer nullified_indices[d]
+                            valid_index = False # controlled on the result of the comparator gate, flip this boolean qubit
+
+                    if valid_index:
+                        diag_vec[fine_index] = xs[*mat_index_rolled] # xs rotation
+                    else:
+                        diag_vec[fine_index] = 0 # apply X Pauli gate to make the value 0 in the diagonal
+
+                offset = sum(np.array(offsets) * offset_magnitudes)
+                mass_matrix_vecs.append((scale_factor * diag_vec, offset))
+
+        # combine the offset diagonal vectors into a matrix
+        mass_matrix = np.zeros(((N_f)**D, (N_f)**D))
+        for diag_vec,offset in mass_matrix_vecs:
+            mass_matrix += np.roll(np.diag(diag_vec), shift=offset, axis=0)
     return mass_matrix
 
 
@@ -884,8 +956,12 @@ else:
 N_1D = int(2**(L))
 h = R/N_1D
 
+# Dirichlet BCs
 A_mat_old = get_2D_mass_matrix_LCU(D, L, np.kron(absorption_xs, np.ones((int(2**(L-mat_L)),) * D)))
 A_mat = get_mass_matrix_LCU(D, L, mat_L, absorption_xs)
-A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors_test(D, L, mat_L, absorption_xs)
+A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors(D, L, mat_L, absorption_xs, BC='Dirichlet')
 A_mat_diff = A_mat_diag_vecs_test - A_mat_old.toarray()
-print(A_mat)
+
+# Vacuum BCs
+A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors(D, L, mat_L, absorption_xs, BC="Vacuum")
+
