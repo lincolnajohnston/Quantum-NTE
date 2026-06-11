@@ -750,38 +750,46 @@ if __name__ == "__main__":
     # coefficients for the phi^{\alpha}_{l,m} functions (which will only be non-zero when l and m are close to l' and m' and l < L_max).
     # Each row will be a different combo of l',m', and alpha' and the columns are the combo of l, m, and alpha
 
-    L_max = 8
-    dim1 = 1 # 0 is for x, 1 is for y, 2 is for z
-    dim2 = 1 # 0 is for x, 1 is for y, 2 is for z
-    N = int(0.5 * (L_max) * (L_max + 1))  # total term in the sum of l and m indices is 0.5 * (L_max + 1) * (L_max + 2)
-    M = np.zeros((2*N,2*N)) # 2 factor is for the c and s values for alpha
+    L_max = 4
+    dim1 = 0 # 0 is for x, 1 is for y, 2 is for z
+    dim2 = 0 # 0 is for x, 1 is for y, 2 is for z
+    N_c = int(0.5 * (L_max + 1) * (L_max + 2))  # total term in the sum of l and m indices is 0.5 * (L_max + 1) * (L_max + 2) for the cosine terms
+    N_s = int(0.5 * (L_max) * (L_max + 1))  # total term in the sum of l and m indices is 0.5 * (L_max) * (L_max + 1) for the sine terms, fewer because m=0 is not included
+    M = np.zeros((N_c + N_s,N_c + N_s))
     moment = sOSM(dim1=0, dim2=0, l1=0, l2=0, m1=0, m2=0, phase1=0, phase2=0)
 
-    row_i = 0  # ranges from 0 to 2N-1 for each of the basis functions multiplied and integrated over
+    row_i = 0  # ranges from 0 to N_c+N_s-1 for each of the basis functions multiplied and integrated over
     for alpha_p in range(2): # 0 is for cosine, 1 is for sine
         for l_p in range(L_max + 1):
-            for m_p in range(1, l_p + 1):
-                col_i = 0 # ranges from 0 to N-1 for eachl and m combination (sine and cosine forms set at the same time)
+            for m_p in range(alpha_p, l_p + 1):
+                col_c_i = 0 # ranges from 0 to N_c-1 for each l and m combination (sine and cosine forms set at the same time)
+                col_s_i = 0 # ranges from 0 to N_s-1 for each l and m combination (sine and cosine forms set at the same time)
                 for l in range(L_max  + 1):
-                    for m in range(1, l + 1):
+                    for m in range(l + 1):
                         # cosine moment term
                         moment.set(dim1=dim1, dim2=dim2, l1=l_p, l2=l, m1=m_p, m2=m, phase1=alpha_p, phase2=0) # alpha=cosine
-                        M[row_i, col_i] += moment.get_moment()
+                        M[row_i, col_c_i] += moment.get_moment()
 
                         # sine moment term
-                        moment.set(dim1=dim1, dim2=dim2, l1=l_p, l2=l, m1=m_p, m2=m, phase1=alpha_p, phase2=1) # alpha=sine
-                        M[row_i, col_i + N] += moment.get_moment()
+                        if m != 0:
+                            moment.set(dim1=dim1, dim2=dim2, l1=l_p, l2=l, m1=m_p, m2=m, phase1=alpha_p, phase2=1) # alpha=sine
+                            M[row_i, col_s_i + N_c] += moment.get_moment()
+                            col_s_i += 1
 
-                        col_i+=1
-                row_i+=1
+                        col_c_i+=1
+                    
+                row_i += 1
     
     M_sing_vals = np.linalg.svd(M, compute_uv=False)
     M_sing_max = M_sing_vals[0]
     M_sing_min = M_sing_vals[-1]
     M_cond = M_sing_max / M_sing_min
+
                                     
 
 
 
     #moment = sOSM(dim1=2, dim2=2, l1=0, l2=0, m1=0, m2=0, phase1=0, phase2=0)
     #print("Second-order streaming moment =", moment.GetMom())
+
+    print("Finished")

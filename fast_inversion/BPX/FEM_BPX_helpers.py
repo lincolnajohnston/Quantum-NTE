@@ -76,13 +76,21 @@ def get_R_l_1D_v(l):
     M2 = np.zeros((2**(l+1), 2**l + 1))
     # Modified M2 for vacuum BC, now an operation performing |i> -> 1/sqrt(2) (|2i> + |2i-1>) for 0 < i < 2**l and |0> -> 1/sqrt(2) |0> and |2**l> -> 1/sqrt(2)|2**(l+1)-1>
     for col in range(1,2**l):
-        M2[2*col+1, col] = 1
-        M2[2*(col+1), col] = 1
-    M2[0] = 0
-    M2[2**(l+1)-1] = 2**l
+        M2[2*col, col] = 1
+        M2[2*col-1, col] = 1
+    M2[0, 0] = 1
+    M2[2**(l+1)-1, 2**l] = 1
 
     test = 2**(-l/2) * M1 @ M2
     return 2**(-l/2) * M1 @ M2
+
+# return the 1D matrix for the Vacuum BC matrix (shuold be mapping from f(x) to delta(x)f(x)???)
+# should be a 2^(l+1) x 2^l + 1 matrix
+def get_B_l_1D_v(l):
+    B_L_1D = np.zeros((2**(l+1), 2**l + 1))
+    B_L_1D[0,0] = 1 # input of the leftmost half-hat function outputs the constant function in the leftmost region (in the gradient basis)
+    B_L_1D[2**(l+1)-2, 2**l] = 1 # input of the rightmost half-hat function outputs the constant function in the rightmost region (in the gradient basis)
+    return B_L_1D
 
 # ChatGPT function, changed the implementation now, not completely checked for correctness
 # return the Pi_l operator in the middle of page 15 of the Deiml paper
@@ -204,6 +212,32 @@ def getC_l_v(D, l):
     C_l = pi_l_C_l[pi_l_new, :]
     return C_l
 
+# get C_{lr}, the matrix that can be used to make the Robin surface integral matrix
+# just a modified version of the getC_l_v function
+def getC_l_r(D, l):
+    pi_l_C_l_r = csr_matrix((D*2**(D*(l+1)), (2**l + 1)**D), dtype=float)
+    for s in range(1,D+1):
+        pi_l_C_l_s = np.array([1])
+        for _ in range(1,s):
+            pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+        pi_l_C_l_s = np.kron(pi_l_C_l_s, get_B_l_1D_v(l))
+        for _ in range(s+1, D+1):
+            pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+        rows, cols = np.nonzero(pi_l_C_l_s)
+        pi_l_C_l_s_data = pi_l_C_l_s[rows, cols]
+
+        rows_g = rows + (s-1)*2**(D*(l+1))
+        cols_g = cols
+
+        update = coo_matrix((pi_l_C_l_s_data, (rows_g, cols_g)), shape=pi_l_C_l_r.shape)
+        pi_l_C_l_r += update.tocsr() 
+        
+        #pi_l_C_l[(s-1)*2**(D*(l+1)):s*2**(D*(l+1)), :] = pi_l_C_l_s
+    pi_l_star_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_l_new = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
+    C_l_r = pi_l_C_l_r[pi_l_new, :]
+    return C_l_r
+
 # get the basis change matrix from mutlilevel basis to the basis of the finest level
 def get_F(D, L):
     n_fine = int(math.pow(2,L)) # number of points in finest level
@@ -265,6 +299,54 @@ def get_F_v(D, L):
                 F[row,col] =  level_weight * np.prod(weight)
             col += 1
     return F
+
+# get the C_F matrix for 0 Dirichlet BCs
+def get_C_F(D, L):
+    CF_col_sections = [(2**l-1)**D for l in range(1,L+1)] # list of number of basis functions in each level
+
+    CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float)
+    for l in range(1,L+1):
+        C_l = getC_l(D, l)
+        
+        T_squiggle = get_T_squiggle(D, l, L)
+        level_weight = 2 ** (-l * (2-D) / 2)
+        CFl = level_weight * T_squiggle @ C_l # section s corresponding to level l of the CF matrix
+
+        CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl.toarray()
+    
+    return CF
+
+# get the C_F matrix for Vacuum Marshak BCs
+def get_C_F_v(D, L):
+    CF_col_sections = [(2**l+1)**D for l in range(1,L+1)] # list of number of basis functions in each level
+
+    CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float)
+    for l in range(1,L+1):
+        C_l_v = getC_l_v(D, l)
+        
+        T_squiggle = get_T_squiggle(D, l, L)
+        level_weight = 2 ** (-l * (2-D) / 2)
+        CFl = level_weight * T_squiggle @ C_l_v # section s corresponding to level l of the CF matrix
+
+        CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl.toarray()
+    
+    return CF
+
+# get the C_Fr matrix for Robin surface integral term
+def get_C_F_r(D, L):
+    CF_col_sections = [(2**l+1)**D for l in range(1,L+1)] # list of number of basis functions in each level
+
+    CF = csr_matrix((D * 2**(D*(L+1)), sum(CF_col_sections)), dtype=float)
+    for l in range(1,L+1):
+        C_l_r = getC_l_r(D, l)
+        
+        T_squiggle = get_T_squiggle(D, l, L)
+        level_weight = 2 ** (-l * (2-D) / 2)
+        CFl = level_weight * T_squiggle @ C_l_r # section s corresponding to level l of the CF matrix
+
+        CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl.toarray()
+    
+    return CF
 
 # return the F_prime matrix which does the multilevel to single level basis change without scaling each level by a constant
 def get_F_prime(D, L):
@@ -400,26 +482,28 @@ def get_mass_matrix_brute_force(L, D, xs):
     cols = []
     data = []
 
-    all_indices = itertools.product(range(N_1D_FEM), repeat=D)
+    all_indices = itertools.product(range(N_1D_FEM), repeat=D) # list of all row indices that will be iterated over
 
     for node_index in all_indices:
         node_index = np.array(node_index)
 
-        for offset in itertools.product(range(-1,2), repeat=D):
+        for offset in itertools.product(range(-1,2), repeat=D): # overlapping basis function offsets from node_index basis function in each dimension iterated over
             col_index = node_index + np.array(offset)
 
             # skip outside domain
-            if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM):
+            if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM): # If overlapping basis function index is outside domain, skip it
                 continue
 
             xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # get the coefficient in front of the matrix term
 
-            sigma_index_lower = node_index + [max(o,0) for o in offset]
-            sigma_index_upper = [min(col_index[i],node_index[i])+1 for i in range(D)]
+            # find the (inclusive) indices of the material grid that are summed over
+            sigma_index_lower = node_index + [max(o,0) for o in offset] # =node_index if offset is -1 or 0, =node_index+1 if offset is 1
+            sigma_index_upper = [min(col_index[i],node_index[i])+1 for i in range(D)] # =node_index if offset is -1, =node_index+1 if offset is 0 or 1
 
             xs_ranges = [range(sigma_index_lower[d], sigma_index_upper[d]+1) for d in range(D)]
 
             val = 0.0
+            # sum over integral value in each material region
             for xs_index in itertools.product(*xs_ranges):
                 val += xs_coef * xs[xs_index]
 
@@ -431,6 +515,76 @@ def get_mass_matrix_brute_force(L, D, xs):
             data.append(val)
 
     return coo_matrix((data,(rows,cols)),shape=(N_total,N_total)).tocsr()
+
+
+
+# get the mass matrix for the absorption or fission matrix (without the h^D factor in front) with Vacuum BCs
+def get_mass_matrix_v_brute_force(L, D, xs):
+    N_1D_FEM = 2**L + 1
+    N_total = N_1D_FEM**D
+
+    rows = []
+    cols = []
+    data = []
+
+    all_indices = itertools.product(range(N_1D_FEM), repeat=D) # list of all row indices that will be iterated over
+
+    for node_index in all_indices:
+        node_index = np.array(node_index)
+
+        for offset in itertools.product(range(-1,2), repeat=D): # overlapping basis function offsets from node_index basis function in each dimension iterated over
+            col_index = node_index + np.array(offset)
+
+            # skip outside domain
+            if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM): # If overlapping basis function index is outside domain, skip it
+                continue
+
+            xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # get the coefficient in front of the matrix term
+
+            # find the (inclusive) indices of the material grid that are summed over
+            sigma_index_lower = [max(node_index[i] + max(offset[i],0) - 1, 0) for i in range(D)] # =node_index-1 if offset is -1 or 0, =node_index if offset is 1
+            sigma_index_upper = [min(min(col_index[i],node_index[i]), N_1D_FEM-2) for i in range(D)] # =node_index-1 if offset is -1, =node_index if offset is 0 or 1
+
+            xs_ranges = [range(sigma_index_lower[d], sigma_index_upper[d]+1) for d in range(D)]
+
+            val = 0.0
+            # sum over integral value in each material region
+            for xs_index in itertools.product(*xs_ranges):
+                val += xs_coef * xs[xs_index]
+
+            i = unroll_index(N_1D_FEM, D, node_index)
+            j = unroll_index(N_1D_FEM, D, col_index)
+
+            rows.append(i)
+            cols.append(j)
+            data.append(val)
+
+    return coo_matrix((data,(rows,cols)),shape=(N_total,N_total)).tocsr()
+
+# returns the surface integral discretized matrix using the get_mass_matrix_v_brute_force function as a subroutine
+def get_Robin_matrix_v_brute_force(L, D):
+    N_1D_FEM = 2**L + 1
+    N_total = N_1D_FEM**D
+    h = 2**(-L)
+
+    abs_matrix = np.ones(2**(L))
+    I2 = h*get_mass_matrix_v_brute_force(L, 1, abs_matrix).toarray() # 1D mass matrix with another name
+    B = np.zeros((N_1D_FEM, N_1D_FEM)) # matrix of delta functions with i=0 and i=N
+    B[0,0] = 1/2
+    B[N_1D_FEM - 1, N_1D_FEM - 1] = 1/2
+
+    S2 = np.zeros((N_total, N_total))
+    for d in range(D):
+        S2_temp = np.array([1])
+        for i in range(d):
+            S2_temp = np.kron(S2_temp, I2)
+        S2_temp = np.kron(S2_temp, B)
+        for i in range(D-d-1):
+            S2_temp = np.kron(S2_temp, I2)
+        S2 += S2_temp
+    return S2
+    
+
 
 def get_2D_diffusion_matrix_brute_force(L, D, xs):
     N_1D_FEM = 2**L - 1
@@ -904,7 +1058,7 @@ def get_mass_matrix_LCU_vectors(D, L_f, mat_L, xs, BC="Dirichlet"):
 
 
 
-D = 2 # dimensions
+'''D = 2 # dimensions
 L = 3
 
 # cross sections
@@ -928,14 +1082,14 @@ nu_fission_xs_base = np.array([[sigma_f_1, sigma_f_2],[sigma_f_2, sigma_f_1]]) #
 
 # set up the 2D matrices of material properties (diffusion coefs and cross sections)
 mat_L = 2 # the number of checkerboard spaces is 2^(D*mat_L)
-'''if mat_L == 0:
-    diffusion_mat = np.array([[D_1]])
-    absorption_xs = np.array([[sigma_a_1]])
-    nu_fission_xs = np.array([[sigma_f_1]])
-else:
-    diffusion_mat = np.kron(np.ones((2**(mat_L-1))), diffusion_mat_base)
-    absorption_xs = np.kron(np.ones((2**(mat_L-1))), absorption_xs_base)
-    nu_fission_xs = np.kron(np.ones((2**(mat_L-1))), nu_fission_xs_base)'''
+#if mat_L == 0:
+#    diffusion_mat = np.array([[D_1]])
+#    absorption_xs = np.array([[sigma_a_1]])
+#    nu_fission_xs = np.array([[sigma_f_1]])
+#else:
+#    diffusion_mat = np.kron(np.ones((2**(mat_L-1))), diffusion_mat_base)
+#    absorption_xs = np.kron(np.ones((2**(mat_L-1))), absorption_xs_base)
+#    nu_fission_xs = np.kron(np.ones((2**(mat_L-1))), nu_fission_xs_base)
 if mat_L == 0:
     diffusion_mat = np.array([[D_1]])
     absorption_xs = np.array([[sigma_a_1]])
@@ -944,14 +1098,14 @@ else:
     diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base) # 2D expansion of material grid
     absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
     nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)
-'''if mat_L == 0:
-    diffusion_mat = np.array([[D_1]])
-    absorption_xs = np.array([[sigma_a_1]])
-    nu_fission_xs = np.array([[sigma_f_1]])
-else:
-    diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base) # 3D expansion of material grid
-    absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
-    nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)'''
+#if mat_L == 0:
+#    diffusion_mat = np.array([[D_1]])
+#    absorption_xs = np.array([[sigma_a_1]])
+#    nu_fission_xs = np.array([[sigma_f_1]])
+#else:
+#    diffusion_mat = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), diffusion_mat_base) # 3D expansion of material grid
+#    absorption_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), absorption_xs_base)
+#    nu_fission_xs = np.kron(np.ones((2**(mat_L-1),2**(mat_L-1),2**(mat_L-1))), nu_fission_xs_base)
 
 N_1D = int(2**(L))
 h = R/N_1D
@@ -963,5 +1117,5 @@ A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors(D, L, mat_L, absorption_xs, B
 A_mat_diff = A_mat_diag_vecs_test - A_mat_old.toarray()
 
 # Vacuum BCs
-A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors(D, L, mat_L, absorption_xs, BC="Vacuum")
+A_mat_diag_vecs_test = get_mass_matrix_LCU_vectors(D, L, mat_L, absorption_xs, BC="Vacuum")'''
 
