@@ -88,8 +88,8 @@ def get_R_l_1D_v(l):
 # should be a 2^(l+1) x 2^l + 1 matrix
 def get_B_l_1D_v(l):
     B_L_1D = np.zeros((2**(l+1), 2**l + 1))
-    B_L_1D[0,0] = 1 # input of the leftmost half-hat function outputs the constant function in the leftmost region (in the gradient basis)
-    B_L_1D[2**(l+1)-2, 2**l] = 1 # input of the rightmost half-hat function outputs the constant function in the rightmost region (in the gradient basis)
+    B_L_1D[0,0] = 1/math.sqrt(2) # input of the leftmost half-hat function outputs the constant function in the leftmost region (in the gradient basis)
+    B_L_1D[2**(l+1)-2, 2**l] = 1/math.sqrt(2) # input of the rightmost half-hat function outputs the constant function in the rightmost region (in the gradient basis)
     return B_L_1D
 
 # ChatGPT function, changed the implementation now, not completely checked for correctness
@@ -220,9 +220,12 @@ def getC_l_r(D, l):
         pi_l_C_l_s = np.array([1])
         for _ in range(1,s):
             pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+
         pi_l_C_l_s = np.kron(pi_l_C_l_s, get_B_l_1D_v(l))
+
         for _ in range(s+1, D+1):
             pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
+            
         rows, cols = np.nonzero(pi_l_C_l_s)
         pi_l_C_l_s_data = pi_l_C_l_s[rows, cols]
 
@@ -340,9 +343,9 @@ def get_C_F_r(D, L):
     for l in range(1,L+1):
         C_l_r = getC_l_r(D, l)
         
-        T_squiggle = get_T_squiggle(D, l, L)
-        level_weight = 2 ** (-l * (2-D) / 2)
-        CFl = level_weight * T_squiggle @ C_l_r # section s corresponding to level l of the CF matrix
+        T_squiggle_r = get_T_squiggle_r(D, l, L)
+        level_weight = 2 ** (-l * (2-D) / 2) # maybe this has to change  for the C_Fr matrix???
+        CFl = level_weight * T_squiggle_r @ C_l_r # section s corresponding to level l of the CF matrix
 
         CF[:,sum(CF_col_sections[:l-1]):sum(CF_col_sections[:l])] = CFl.toarray()
     
@@ -404,6 +407,47 @@ def get_T_1D(l: int, L: int):
         return (1/math.sqrt(2)) * np.kron(np.eye(2**l), np.array([[1, -math.sqrt(3)/2],[0, 1/2],[1, math.sqrt(3)/2],[0, 1/2]]))
     else:
         return get_T_1D(L-1,L) @ get_T_1D(l,L-1)
+    
+# using a different interpolator for the surface integral component with Robin BCs
+def get_T_B_1D_v(l, L):
+    if l == L:
+        return np.eye(2**(l+1))
+
+    T_B = np.zeros((2**(L+1), 2**(l+1)))
+
+    # left boundary trace row
+    T_B[0, 0] = 1.0
+
+    # right boundary trace row
+    T_B[2**(L+1)-2, 2**(l+1)-2] = 1.0
+
+    return T_B
+
+def get_T_squiggle_r(D, l, L):
+    pi_l_star = jk_interleave_permutation_matrix(l, D, sparse=False)
+    pi_L_star = jk_interleave_permutation_matrix(L, D, sparse=False)
+
+    blocks = []
+
+    for s in range(D):
+        T = sp.sparse.csr_array([1])
+
+        for i in range(D):
+            if i == s:
+                T_i = get_T_B_1D_v(l, L)
+            else:
+                T_i = get_T_1D(l, L)
+
+            # Important: use T = kron(T, T_i), not kron(T_i, T),
+            # because the factors are no longer all identical.
+            T = sp.sparse.kron(T, sp.sparse.csr_array(T_i), format="csr")
+
+        T = T[:, pi_l_star]
+        T = T[pi_L_star, :]
+
+        blocks.append(T)
+
+    return sp.sparse.block_diag(blocks, format="csr")
     
 # T_squiggle defined at the top of page 14 of the Deiml paper
 def get_T_squiggle(D, l, L):

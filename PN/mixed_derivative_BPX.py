@@ -69,6 +69,7 @@ R_v_F = F_v.T @ R_v @ F_v # preconditioned Robin surface integral matrix
 G_v_F = S_v_F + R_v_F
 
 C_Fr = FEM.get_C_F_r(D, L).toarray()
+#C_Fr = C_L_r @ F_v # directly creating C_F using F_v and C_L_r which we already made instead of crafting it level by level
 R_v_CF = C_Fr.T @ C_Fr
 
 # trying to use code to find C_{f,v}
