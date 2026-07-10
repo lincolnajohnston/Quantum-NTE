@@ -33,7 +33,7 @@ def getC_l_v_deriv(D, D_p, l):
     return C_l
 
 D = 1
-L = 4
+L = 3
 
 ########### CREATE ALL OF THE COMPONENT MATRICES FOR THE PRECONDITIONED DIRICHLET AND VACUUM SYSTEM ###########
 
@@ -98,9 +98,13 @@ G_v_error = G_v_CF - G_v_F
 G_v_error_scalar = np.linalg.norm(G_v_error) # this is basically 0 so pretty sure C_F_v and F_v are implemented correctly (unless I made the same errors in both implementations)
 
 ### Mass matrices ###
+C_m = np.array(FEM.getC_m(D, L)) # Dirichlet C_m matrix
+C_m_v = np.array(FEM.getC_m_v(D, L)) # Vacuum C_m matrix
+A_test = C_m.T @ C_m # Use the Deiml matrices to make the Dirichlet mass matrix
+A_v_test = C_m_v.T @ C_m_v # Use the Deiml matrices to make the Vacuum mass matrix
 abs_matrix = np.ones(2**(L*D)).reshape([2**L] * D)
-A = FEM.get_mass_matrix_brute_force(L, D, abs_matrix).toarray()
-A_v = FEM.get_mass_matrix_v_brute_force(L, D, abs_matrix).toarray()
+A = FEM.get_mass_matrix_brute_force(L, D, abs_matrix).toarray() # Use the brute force functions to make the Dirichlet mass matrix
+A_v = FEM.get_mass_matrix_v_brute_force(L, D, abs_matrix).toarray() # Use the brute force functions to make the Vacuum mass matrix
 
 ########### FIND SINGULAR VALUES OF THESE MATRICES ###########
 _, S_sing_vals, _ = np.linalg.svd(S)

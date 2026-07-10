@@ -225,7 +225,7 @@ def getC_l_r(D, l):
 
         for _ in range(s+1, D+1):
             pi_l_C_l_s = np.kron(pi_l_C_l_s, get_R_l_1D_v(l))
-            
+
         rows, cols = np.nonzero(pi_l_C_l_s)
         pi_l_C_l_s_data = pi_l_C_l_s[rows, cols]
 
@@ -240,6 +240,28 @@ def getC_l_r(D, l):
     pi_l_new = np.array([pi_l_star_new + 2**(D*l+D) * d for d in range(D)]).flatten()
     C_l_r = pi_l_C_l_r[pi_l_new, :]
     return C_l_r
+
+
+# get C_{m}, the matrix that can be used to make the mass matrix, M = C_m^T @ C_m
+def getC_m(D, l):
+    pi_l_C_m = np.array([1])
+    for d in range(D):
+        pi_l_C_m = np.kron(pi_l_C_m, get_R_l_1D(l))
+        
+    pi_l_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+    C_l_m = pi_l_C_m[pi_l_new, :]
+    return C_l_m
+
+
+# get C_{m,v}, the matrix that can be used to make the mass matrix for vacuum boundary conditions, M_v = C_m_v^T @ C_m_v
+def getC_m_v(D, l):
+    pi_l_C_m = np.array([1])
+    for d in range(D):
+        pi_l_C_m = np.kron(pi_l_C_m, get_R_l_1D_v(l))
+        
+    pi_l_new = jk_interleave_permutation_matrix(l, D, sparse=False)
+    C_l_m = pi_l_C_m[pi_l_new, :]
+    return C_l_m
 
 # get the basis change matrix from mutlilevel basis to the basis of the finest level
 def get_F(D, L):
@@ -486,7 +508,6 @@ def unroll_index(N, D, index_vec, xs_mesh=False):
     roll_N = roll_N + 1 if xs_mesh else roll_N
     return sum([index_vec[d]*math.prod(roll_N[d+1:]) for d in range(D)])
 
- # assume domain is 1 so h = 1/2^L, factor out the h^D term
 
 '''def get_mass_matrix_brute_force(L, D, xs):
     N_1D_FEM = int(2**(L) - 1)
@@ -517,7 +538,7 @@ def unroll_index(N, D, index_vec, xs_mesh=False):
                     M[unroll_index(N_1D_FEM, D, row_index), unroll_index(N_1D_FEM, D, col_index)] += xs_coef * xs[xs_index]
     return M '''  
 
-# get the mass matrix for the absorption or fission matrix (without the h^D factor in front)
+# get the mass matrix for the absorption or fission matrix
 def get_mass_matrix_brute_force(L, D, xs):
     N_1D_FEM = 2**L - 1
     N_total = N_1D_FEM**D
@@ -537,8 +558,10 @@ def get_mass_matrix_brute_force(L, D, xs):
             # skip outside domain
             if np.any(col_index < 0) or np.any(col_index >= N_1D_FEM): # If overlapping basis function index is outside domain, skip it
                 continue
-
-            xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # get the coefficient in front of the matrix term
+            
+            # get the coefficient in front of the matrix term
+            xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # accounting for the overlap from the offset of the two basis functions
+            xs_coef = xs_coef * 2**(-L * D) # accounts for the width of the regions the basis functions are defined over
 
             # find the (inclusive) indices of the material grid that are summed over
             sigma_index_lower = node_index + [max(o,0) for o in offset] # =node_index if offset is -1 or 0, =node_index+1 if offset is 1
@@ -562,7 +585,7 @@ def get_mass_matrix_brute_force(L, D, xs):
 
 
 
-# get the mass matrix for the absorption or fission matrix (without the h^D factor in front) with Vacuum BCs
+# get the mass matrix for the absorption or fission matrix with Vacuum BCs
 def get_mass_matrix_v_brute_force(L, D, xs):
     N_1D_FEM = 2**L + 1
     N_total = N_1D_FEM**D
@@ -584,6 +607,7 @@ def get_mass_matrix_v_brute_force(L, D, xs):
                 continue
 
             xs_coef = 2**(D - sum(abs(o) for o in offset)) / 6**D # get the coefficient in front of the matrix term
+            xs_coef = xs_coef * 2**(-L * D) # accounts for the width of the regions the basis functions are defined over
 
             # find the (inclusive) indices of the material grid that are summed over
             sigma_index_lower = [max(node_index[i] + max(offset[i],0) - 1, 0) for i in range(D)] # =node_index-1 if offset is -1 or 0, =node_index if offset is 1
