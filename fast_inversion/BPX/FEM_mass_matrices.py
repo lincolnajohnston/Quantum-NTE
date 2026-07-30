@@ -104,7 +104,7 @@ class MassMatrix:
     
     # assume domain is 1 so h = 1/2^L, factor out the h^D term
     # craft the matrix by taking the linear combination of diagonal matrices, each of which 
-    # can be efficiently block-encoded and then ocmbined with LCU.
+    # can be efficiently block-encoded and then combined with LCU.
     # This function is uncompleted, just here to show that the fission and absorption FEM
     # matrices can be implemented as the linear combination of 6^D diagonal matrices (with some integer shift |x> -> |x+1>)
     def get_mass_matrix_LCU(self, D, L, xs):
@@ -146,27 +146,20 @@ for L in L_vals:
     mass_mat = MassMatrix(input_data={"n":[N]*D, "h":[h]*D})
 
     np.random.seed(13398) # set some consistent seed so that results can be repeated
-    absorption_vec_small_1D = np.random.rand(2**(mat_L)) # random absorption cross sections
-    #absorption_vec_small = np.ones(int(2**(D*mat_L))) # all ones absorption cross sections
-    absorption_vec_small = 6 * diffusion_coef / (h*h) * np.ones(int(2**(D*mat_L))) # constant absorption cross sections scaled
     
 
-    #absorption_vec_small = np.array(range(1,2**(mat_L*D)+1)).reshape([int(2**mat_L)]*D)
+    absorption_vec_small = np.ones(2**(mat_L*D)).reshape([int(2**mat_L)]*D) # all ones absorption cross sections
+    #absorption_vec_small = np.array(range(1,2**(mat_L*D)+1)).reshape([int(2**mat_L)]*D) # incrementally increasing absorption cross sections
     #absorption_vec_small = np.random.rand(*([2**mat_L]*D), ) # random absorption cross sections
-    #absorption_vec_large = np.kron(absorption_vec_small, np.ones([int(2**(L-mat_L))]*D))
-    absorption_vec_large = np.kron(absorption_vec_small, np.ones((int(2**(L-mat_L)), int(2**(L-mat_L)))))
-    # set sigma_a such that the offdiagonal elements will be 0.
-    # If sigma_a is set higher, the offdiagonals should be positive
-    #  and if set lower they should be negative
+    absorption_vec_large = np.kron(absorption_vec_small, np.ones([int(2**(L-mat_L))]*D))
 
-    B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
-    #absorption_vec_large = np.array(range(2**(L*D)))
+    #B_LCU = h**D * mass_mat.get_mass_matrix_LCU(D, L, absorption_vec_large)
     B = h**D * mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large) # scale the mass matrix appropriately with the diffusion matrix
     #B = mass_mat.get_mass_matrix_brute_force(L, absorption_vec_large)
     B_inv = np.linalg.inv(B)
     
 
-    diffusion_mat_small = diffusion_coef * np.eye(int(2**(D*mat_L))) # all ones diffusion coefficients
+    '''diffusion_mat_small = diffusion_coef * np.eye(int(2**(D*mat_L))) # all ones diffusion coefficients
     diffusion_mat = np.kron(diffusion_mat_small, np.eye(2**(D*(L - mat_L))))
 
     D_A = np.kron(diffusion_mat, np.eye(D))
@@ -176,11 +169,11 @@ for L in L_vals:
     C = (A+B)
     C_inv = np.linalg.inv(C)
     G = np.eye(len(B)) + A_inv @ B
-    G_inv = np.linalg.inv(G)
+    G_inv = np.linalg.inv(G)'''
 
     #testing the singular values of (I+L^-1 A) in the QCTIP paper
     # In this context, we are testing (I+A^-1 B) because A is the diffusion matrix and B is the absorption matrix
-    P = np.eye(len(A)) + A_inv @ B
+    '''P = np.eye(len(A)) + A_inv @ B
     P_inv = np.linalg.inv(P)
     P_max_sing = np.linalg.norm(P, ord=2)
     P_min_sing = np.linalg.norm(P_inv, ord=2)
@@ -212,7 +205,7 @@ for L in L_vals:
     print("Minimum singular value of (I + A^-1 B), sigma_min: ", G_sing_min)
     print("Proposed lower bound for sigma_min using A norm: ", G_sing_min_lower_bound_A)
     print("Proposed lower bound for sigma_min using B norm: ", G_sing_min_lower_bound_B)
-    print("------------------------------------------------------------\n")
+    print("------------------------------------------------------------\n")'''
 
     #B = mass_mat.get_1D_weighted_mass_matrix(L, np.kron(absorption_vec_small_1D, np.ones(2**((L - mat_L))))) # absorption cross section FEM operator
     #print(B)

@@ -33,7 +33,7 @@ def getC_l_v_deriv(D, D_p, l):
     return C_l
 
 D = 1
-L = 3
+L = 8
 
 ########### CREATE ALL OF THE COMPONENT MATRICES FOR THE PRECONDITIONED DIRICHLET AND VACUUM SYSTEM ###########
 
