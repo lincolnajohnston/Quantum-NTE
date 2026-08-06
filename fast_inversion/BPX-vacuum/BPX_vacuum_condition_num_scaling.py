@@ -10,7 +10,7 @@ from scipy.sparse import csr_matrix, coo_matrix
 import scipy as sp
 import math
 import itertools
-import FEM_BPX_helpers as FEM
+import fast_inversion.BPX.FEM_BPX_helpers as FEM
 
 # modifying the matrices from "Quantum Realization of the Finite Element Method" by Deiml M, Peterseim D to allow for vacuum BCs (Robin BCs without incoming source terms)
 
