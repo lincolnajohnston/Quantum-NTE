@@ -39,5 +39,8 @@ Thumbs.db
 # specific to Quantum-NTE
 env/
 __pycache__/
+.vscode/
+*.vs/
 *.png
 *.npy
+*.json
