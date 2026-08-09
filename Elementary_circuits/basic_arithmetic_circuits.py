@@ -3,6 +3,7 @@ from qiskit import QuantumCircuit
 import numpy as np
 import Elementary_circuits.subarithmetic_circuits as subarithmetic_circuits
 
+# TODO: check that all of the gate counts for each of the implementations are correct and consistent with my writeup
 # TODO: add in the phase gate implementation and tests
 # TODO: add in the controlled phase gate implementation and tests
 # TODO: add in the arbitrary 1-qubit gate implementation adn tests
