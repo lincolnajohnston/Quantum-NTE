@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers.ProblemData import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -32,7 +32,7 @@ B_max_sings = np.zeros(max_qubits - min_qubits + 1)
 B_min_sings = np.zeros(max_qubits - min_qubits + 1)
 condAs = np.zeros(max_qubits - min_qubits + 1)
 condBs = np.zeros(max_qubits - min_qubits + 1)
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = ranges / data.n
@@ -109,7 +109,7 @@ eigenvector_linf_norm = np.array([np.linalg.norm(eigenvector_results[i,:] - clos
 '''n_dim = 2
 input_folder = 'simulations/ProblemData_2D_scaling_tests_fuel_pin/'
 min_qubits = 1
-max_qubits = 5
+max_qubits = 6
 max_dim_size = int(math.pow(2,max_qubits))
 ranges = [4.0, 4.0] # the plotting assumes that the ranges in each dimension are all the same
 #input_files = ['input-N=' + str(int(math.pow(2,i))) + '.txt' for i in range(1,max_qubits + 1)]
@@ -119,7 +119,7 @@ fund_eig_index = -1 if invert_equation else 0
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = ranges / data.n
@@ -241,7 +241,7 @@ input_file = 'input.txt'
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = x_range / data.n
@@ -250,6 +250,7 @@ for i in range(min_qubits, max_qubits + 1):
     A_mat_size = math.prod(data.n) * data.G
     A_matrix, B_matrix = data.diffusion_construct_L_F_matrices(A_mat_size)
     eigvals, eigvecs = eigh(A_matrix, B_matrix, eigvals_only=False)
+    A_mat_eigenvalues, A_mat_eigenvecs = np.linalg.eig(A_matrix)
     eigenvalue_results[i - min_qubits] = eigvals[0]
     eigenvector_results[i - min_qubits,:] = np.kron(eigvecs[:,0].reshape(tuple([int(math.pow(2,i)) for d in range(n_dim)])),np.ones(tuple([int(max_dim_size/int(math.pow(2,i))) for d in range(n_dim)]))).flatten() * eigvecs[0,0] / abs(eigvecs[0,0]) # extend/interpolate eigenvectors onto finest grid and make first value positive
 
@@ -320,7 +321,7 @@ input_file = 'input.txt'
 
 eigenvalue_results = np.zeros(max_qubits - min_qubits + 1)
 eigenvector_results = np.zeros((max_qubits - min_qubits + 1, int(math.pow(max_dim_size,n_dim))))
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 for i in range(min_qubits, max_qubits + 1):
     data.n = np.array([int(math.pow(2,i))] * n_dim)
     data.h = x_range / (data.n + 1)

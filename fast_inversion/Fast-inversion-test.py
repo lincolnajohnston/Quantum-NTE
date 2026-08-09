@@ -1,12 +1,13 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers.ProblemData import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import math
+from scipy.fftpack import dct, dst
 
 # return the A matrix and the b vector for the equation del^2(x) = 0. 1-D, Dirichlet BC where a = u_0, b = u_N
 def get_laplacian_dirichlet_bc(N, x_range, a, b):
@@ -47,6 +48,7 @@ def get_laplacian_robin_bc(N, x_range, a, b, c, d):
 
     return return_mat, return_vec
 
+# can just use scipy.fftpack's dct function instead
 def get_discrete_cosine_transform(N, K_min, K_max):
     return_mat = np.zeros((K_max - K_min + 1,K_max - K_min + 1))
     #for j in range(1,len(return_mat)+1):
@@ -57,6 +59,7 @@ def get_discrete_cosine_transform(N, K_min, K_max):
             return_mat[j-K_min,k-K_min] =  math.sqrt(2/N) * math.cos(math.pi * j * k / (N)) / (math.sqrt(2) if j % (N) == 0 else 1) # testing
     return return_mat
 
+# can just use scipy.fftpack's dst function instead
 def get_discrete_sine_transform(N, K_min, K_max):
     return_mat = np.zeros((K_max - K_min + 1,K_max - K_min + 1))
     #for j in range(1,len(return_mat)+1):
@@ -89,7 +92,7 @@ input_file = 'input.txt'
 x_range = 4
 
 # create and modify input file
-data = ProblemData.ProblemData(input_folder + input_file)
+data = ProblemData(input_folder + input_file)
 data.n = np.array([N] * n_dim)
 data.h = x_range / data.n
 data.initialize_BC()

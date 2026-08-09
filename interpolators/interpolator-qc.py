@@ -1,6 +1,11 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+
+from helpers.ProblemData import ProblemData
 
 from qiskit import transpile
 from qiskit_aer.aerprovider import QasmSimulator
@@ -48,10 +53,38 @@ Nf = int(math.pow(2,nf))
 dn = nf-nc
 num_iter = 1000000
 
+# TODO: get the coarse solution from solving the diffusion equation, then also get the fine solution from solving the same diffusion equation on a finer grid
+# look at the scaling of the error between the fine solution and the perfectly interpolated coarse solution then the error between the fine solution and
+# the approximately interpolated solution, this will give us the O(h^x) scaling to find the overall success probability of QPE
+
+# TODO 1: L2 norm of difference between true solution and interpolated coarse solution
+# TODO 2: L2 norm of difference between normalized coefficients on basis functions for true solution and interpolated coarse solution
+# TODO 3: L2 norm of difference between normalized coefficients on basis functions for true solution and repeated coarse solution
+# TODO 4: Do this with a diffusion equation solution instead of a test function
+
+# get classical solution to coarse diffusion equation
+coarse_sim_path = 'simulations/Pu239_1G_1D_diffusion_coarse/'
+input_file_coarse = 'input.txt'
+coarse_data = ProblemData(coarse_sim_path + input_file_coarse)
+A_mat_size_coarse = math.prod(coarse_data.n) * coarse_data.G
+A_matrix_coarse, b_vector_coarse = coarse_data.diffusion_construct_A_matrix(A_mat_size_coarse)
+classical_sol_vec_coarse = np.abs(np.linalg.solve(A_matrix_coarse, b_vector_coarse))
+solution_coarse_normed = classical_sol_vec_coarse / np.linalg.norm(classical_sol_vec_coarse)
+
+# get classical solution to fine diffusion equation
+fine_sim_path = 'simulations/Pu239_1G_1D_diffusion_fine/'
+input_file_fine = 'input.txt'
+fine_data = ProblemData(fine_sim_path + input_file_fine)
+A_mat_size_fine = math.prod(fine_data.n) * fine_data.G
+A_matrix_fine, b_vector_fine = fine_data.diffusion_construct_A_matrix(A_mat_size_fine)
+classical_sol_vec_fine = np.abs(np.linalg.solve(A_matrix_fine, b_vector_fine))
+solution_fine_normed = classical_sol_vec_fine / np.linalg.norm(classical_sol_vec_fine)
+
 #coarse_sol = np.array([random.uniform(0, 1) for _ in range(Nc)])
 #coarse_sol = np.array([0.1,0.2,0.3,0.4,0.45,0.5,0.8,0.9])
 #coarse_sol = np.array([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.43, 0.45, 0.47, 0.5, 0.6, 0.8, 0.82, 0.9, 0.99])
-coarse_sol = np.sin(0.3 * np.array(list(range(16)))) + 1
+#coarse_sol = np.sin(0.3 * np.array(list(range(2**nc)))) + 1
+coarse_sol = solution_coarse_normed
 print("coarse solution: ", coarse_sol)
 coarse_sol_diff = np.array(coarse_sol)
 coarse_sol_diff[:Nc-1] -= coarse_sol_diff[1:Nc]
@@ -139,18 +172,31 @@ predicted_state = [math.sqrt(abs(weighted_counts['{:b}'.format(i).zfill(nf)]/num
 
 # print difference between measured and desired state and L2
 print("predicted_state: ", predicted_state)    
-print("desired_state: ", phi_goal)  
-error = np.linalg.norm(phi_goal - predicted_state)
-print("L2 error: ", error)
+print("desired_state: ", phi_goal)
+phi_goal_normed = phi_goal / np.linalg.norm(phi_goal)
+predicted_state_normed = predicted_state / np.linalg.norm(predicted_state)  
+interp_error = np.linalg.norm(phi_goal_normed - predicted_state_normed)
+print("Interpolated L2 error: ", interp_error)
+
+repeated_phi = np.kron(coarse_sol, coarse_sol_norm * np.ones(int(Nf/Nc)))
+repeated_phi_normed = repeated_phi / np.linalg.norm(repeated_phi) 
+repeated_error = np.linalg.norm(repeated_phi_normed - predicted_state_normed)
+print("Repeated L2 error: ", repeated_error)
+
 
 # plot results
-plt.plot(list(range(0, int(Nf/Nc) * len(coarse_sol), int(Nf/Nc))), coarse_sol_norm * coarse_sol, 'o')
+'''plt.plot(list(range(0, int(Nf/Nc) * len(coarse_sol), int(Nf/Nc))), coarse_sol_norm * coarse_sol, 'o')
 plt.plot(predicted_state)
 plt.plot(phi_goal)
-plt.plot(predicted_state - phi_goal)
+plt.plot(repeated_phi)
+#plt.plot(predicted_state - phi_goal)
 
 plt.title("Desired vs Measured States")
-plt.legend(['Input Coarse Grid', 'Measured State', 'Desired State', 'error'])
-plt.show()
+plt.legend(['Input Coarse Grid', 'Measured State', 'Desired State', 'Repeated Phi'])
+plt.show()'''
+
+# just plot coarse and fine solutions, not quantum circuit results
+plt.plot()
+
 
 qc1.draw('mpl', filename="1d-interpolator-circuit.png")
