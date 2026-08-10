@@ -8,21 +8,23 @@ Quantum Algorithms for Heterogeneous PDEs: The Neutron Diffusion Eigenvalue Prob
 as well as in my dissertation work that is still in progress.
 
 **Repository Structure:**
+In order of importance, the significant directories are
+
 Quantum-NTE/
-
-├── QPE/                 Quantum phase estimation implementations and tests
-
-├── PN/                  P_N neutron-transport discretization and analysis
-
-├── QLSS/                Quantum linear-system solver investigations for fixed-source transport approximations
 
 ├── Fast_Inversion/      Block-encoding methods and scaling analysis for implementation of the operators in transport approximations
 
 ├── Classical_Scaling/   Classical solver scaling and convergence studies
 
-├── Simulations/         Input files for numerical experiments and benchmark calculations
-
 ├── Elementary_Circuits/ Quantum arithmetic and circuit primitives    
+
+├── PN/                  P_N neutron-transport discretization and analysis
+
+├── QLSS/                Quantum linear-system solver investigations for fixed-source transport approximations
+
+├── QPE/                 Quantum phase estimation implementations and tests
+
+├── Simulations/         Input files for numerical experiments and benchmark calculations
 
 └── Plotting/            Scripts used to generate research figures
 
