@@ -1059,7 +1059,7 @@ def get_mass_matrix_LCU_vectors(D, L_f, mat_L, xs, BC="Dirichlet"):
                             valid_index = False # controlled on the result of the comparator gate, flip this boolean qubit
 
                     if valid_index:
-                        diag_vec[fine_index] = xs[*mat_index_rolled] # xs rotation
+                        diag_vec[fine_index] = xs[tuple(mat_index_rolled)] # xs rotation
                     else:
                         diag_vec[fine_index] = 0 # apply X Pauli gate to make the value 0 in the diagonal
 
@@ -1111,7 +1111,7 @@ def get_mass_matrix_LCU_vectors(D, L_f, mat_L, xs, BC="Dirichlet"):
                             valid_index = False # controlled on the result of the comparator gate, flip this boolean qubit
 
                     if valid_index:
-                        diag_vec[fine_index] = xs[*mat_index_rolled] # xs rotation
+                        diag_vec[fine_index] = xs[tuple(mat_index_rolled)] # xs rotation
                     else:
                         diag_vec[fine_index] = 0 # apply X Pauli gate to make the value 0 in the diagonal
 

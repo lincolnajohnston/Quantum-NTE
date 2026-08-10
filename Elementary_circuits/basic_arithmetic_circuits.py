@@ -1,16 +1,55 @@
 from qiskit import QuantumCircuit
+from qiskit.quantum_info import Operator
+from qiskit.synthesis import SolovayKitaevDecomposition
 
 import numpy as np
 import Elementary_circuits.subarithmetic_circuits as subarithmetic_circuits
 
 # TODO: check that all of the gate counts for each of the implementations are correct and consistent with my writeup
-# TODO: add in the phase gate implementation and tests
-# TODO: add in the controlled phase gate implementation and tests
-# TODO: add in the arbitrary 1-qubit gate implementation adn tests
+# TODO: add in the controlled arbitrary gate using constant overhead from https://arxiv.org/abs/1206.0758
 # TODO: add in the arbitrary n-qubit gate implementation adn tests
 # TODO: add in the n-controlled x gate implementation and tests
 # TODO: move on to more complex operations (comparator operators, division operators, maybe others will be needed)
 # TODO: then can start using these operations in the creation of the components of the Deiml-type absorption matrices and diffusion matrices
+
+# |a> -> U|a>
+def arbitrary_single_qubit_gate(qc, matrix, x, epsilon):
+    """Apply an approximation of an arbitrary one-qubit unitary to qubit'x' in the 
+        quantum circuit 'qc' using the Solovay-Kitaev algorithm.  The approximation
+        is guaranteed to be within 'epsilon' of the target unitary in operator norm.
+    
+        
+        Gate Counts:
+        - O(log^3.97(1/epsilon)) Clifford gates
+        - O(log^3.97(1/epsilon)) T gates
+        """
+
+    matrix = np.asarray(matrix, dtype=complex)
+    if matrix.shape != (2, 2):
+        raise ValueError("matrix must be a 2x2 unitary")
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+    if not np.allclose(matrix.conj().T @ matrix, np.eye(2), atol=1e-10):
+        raise ValueError("matrix must be unitary")
+
+    target_qubit = (
+        x[0]
+        if isinstance(x, (list, tuple)) or hasattr(x, "__getitem__")
+        else x
+    )
+
+    recursion_degree = 0
+    while True:
+        approximation = SolovayKitaevDecomposition().run(matrix, recursion_degree)
+        approximate_matrix = Operator(approximation).data
+        phase = np.angle(np.vdot(approximate_matrix, matrix))
+        error = np.linalg.norm(
+            matrix - np.exp(1j * phase) * approximate_matrix, ord=2
+        )
+        if error <= epsilon:
+            qc.compose(approximation, qubits=[target_qubit], inplace=True)
+            return qc
+        recursion_degree += 1
 
 # |a>^n -> |(2**n - 1) - a>^n
 def Ones_complement_inplace(qc, a):
