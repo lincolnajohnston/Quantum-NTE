@@ -84,7 +84,7 @@ sigma_a_list = [[[27,28],[29,30]],[[31,32],[33,34]]]
 k_list = [[[0.5, 0.5], [0.5, 0.5]],[[0.5, 0.5], [0.5, 0.5]]]'''
 
 M_total = np.zeros(np.power(n,D))
-D_total = np.zeros((np.product(n),np.product(n)))
+D_total = np.zeros((np.prod(n), np.prod(n)))
 
 # create the diffusion coefficient matrix
 for idx, vec in iter_slices(D_list, axis=D-1):

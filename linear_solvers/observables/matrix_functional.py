@@ -17,8 +17,7 @@ import numpy as np
 from scipy.sparse import diags
 
 from qiskit import QuantumCircuit
-from qiskit.quantum_info import Statevector
-from qiskit.opflow import I, Z, TensoredOp
+from qiskit.quantum_info import Operator, Statevector
 
 from .linear_system_observable import LinearSystemObservable
 
@@ -35,7 +34,6 @@ class MatrixFunctional(LinearSystemObservable):
             from quantum_linear_solvers.linear_solvers.observables.matrix_functional import \
             MatrixFunctional
             from qiskit.transpiler.passes import RemoveResetInZeroState
-            from qiskit.opflow import StateFn
 
             tpass = RemoveResetInZeroState()
 
@@ -50,7 +48,7 @@ class MatrixFunctional(LinearSystemObservable):
             qcs = []
             for obs_circ in obs_circuits:
                 qc = QuantumCircuit(num_qubits)
-                qc.isometry(init_state, list(range(num_qubits)), None)
+                qc.prepare_state(init_state, range(num_qubits))
                 qc.append(obs_circ, list(range(num_qubits)))
                 qcs.append(tpass(qc.decompose()))
 
@@ -58,10 +56,10 @@ class MatrixFunctional(LinearSystemObservable):
             observable_ops = observable.observable(num_qubits)
             state_vecs = []
             # First is the norm
-            state_vecs.append((~StateFn(observable_ops[0]) @ StateFn(qcs[0])).eval())
+            state_vecs.append(Statevector(qcs[0]).expectation_value(observable_ops[0]))
             for i in range(1, len(observable_ops), 2):
-                state_vecs += [(~StateFn(observable_ops[i]) @ StateFn(qcs[i])).eval(),
-                               (~StateFn(observable_ops[i + 1]) @ StateFn(qcs[i + 1])).eval()]
+                state_vecs += [Statevector(qcs[i]).expectation_value(observable_ops[i]),
+                               Statevector(qcs[i + 1]).expectation_value(observable_ops[i + 1])]
 
             # Obtain result
             result = observable.post_processing(state_vecs, num_qubits)
@@ -81,7 +79,7 @@ class MatrixFunctional(LinearSystemObservable):
         self._main_diag = main_diag
         self._off_diag = off_diag
 
-    def observable(self, num_qubits: int) -> Union[TensoredOp, List[TensoredOp]]:
+    def observable(self, num_qubits: int) -> Union[Operator, List[Operator]]:
         """The observable operators.
 
         Args:
@@ -90,23 +88,21 @@ class MatrixFunctional(LinearSystemObservable):
         Returns:
             The observable as a list of sums of Pauli strings.
         """
-        zero_op = (I + Z) / 2
-        one_op = (I - Z) / 2
+        identity = np.eye(2, dtype=complex)
+        zero_op = np.diag([1, 0]).astype(complex)
+        one_op = np.diag([0, 1]).astype(complex)
         observables = []
         # First we measure the norm of x
-        observables.append(I ^ num_qubits)
+        observables.append(Operator(np.eye(2**num_qubits, dtype=complex)))
         for i in range(num_qubits):
             j = num_qubits - i - 1
 
-            # TODO this if can be removed once the bug in Opflow is fixed where
-            # TensoredOp([X, TensoredOp([])]).eval() ends up in infinite recursion
-            if i > 0:
-                observables += [
-                    (I ^ j) ^ zero_op ^ TensoredOp(i * [one_op]),
-                    (I ^ j) ^ one_op ^ TensoredOp(i * [one_op]),
-                ]
-            else:
-                observables += [(I ^ j) ^ zero_op, (I ^ j) ^ one_op]
+            for measured_op in (zero_op, one_op):
+                factors = [identity] * j + [measured_op] + [one_op] * i
+                matrix = factors[0]
+                for factor in factors[1:]:
+                    matrix = np.kron(matrix, factor)
+                observables.append(Operator(matrix))
 
         return observables
 

@@ -3,12 +3,12 @@ import os
 sys.path.append(os.getcwd())
 import numpy as np
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import QasmSimulator
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
 import time
-import helpers.ProblemData as ProblemData
+from helpers import ProblemData
 import QLSS.LcuFunctions
 import math
 import scipy.sparse as sp

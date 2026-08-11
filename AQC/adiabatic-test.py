@@ -6,7 +6,7 @@ import math
 import cmath
 from scipy.linalg import expm
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import QasmSimulator
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
@@ -68,8 +68,8 @@ dH = H_P - H_B
 print("psi = ", psi)
 print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B)))
 
-state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
-expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex_)
+state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex128)
+expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits))),dtype=np.complex128)
 
 lastH = H_B
 U_T = np.eye(int(math.pow(2,n_bits)))

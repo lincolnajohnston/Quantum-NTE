@@ -18,17 +18,16 @@ from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from QLSS import LcuFunctions
 
-from qiskit.circuit.library import QFT
 import numpy as np
 import math
-import fable
+from helpers import fable
 import cmath
 
 # create the QFT unitary matrix then invert it (conjugate transpose it), should be the same as the built-in Qiskit function, but have this here for testing
 def get_IQFT_matrix(n_bits):
     mat_size = int(math.pow(2,n_bits))
     omega = cmath.exp(2j*math.pi/mat_size)
-    final_mat = np.ones((mat_size,mat_size), dtype=np.complex_)
+    final_mat = np.ones((mat_size,mat_size), dtype=np.complex128)
     for i in range(mat_size):
         final_mat[:,i] *= omega ** i
     for i in range(mat_size):
@@ -101,14 +100,17 @@ class PhaseEstimation(QuantumCircuit):
                circuit = PhaseEstimation(3, unitary)
                _generate_circuit_library_visualization(circuit)
         """
-        if(circuit == None):
+        if circuit is None:
+            qr_eval = QuantumRegister(num_evaluation_qubits, "eval")
+            qr_state = QuantumRegister(A_bits, "state")
             circuit = QuantumCircuit(qr_eval, qr_state, name=name)
         else:
             #assert(circuit.num_qubits >= unitary_gate.num_qubits + num_evaluation_qubits)
             print('circuit already made')
 
         if iqft is None:
-            iqft = QFT(num_evaluation_qubits, inverse=True, do_swaps=False).reverse_bits()
+            iqft = QuantumCircuit(num_evaluation_qubits, name="IQFT")
+            iqft.unitary(get_IQFT_matrix(num_evaluation_qubits), iqft.qubits)
 
         for i in range(num_evaluation_qubits):
             circuit.h(i)  # hadamards on evaluation qubits
@@ -126,10 +128,9 @@ class PhaseEstimation(QuantumCircuit):
                 for k in range(2**j):
                     fable.fable(A_matrix, circuit, epsilon=0, max_i = circuit.num_qubits-1, c_index=j)
 
-        # TODO: figure out what the issue with my application of the built-in IQFT gate is, why I can't seem to get the right answer when using it
-        #circuit.compose(iqft, qubits=list(range(num_evaluation_qubits)), inplace=True)  # final QFT
-        IQFT_gate = UnitaryGate(get_IQFT_matrix(num_evaluation_qubits))
-        circuit.append(IQFT_gate, list(range(num_evaluation_qubits)))
+        circuit.compose(
+            iqft, qubits=range(num_evaluation_qubits), inplace=True
+        )
 
-        super().__init__(*circuit.qregs, name=circuit.name)
-        #self.compose(circuit.to_gate(), qubits=self.qubits, inplace=True)
+        super().__init__(*circuit.qregs, *circuit.cregs, name=circuit.name)
+        self.compose(circuit, qubits=self.qubits, clbits=self.clbits, inplace=True)

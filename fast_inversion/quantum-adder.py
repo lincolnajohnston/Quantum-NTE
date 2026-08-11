@@ -10,15 +10,14 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate
 from qiskit.quantum_info import Statevector
-from QPE import PhaseEstimation
-from qiskit_aer import Aer, AerSimulator
+from QPE.QPE import PhaseEstimation
 from qiskit.quantum_info import Operator
-import fable
+from helpers import fable
 
 def applyQFA(qc, ind):
     qc.ccx(ind[1], ind[2], ind[3])

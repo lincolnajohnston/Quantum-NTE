@@ -131,12 +131,12 @@ circuit_unitary = E @ circuit_unitary
 # make S_chi matrix that is applied to the 3 ancillas from the LCU (2 qubits) + extra 1 qubits to remove the periodic values
 phi = 1.00*math.pi
 post_select_bits = 2*offset_max
-S_chi = np.eye(int(2**post_select_bits), dtype=np.complex_)
+S_chi = np.eye(int(2**post_select_bits), dtype=np.complex128)
 S_chi[0,0] = cmath.exp(1j * phi)
 S_chi = np.kron(S_chi, np.eye(int(2**L)))
 
 # make S_0 matrix that is applied to the 3 ancillas from the LCU (2 qubits) + extra 1 qubits to remove the periodic values
-S_0 = np.eye(int(2**n_total), dtype=np.complex_)
+S_0 = np.eye(int(2**n_total), dtype=np.complex128)
 input_states = [0]
 #input_states = [1,3,5]
 for input_state in input_states:

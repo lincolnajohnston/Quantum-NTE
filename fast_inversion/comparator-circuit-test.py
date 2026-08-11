@@ -9,14 +9,13 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate, IntegerComparator, DraperQFTAdder
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, IntegerComparator, DraperQFTAdder
 from qiskit.quantum_info import Statevector
-from qiskit_aer import Aer, AerSimulator
 from qiskit.quantum_info import Operator
-import fable
+from helpers import fable
 
 n = 3
 N = math.pow(2,n)

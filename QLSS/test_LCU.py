@@ -3,8 +3,8 @@ import os
 sys.path.append(os.getcwd())
 import numpy as np
 from qiskit.quantum_info import Statevector
-from qiskit import transpile, execute
-from qiskit.providers.aer import QasmSimulator
+from qiskit import transpile
+from qiskit_aer import QasmSimulator
 from linear_solvers.matrices.tridiagonal_toeplitz import TridiagonalToeplitz
 import math
 import matplotlib.pyplot as plt
@@ -173,9 +173,7 @@ elif isinstance(vector, (list, np.ndarray)):
     nb = int(np.log2(len(vector)))
     vector_circuit = QuantumCircuit(nb)
     # pylint: disable=no-member
-    vector_circuit.isometry(
-        vector / np.linalg.norm(vector), list(range(nb)), None
-    )
+    vector_circuit.prepare_state(vector / np.linalg.norm(vector), range(nb))
 
 
 
@@ -252,7 +250,7 @@ qc.unitary(V_inv_op, ql[:], label='V_inv')
 qc.save_statevector()
 
 backend = QasmSimulator(method="statevector")
-job = execute(qc, backend)
+job = backend.run(transpile(qc, backend))
 job_result = job.result()
 state_vec = job_result.get_statevector(qc).data
 print(state_vec[0:A_mat_size])

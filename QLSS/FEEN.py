@@ -6,18 +6,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian, eigh, svdvals, sqrtm, expm
 import time
-#from helpers.ProblemData import ProblemData
 import LcuFunctions
 import math
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Statevector
 from QPE.QPE import PhaseEstimation
-from qiskit import Aer
 from helpers import fable, ProblemData
 
 ########## Comments/Thoughts ##########
@@ -331,7 +329,7 @@ print("Runtime: ", time.time() - start_time)
 
 
 ################## ANS plot 2, fixed fine mesh (16), varying coarse mesh(2-16)  ##################
-'''n_eig_eval_bits = 5
+r'''n_eig_eval_bits = 5
 FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
 
 # fixed fine mesh, varying coarse mesh inputs
@@ -391,7 +389,7 @@ plt.grid(True)
 plt.show()'''
 
 ################## ANS plot 3, fixed fine mesh (16), varying coarse mesh(2-16), exact eigenvalues  ##################
-'''n_eig_eval_bits = 5
+r'''n_eig_eval_bits = 5
 FEEN1 = FEEN(n_eig_eval_bits,'simulations/Pu239_1G_diffusion_ANS_coarse/input.txt', 'simulations/Pu239_1G_diffusion_ANS_fine/input.txt', plot_results=False)
 
 # fixed fine mesh, varying coarse mesh inputs

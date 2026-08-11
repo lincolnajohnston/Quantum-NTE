@@ -12,26 +12,15 @@
 
 """The HHL algorithm."""
 
-from typing import Optional, Union, List, Callable, Tuple
+from typing import Any, Optional, Union, List, Callable, Tuple
 import numpy as np
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, AncillaRegister
 from qiskit.circuit.library import PhaseEstimation
 from qiskit.circuit.library.arithmetic.piecewise_chebyshev import PiecewiseChebyshev
 from qiskit.circuit.library.arithmetic.exact_reciprocal import ExactReciprocal
-from qiskit.opflow import (
-    Z,
-    I,
-    StateFn,
-    TensoredOp,
-    ExpectationBase,
-    CircuitSampler,
-    ListOp,
-    ExpectationFactory,
-    ComposedOp,
-)
 from qiskit.providers import Backend
-from qiskit.utils import QuantumInstance
+from qiskit.quantum_info import Operator, Statevector
 
 from .linear_solver import LinearSolver, LinearSolverResult
 from .matrices.numpy_matrix import NumPyMatrix
@@ -78,7 +67,7 @@ class HHL(LinearSolver):
             # Initial state circuit
             num_qubits = matrix.num_state_qubits
             qc = QuantumCircuit(num_qubits)
-            qc.isometry(rhs, list(range(num_qubits)), None)
+            qc.prepare_state(rhs, range(num_qubits))
 
             hhl = HHL()
             solution = hhl.solve(matrix, qc, observable)
@@ -99,8 +88,8 @@ class HHL(LinearSolver):
     def __init__(
         self,
         epsilon: float = 1e-2,
-        expectation: Optional[ExpectationBase] = None,
-        quantum_instance: Optional[Union[Backend, QuantumInstance]] = None,
+        expectation: Optional[Any] = None,
+        quantum_instance: Optional[Backend] = None,
     ) -> None:
         r"""
         Args:
@@ -122,8 +111,7 @@ class HHL(LinearSolver):
 
         self._scaling = None  # scaling of the solution
 
-        self._sampler = None
-        self.quantum_instance = quantum_instance
+        self._backend = quantum_instance
 
         self._expectation = expectation
 
@@ -133,17 +121,17 @@ class HHL(LinearSolver):
         self.scaling = 1
 
     @property
-    def quantum_instance(self) -> Optional[QuantumInstance]:
+    def quantum_instance(self) -> Optional[Backend]:
         """Get the quantum instance.
 
         Returns:
             The quantum instance used to run this algorithm.
         """
-        return None if self._sampler is None else self._sampler.quantum_instance
+        return self._backend
 
     @quantum_instance.setter
     def quantum_instance(
-        self, quantum_instance: Optional[Union[QuantumInstance, Backend]]
+        self, quantum_instance: Optional[Backend]
     ) -> None:
         """Set quantum instance.
 
@@ -151,10 +139,7 @@ class HHL(LinearSolver):
             quantum_instance: The quantum instance used to run this algorithm.
                 If None, a Statevector calculation is done.
         """
-        if quantum_instance is not None:
-            self._sampler = CircuitSampler(quantum_instance)
-        else:
-            self._sampler = None
+        self._backend = quantum_instance
 
     @property
     def scaling(self) -> float:
@@ -167,13 +152,13 @@ class HHL(LinearSolver):
         self._scaling = scaling
 
     @property
-    def expectation(self) -> ExpectationBase:
+    def expectation(self) -> Any:
         """The expectation value algorithm used to construct the expectation measurement from
         the observable."""
         return self._expectation
 
     @expectation.setter
-    def expectation(self, expectation: ExpectationBase) -> None:
+    def expectation(self, expectation: Any) -> None:
         """Set the expectation value algorithm."""
         self._expectation = expectation
 
@@ -213,13 +198,10 @@ class HHL(LinearSolver):
         nl = qc.qregs[1].size
         na = qc.num_ancillas
 
-        # Create the Operators Zero and One
-        zero_op = (I + Z) / 2
-        one_op = (I - Z) / 2
-
-        # Norm observable
-        observable = one_op ^ TensoredOp((nl + na) * [zero_op]) ^ (I ^ nb)
-        norm_2 = (~StateFn(observable) @ StateFn(qc)).eval()
+        state = Statevector.from_instruction(qc).data
+        success_start = 1 << (nb + nl + na)
+        solution_state = state[success_start : success_start + (1 << nb)]
+        norm_2 = np.vdot(solution_state, solution_state)
 
         return np.real(np.sqrt(norm_2) / self.scaling)
 
@@ -259,11 +241,7 @@ class HHL(LinearSolver):
 
         # in the other case use the identity as observable
         else:
-            observable = I ^ nb
-
-        # Create the Operators Zero and One
-        zero_op = (I + Z) / 2
-        one_op = (I - Z) / 2
+            observable = Operator(np.eye(2**nb, dtype=complex))
 
         is_list = True
         if not isinstance(observable_circuit, list):
@@ -271,39 +249,23 @@ class HHL(LinearSolver):
             observable_circuit = [observable_circuit]
             observable = [observable]
 
-        expectations: Union[ListOp, ComposedOp] = []
+        expectation_results = []
         for circ, obs in zip(observable_circuit, observable):
             circuit = QuantumCircuit(solution.num_qubits)
             circuit.append(solution, circuit.qubits)
-            circuit.append(circ, range(nb))
+            if circ is not None:
+                circuit.append(circ, range(nb))
 
-            ob = one_op ^ TensoredOp((nl + na) * [zero_op]) ^ obs
-            expectations.append(~StateFn(ob) @ StateFn(circuit))
-
-        if is_list:
-            # execute all in a list op to send circuits in batches
-            expectations = ListOp(expectations)
-        else:
-            expectations = expectations[0]
-
-        # check if an expectation converter is given
-        if self._expectation is not None:
-            expectations = self._expectation.convert(expectations)
-        # if otherwise a backend was specified, try to set the best expectation value
-        elif self._sampler is not None:
-            if is_list:
-                op = expectations.oplist[0]
-            else:
-                op = expectations
-            self._expectation = ExpectationFactory.build(
-                op, self._sampler.quantum_instance
+            state = Statevector.from_instruction(circuit).data
+            success_start = 1 << (nb + nl + na)
+            system_state = state[success_start : success_start + (1 << nb)]
+            observable_matrix = Operator(obs).data
+            expectation_results.append(
+                np.vdot(system_state, observable_matrix @ system_state)
             )
 
-        if self._sampler is not None:
-            expectations = self._sampler.convert(expectations)
-
-        # evaluate
-        expectation_results = expectations.eval()
+        if not is_list:
+            expectation_results = expectation_results[0]
 
         # apply post_processing
         result = post_processing(expectation_results, nb, self.scaling)
@@ -341,9 +303,7 @@ class HHL(LinearSolver):
             nb = int(np.log2(len(vector)))
             vector_circuit = QuantumCircuit(nb)
             # pylint: disable=no-member
-            vector_circuit.isometry(
-                vector / np.linalg.norm(vector), list(range(nb)), None
-            )
+            vector_circuit.prepare_state(vector / np.linalg.norm(vector), range(nb))
 
         # If state preparation is probabilistic the number of qubit flags should increase
         nf = 1

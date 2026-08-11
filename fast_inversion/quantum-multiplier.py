@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -10,15 +10,14 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate, MCXGate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, MCXGate
 from qiskit.quantum_info import Statevector
-from QPE import PhaseEstimation
-from qiskit_aer import Aer, AerSimulator
+from QPE.QPE import PhaseEstimation
 from qiskit.quantum_info import Operator
-import fable
+from helpers import fable
 
 # Apply a Quantum Full Adder on the indices indicated, with an optional extra control qubit
 def applyQFA(qc, ind, control_index = -1):

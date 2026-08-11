@@ -3,7 +3,7 @@
 # Tested conceptually; please run locally in your environment.
 
 from math import pi, acos, sqrt
-from qiskit import QuantumCircuit, QuantumRegister, Aer, transpile
+from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.quantum_info import Statevector
 from qiskit.circuit.library import XGate
 
@@ -248,7 +248,6 @@ if __name__ == "__main__":
     print(qc.draw(fold=120))
 
     # simulate the circuit on each basis |x>|0^m> and check ancilla outputs
-    backend = Aer.get_backend('statevector_simulator')
     sv = Statevector.from_instruction(qc)
 
     # test mapping on basis states: we will check the reduced state on x+T qubits

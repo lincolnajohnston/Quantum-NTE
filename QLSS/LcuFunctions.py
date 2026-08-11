@@ -41,9 +41,7 @@ def get_b_setup_gate(vector, nb):
     if isinstance(vector, list):
         vector = np.array(vector)
     vector_circuit = QuantumCircuit(nb)
-    vector_circuit.isometry(
-        vector / np.linalg.norm(vector), list(range(nb)), None
-    )
+    vector_circuit.prepare_state(vector / np.linalg.norm(vector), range(nb))
     return vector_circuit
 
 

@@ -1,8 +1,7 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit.library import UnitaryGate, ZGate
 from qiskit.quantum_info import Statevector
-from qiskit_aer import Aer, AerSimulator
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 import math
 import numpy as np
 
@@ -292,7 +291,7 @@ def reflection_about_initial(sys_reg, anc_reg):
         # Easiest in Qiskit: mct for a multi-controlled X, then wrap with H to turn X into Z.
         # We'll do: H(target); mct(controls, target); H(target)
         refl0.h(target)
-        refl0.mct(controls, target)  # multi-controlled Toffoli
+        refl0.mcx(controls, target)  # multi-controlled X
         refl0.h(target)
 
     # X on all

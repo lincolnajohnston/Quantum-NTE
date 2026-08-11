@@ -12,8 +12,7 @@ from QPE import PhaseEstimation
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
-from qiskit import Aer, execute
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, QasmSimulator
 from qiskit import transpile
 from scipy.linalg import eigh
 import random

@@ -16,8 +16,7 @@ from typing import Union, List
 import numpy as np
 
 from qiskit import QuantumCircuit
-from qiskit.opflow import I, Z, TensoredOp
-from qiskit.quantum_info import Statevector
+from qiskit.quantum_info import Operator, Statevector
 
 from .linear_system_observable import LinearSystemObservable
 
@@ -36,7 +35,6 @@ class AbsoluteAverage(LinearSystemObservable):
             from qiskit import QuantumCircuit
             from quantum_linear_solvers.linear_solvers.observables.absolute_average import \
             AbsoluteAverage
-            from qiskit.opflow import StateFn
 
             observable = AbsoluteAverage()
             vector = [1.0, -2.1, 3.2, -4.3]
@@ -45,12 +43,12 @@ class AbsoluteAverage(LinearSystemObservable):
             num_qubits = int(np.log2(len(vector)))
 
             qc = QuantumCircuit(num_qubits)
-            qc.isometry(init_state, list(range(num_qubits)), None)
+            qc.prepare_state(init_state, range(num_qubits))
             qc.append(observable.observable_circuit(num_qubits), list(range(num_qubits)))
 
             # Observable operator
             observable_op = observable.observable(num_qubits)
-            state_vec = (~StateFn(observable_op) @ StateFn(qc)).eval()
+            state_vec = Statevector(qc).expectation_value(observable_op)
 
             # Obtain result
             result = observable.post_processing(state_vec, num_qubits)
@@ -59,7 +57,7 @@ class AbsoluteAverage(LinearSystemObservable):
             exact = observable.evaluate_classically(init_state)
     """
 
-    def observable(self, num_qubits: int) -> Union[TensoredOp, List[TensoredOp]]:
+    def observable(self, num_qubits: int) -> Union[Operator, List[Operator]]:
         """The observable operator.
 
         Args:
@@ -68,8 +66,9 @@ class AbsoluteAverage(LinearSystemObservable):
         Returns:
             The observable as a sum of Pauli strings.
         """
-        zero_op = (I + Z) / 2
-        return TensoredOp(num_qubits * [zero_op])
+        projector = np.zeros((2**num_qubits, 2**num_qubits), dtype=complex)
+        projector[0, 0] = 1
+        return Operator(projector)
 
     def observable_circuit(
         self, num_qubits: int
