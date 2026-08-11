@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -10,15 +10,14 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFTGate, HGate, RYGate, PhaseGate
 from qiskit.quantum_info import Statevector
-from QPE import PhaseEstimation
-from qiskit_aer import Aer, AerSimulator
+from QPE.QPE import PhaseEstimation
 from qiskit.quantum_info import Operator
-import fable
+from helpers import fable
 
 # return the A matrix and the b vector for the equation del^2(x) = 0. 1-D, Dirichlet BC where a = u_0, b = u_N
 def get_laplacian_dirichlet_bc(N, x_range, a, b):
@@ -86,7 +85,7 @@ def get_eigenvalues(N, K_min, K_max, x_range):
 def get_QFT_matrix(n_bits, inverse = False):
     mat_size = int(math.pow(2,n_bits))
     omega = cmath.exp(2j*math.pi/mat_size)
-    final_mat = np.ones((mat_size,mat_size), dtype=np.complex_)
+    final_mat = np.ones((mat_size,mat_size), dtype=np.complex128)
     for i in range(mat_size):
         final_mat[:,i] *= omega ** i
     for i in range(mat_size):
@@ -140,13 +139,13 @@ def apply_cosine_eigenvalue_matrix(qc, n, eig_gates, ancilla_gate):
     # E_N^(plus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        plus_rotation_gate = U1Gate(math.pi / (math.pow(2,i))).control(1, ctrl_state = '0')
+        plus_rotation_gate = PhaseGate(math.pi / (math.pow(2,i))).control(1, ctrl_state = '0')
         qc.append(plus_rotation_gate, [ancilla_gate, bit_index])
 
     # E_N^(minus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        minus_rotation_gate = U1Gate(-math.pi / (math.pow(2,i))).control(1)
+        minus_rotation_gate = PhaseGate(-math.pi / (math.pow(2,i))).control(1)
         qc.append(minus_rotation_gate, [ancilla_gate, bit_index])
 
     qc.h(ancilla_gate)
@@ -249,7 +248,7 @@ qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
 
 # apply a bunch of CNOT gates
 for i in range(n_x - 1 + q_gate_shift, q_gate_shift-1, -1):
-    qc.cnot(n_x + q_gate_shift,i)
+    qc.cx(n_x + q_gate_shift, i)
 
 # Apply P_n gate
 for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
@@ -257,7 +256,7 @@ for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
     qc.append(P_n_cnot_gate, [3*n_x+4] + list(range(q_gate_shift, i)) + [i])
 
 ###### QFT ######
-qft = QFT(n_x+1, do_swaps=True)
+qft = QFTGate(n_x + 1)
 qc.append(qft,range(q_gate_shift, n_x+1+q_gate_shift))
 
 ###### T_N^-1 ######
@@ -268,7 +267,7 @@ for i in range(q_gate_shift, n_x + q_gate_shift):
 
 # apply a bunch of CNOT gates
 for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
-    qc.cnot(n_x + q_gate_shift,i)
+    qc.cx(n_x + q_gate_shift, i)
 
 #apply final B gates
 qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))
@@ -313,7 +312,7 @@ qc.append(B_inv_gate_controlled, range(q_gate_shift, n_x + 1 + q_gate_shift))
 
 # apply a bunch of CNOT gates
 for i in range(n_x - 1 + q_gate_shift, q_gate_shift-1, -1):
-    qc.cnot(n_x + q_gate_shift,i)
+    qc.cx(n_x + q_gate_shift, i)
 
 # Apply P_n gate
 for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
@@ -321,7 +320,7 @@ for i in range(n_x-1 + q_gate_shift, -1 + q_gate_shift, -1):
     qc.append(P_n_cnot_gate, [3*n_x+4] + list(range(q_gate_shift, i)) + [i])
 
 ###### QFT ######
-qft = QFT(n_x+1, do_swaps=True, inverse=True)
+qft = QFTGate(n_x + 1).inverse()
 qc.append(qft,range(q_gate_shift, n_x+1+q_gate_shift))
 
 ###### T_N^-1 ######
@@ -332,7 +331,7 @@ for i in range(q_gate_shift, n_x + q_gate_shift):
 
 # apply a bunch of CNOT gates
 for i in range(n_x-1 + q_gate_shift,-1 + q_gate_shift,-1):
-    qc.cnot(n_x + q_gate_shift,i)
+    qc.cx(n_x + q_gate_shift, i)
 
 #apply final B gates
 qc.append(B_gate_controlled, range(q_gate_shift, n_x+1+q_gate_shift))

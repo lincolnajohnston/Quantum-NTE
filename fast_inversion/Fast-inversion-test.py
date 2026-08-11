@@ -198,7 +198,7 @@ if n_dim == 2:
         plt.figure()'''
 
 # plot scaling of eigenvalues and eigenvectors
-'''plt.plot(np.power(2,list(range(max_qubits)))[:-1], abs(eigenvalue_error[:-1]))
+r'''plt.plot(np.power(2,list(range(max_qubits)))[:-1], abs(eigenvalue_error[:-1]))
 plt.title("error in eigenvalues")
 plt.xlabel("number of finite volumes, N")
 plt.ylabel("lambda eigenvalue error")

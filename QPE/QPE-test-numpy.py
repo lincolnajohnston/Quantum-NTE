@@ -12,13 +12,12 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Operator
 from QPE import PhaseEstimation
-from qiskit import Aer
 
 # from a vector of counts for each basis vector, return the normalized state representing the amplitudes for each of the basis vectors
 def getStateFromCounts(counts_vec):
@@ -33,7 +32,7 @@ def apply_unitary_to_qubits(n_qubits, new_order, unitary):
     final_matrix_size = int(math.pow(2,n_qubits))
 
     expanded_matrix = np.kron(unitary, np.eye(int(math.pow(2,n_qubits-n_unitary_qubits))))
-    final_matrix = np.zeros((final_matrix_size, final_matrix_size), dtype=np.complex_)
+    final_matrix = np.zeros((final_matrix_size, final_matrix_size), dtype=np.complex128)
 
     # Integrate the unitary on target qubits into the overall system matrix
     # The matrix form for target qubits permutations
@@ -59,7 +58,7 @@ def apply_unitary_to_qubits(n_qubits, new_order, unitary):
 def get_IQFT_matrix(n_bits):
     mat_size = int(math.pow(2,n_bits))
     omega = cmath.exp(2j*math.pi/mat_size)
-    final_mat = np.ones((mat_size,mat_size), dtype=np.complex_)
+    final_mat = np.ones((mat_size,mat_size), dtype=np.complex128)
     for i in range(mat_size):
         final_mat[:,i] *= omega ** i
     for i in range(mat_size):
@@ -106,7 +105,7 @@ n_bits = A_bits + n_eig_eval_bits
 n_states = A_mat_size * n_eig_eval_states
 
 # initialize intial state vector to all zeros in computational basis
-state_vec = np.zeros(n_states, dtype=np.complex_)
+state_vec = np.zeros(n_states, dtype=np.complex128)
 state_vec[0] = 1
 
 print("setup time: ", time.time() - last_time)

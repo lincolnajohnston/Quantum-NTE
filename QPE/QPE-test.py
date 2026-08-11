@@ -12,13 +12,12 @@ from QLSS import LcuFunctions
 import math
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
 from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Statevector
 from QPE import PhaseEstimation
-from qiskit import Aer
 ########## Comments/Thoughts ##########
 # What needs to be done, in approximate order
 # -solve coarse matrix, interpolate eigenvector to fine mesh, run the rest of the algorithm on it
@@ -160,7 +159,7 @@ if method == "statevector":
     # print statevector of non-junk qubits
     state_vec = job_result.get_statevector(qc).data
     eigvec_collapsed = state_vec[0:int(math.pow(2,n_eig_eval_bits+A_bits)):int(math.pow(2,n_eig_eval_bits))]
-    state_vec_dict = {'{:b}'.format(i).zfill(qc.num_qubits):round(state_vec[i],5) for i in range(len(state_vec))}
+    state_vec_dict = {'{:b}'.format(i).zfill(qc.num_qubits):state_vec[i] for i in range(len(state_vec))}
     N_eig_eval = int(math.pow(2,n_eig_eval_bits))
     state_vec_collapsed = np.zeros(N_eig_eval)
     for i in range(N_eig_eval):

@@ -17,14 +17,12 @@ from typing import Union, Optional, List, Callable
 import numpy as np
 
 from qiskit import QuantumCircuit
-from qiskit.algorithms.algorithm_result import AlgorithmResult
-
 from .observables.linear_system_observable import LinearSystemObservable
 
 # pylint: disable=too-few-public-methods
 
 
-class LinearSolverResult(AlgorithmResult):
+class LinearSolverResult:
     """A base class for linear systems results.
 
     The linear systems algorithms return an object of the type ``LinearSystemsResult``
@@ -32,8 +30,6 @@ class LinearSolverResult(AlgorithmResult):
     """
 
     def __init__(self) -> None:
-        super().__init__()
-
         # Set the default to None, if the algorithm knows how to calculate it can override it.
         self._state: Optional[Union[QuantumCircuit, np.ndarray]] = None
         self._observable: Optional[Union[float, List[float]]] = None

@@ -1,8 +1,7 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit.library import UnitaryGate, ZGate
 from qiskit.quantum_info import Statevector
-from qiskit_aer import Aer, AerSimulator
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 import numpy as np
 import math
 import random

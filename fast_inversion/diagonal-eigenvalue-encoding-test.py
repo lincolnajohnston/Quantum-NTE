@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-import ProblemData
+from helpers import ProblemData
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -10,15 +10,14 @@ import math
 import cmath
 
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, AerSimulator, QasmSimulator
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, PhaseGate
 from qiskit.quantum_info import Statevector
-from QPE import PhaseEstimation
-from qiskit_aer import Aer, AerSimulator
+from QPE.QPE import PhaseEstimation
 from qiskit.quantum_info import Operator
-import fable
+from helpers import fable
 
 def get_eigenvalues(N, K_min, K_max, x_range):
     h = x_range / N
@@ -36,13 +35,13 @@ def apply_eigenvalue_matrix(qc, n, eig_gates, ancilla_gate):
     # E_N^(plus)
     for i in range(n):
         bit_index = eig_gates[n - i - 1]
-        plus_rotation_gate = U1Gate(math.pi / (math.pow(2,i+1))).control(1, ctrl_state = '0')
+        plus_rotation_gate = PhaseGate(math.pi / (math.pow(2,i+1))).control(1, ctrl_state = '0')
         qc.append(plus_rotation_gate, [ancilla_gate, bit_index])
 
     # E_N^(minus)
     for i in range(n):
         bit_index = n - i - 1
-        minus_rotation_gate = U1Gate(-math.pi / (math.pow(2,i+1))).control(1)
+        minus_rotation_gate = PhaseGate(-math.pi / (math.pow(2,i+1))).control(1)
         qc.append(minus_rotation_gate, [ancilla_gate, bit_index])
 
     qc.h(ancilla_gate)
@@ -54,13 +53,13 @@ def apply_cosine_matrix(qc, n, eig_gates, ancilla_gate):
     # E_N^(plus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        plus_rotation_gate = U1Gate(math.pi / (math.pow(2,i))).control(1, ctrl_state = '0')
+        plus_rotation_gate = PhaseGate(math.pi / (math.pow(2,i))).control(1, ctrl_state = '0')
         qc.append(plus_rotation_gate, [ancilla_gate, bit_index])
 
     # E_N^(minus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        minus_rotation_gate = U1Gate(-math.pi / (math.pow(2,i))).control(1)
+        minus_rotation_gate = PhaseGate(-math.pi / (math.pow(2,i))).control(1)
         qc.append(minus_rotation_gate, [ancilla_gate, bit_index])
 
     qc.h(ancilla_gate)
@@ -79,13 +78,13 @@ def apply_cosine_eigenvalue_matrix(qc, n, eig_gates, ancilla_gates):
     # E_N^(plus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        plus_rotation_gate = U1Gate(math.pi / (math.pow(2,i))).control(2, ctrl_state = '10')
+        plus_rotation_gate = PhaseGate(math.pi / (math.pow(2,i))).control(2, ctrl_state = '10')
         qc.append(plus_rotation_gate, ancilla_gates + [bit_index])
 
     # E_N^(minus)
     for i in range(n+1):
         bit_index = eig_gates[n - i]
-        minus_rotation_gate = U1Gate(-math.pi / (math.pow(2,i))).control(2)
+        minus_rotation_gate = PhaseGate(-math.pi / (math.pow(2,i))).control(2)
         qc.append(minus_rotation_gate, ancilla_gates + [bit_index])
 
     qc.append(control_H,[ag2, ag1])

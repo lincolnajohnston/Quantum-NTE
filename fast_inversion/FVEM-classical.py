@@ -313,7 +313,7 @@ if __name__ == "__main__":
                          dirichlet=boundary_nodes)
 
     # Solve (SPD): CG
-    u, info = cg(A, b, tol=1e-10, maxiter=200)
+    u, info = cg(A, b, rtol=1e-10, atol=0.0, maxiter=200)
     print("CG info =", info)
     print("u =", u.reshape(-1))
 

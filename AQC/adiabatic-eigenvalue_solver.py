@@ -6,14 +6,14 @@ import math
 import cmath
 from scipy.linalg import expm
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import QasmSimulator
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
 from scipy.linalg import eigh
 import time
-import ProblemData
-import LcuFunctions
+from helpers import ProblemData
+from QLSS import LcuFunctions
 
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
@@ -73,10 +73,10 @@ def adiabatic_solver(L_matrix, F_matrix, b_vec, T, M, plot_evolution=False, verb
     #print("delta-t * delta-H = ", np.linalg.norm(dt * (H_P - H_B))) # test whether time steps are small enough
 
     # initialize vectors containing the evolution of the state over time
-    state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex_)
-    expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex_)
-    eigenvector_error = np.zeros((M,1),dtype=np.complex_)
-    eigenvector_error_abs = np.zeros((M,1),dtype=np.complex_)
+    state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex128)
+    expected_state_evolution = np.zeros((M,int(math.pow(2,n_bits + num_LCU_bits))),dtype=np.complex128)
+    eigenvector_error = np.zeros((M,1),dtype=np.complex128)
+    eigenvector_error_abs = np.zeros((M,1),dtype=np.complex128)
     eigenvalue_evolution = np.zeros((len(A_matrix),M))
 
     #lastH = H_B
@@ -268,8 +268,8 @@ print(real_psi_solution)
 psi_initial = np.ones(A_mat_size) / math.sqrt(A_mat_size)
 
 # parametric solutions, run solver for many M and T values
-psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
-psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex128)
+psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex128)
 time1 = time.perf_counter()
 for i, T in enumerate(T_vec):
     for j, M in enumerate(M_vec):

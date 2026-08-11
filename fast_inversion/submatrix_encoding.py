@@ -1,7 +1,7 @@
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister, Qubit, Clbit
 from qiskit.circuit.library.generalized_gates.unitary import UnitaryGate
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate
 from qiskit.quantum_info import Statevector
 import numpy as np
 from scipy.linalg import qr
@@ -149,9 +149,7 @@ for i,b in enumerate(block_position):
         qc.x(n-i-1)
 
 # Simulate and extract statevector
-backend = Aer.get_backend('statevector_simulator')
-result = execute(qc, backend).result()
-state = Statevector(result.get_statevector(qc))
+state = Statevector.from_instruction(qc)
 
 # Extract amplitudes where ancilla = |1⟩ (i.e., successful projection)
 post_selected_state = state.data[:]  # indices 8–15: ancilla = 1

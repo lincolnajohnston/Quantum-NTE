@@ -1,8 +1,8 @@
 from math import pi, acos, sqrt
 import math
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit_aer import Aer, AerSimulator
-from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, U1Gate, IntegerComparator, DraperQFTAdder
+from qiskit.circuit.library import StatePreparation, CXGate, XGate, QFT, HGate, RYGate, IntegerComparator, DraperQFTAdder
 from qiskit.circuit import ControlledGate
 from qiskit.quantum_info import Statevector
 from qiskit.quantum_info import Operator

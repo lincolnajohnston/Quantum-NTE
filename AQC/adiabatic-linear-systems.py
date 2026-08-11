@@ -6,18 +6,17 @@ import math
 import cmath
 from scipy.linalg import expm
 from qiskit import transpile
-from qiskit_aer.aerprovider import QasmSimulator
+from qiskit_aer import Aer, QasmSimulator
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.linalg import ishermitian
 import time
-import ProblemData
+from helpers import ProblemData
 import random
 import os
 
 #from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit import QuantumCircuit, transpile
-from qiskit_aer import Aer
 from qiskit.circuit.library import UnitaryGate
 from qiskit.quantum_info import Operator, Statevector
 from qiskit.visualization import plot_histogram
@@ -55,10 +54,10 @@ def adiabatic_solver(A_matrix, b_vec, M, plot_evolution=False, verbose=False, qi
         qc.initialize(psi, qc.qubits)
 
     # initialize data structures to store the system state as evolution progresses
-    #state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
-    #expected_state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex_)
-    #eigenvector_error = np.zeros((M, 1), dtype=np.complex_)
-    #eigenvector_error_abs = np.zeros((M, 1), dtype=np.complex_)
+    #state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex128)
+    #expected_state_evolution = np.zeros((M, 2 ** n_bits), dtype=np.complex128)
+    #eigenvector_error = np.zeros((M, 1), dtype=np.complex128)
+    #eigenvector_error_abs = np.zeros((M, 1), dtype=np.complex128)
     #eigenvalue_evolution = np.zeros((2 * len(A_matrix), M))
 
     lastH = H_B
@@ -136,7 +135,7 @@ elif data.sim_method == "diffusion":
 #T_vec = np.power(10,range(11))
 #M_vec = np.power(10,range(2,6))
 #T_vec = [1000000]
-M_vec = [1000]
+M_vec = [100]
 #M_vec = np.ones(40) * 500
 n_bits = 1 + int(math.log2(len(A_matrix)))
 
@@ -147,8 +146,8 @@ real_psi_solution = real_psi_solution/np.linalg.norm(real_psi_solution)
 print(real_psi_solution)
 
 # parametric solutions, run solver for many M and T values
-#psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
-#psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex_)
+#psi_solutions = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex128)
+#psi_error = np.zeros((len(T_vec), len(M_vec), len(A_matrix)), dtype=np.complex128)
 time1 = time.perf_counter()
 for j, M in enumerate(M_vec):
     # Use Qiskit for updating state
