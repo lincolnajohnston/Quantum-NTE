@@ -1,13 +1,14 @@
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, transpile
 from qiskit.quantum_info import Operator
-from qiskit.synthesis import SolovayKitaevDecomposition
+from qiskit.synthesis import SolovayKitaevDecomposition, qs_decomposition
 
 import numpy as np
 import Elementary_circuits.subarithmetic_circuits as subarithmetic_circuits
 
+_SOLOVAY_KITAEV = None
+
 # TODO: check that all of the gate counts for each of the implementations are correct and consistent with my writeup
 # TODO: add in the controlled arbitrary gate using constant overhead from https://arxiv.org/abs/1206.0758
-# TODO: add in the arbitrary n-qubit gate implementation adn tests
 # TODO: add in the n-controlled x gate implementation and tests
 # TODO: move on to more complex operations (comparator operators, division operators, maybe others will be needed)
 # TODO: then can start using these operations in the creation of the components of the Deiml-type absorption matrices and diffusion matrices
@@ -24,6 +25,8 @@ def arbitrary_single_qubit_gate(qc, matrix, x, epsilon):
         - O(log^3.97(1/epsilon)) T gates
         """
 
+    global _SOLOVAY_KITAEV
+
     matrix = np.asarray(matrix, dtype=complex)
     if matrix.shape != (2, 2):
         raise ValueError("matrix must be a 2x2 unitary")
@@ -38,9 +41,12 @@ def arbitrary_single_qubit_gate(qc, matrix, x, epsilon):
         else x
     )
 
+    if _SOLOVAY_KITAEV is None:
+        _SOLOVAY_KITAEV = SolovayKitaevDecomposition()
+
     recursion_degree = 0
     while True:
-        approximation = SolovayKitaevDecomposition().run(matrix, recursion_degree)
+        approximation = _SOLOVAY_KITAEV.run(matrix, recursion_degree)
         approximate_matrix = Operator(approximation).data
         phase = np.angle(np.vdot(approximate_matrix, matrix))
         error = np.linalg.norm(
@@ -50,6 +56,54 @@ def arbitrary_single_qubit_gate(qc, matrix, x, epsilon):
             qc.compose(approximation, qubits=[target_qubit], inplace=True)
             return qc
         recursion_degree += 1
+
+def arbitrary_n_qubit_gate(qc, matrix, x, epsilon):
+    """Approximate an n-qubit unitary using only Clifford and T gates."""
+    matrix = np.asarray(matrix, dtype=complex)
+    qubits = list(x) if hasattr(x, "__iter__") else [x]
+    dimension = 2 ** len(qubits)
+
+    if matrix.shape != (dimension, dimension):
+        raise ValueError(
+            f"matrix must have shape ({dimension}, {dimension}) for "
+            f"{len(qubits)} qubits"
+        )
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+    if not np.allclose(matrix.conj().T @ matrix, np.eye(dimension), atol=1e-10):
+        raise ValueError("matrix must be unitary")
+
+    decomposition = transpile(
+        qs_decomposition(matrix),
+        basis_gates=["u", "cx"],
+        optimization_level=0,
+    )
+    one_qubit_count = sum(
+        instruction.operation.num_qubits == 1
+        for instruction in decomposition.data
+    )
+    per_gate_epsilon = epsilon / max(one_qubit_count, 1)
+
+    qc.global_phase += decomposition.global_phase
+    for instruction in decomposition.data:
+        operation = instruction.operation
+        indices = [
+            decomposition.find_bit(qubit).index for qubit in instruction.qubits
+        ]
+        if operation.name == "cx":
+            qc.cx(qubits[indices[0]], qubits[indices[1]])
+        elif operation.num_qubits == 1:
+            arbitrary_single_qubit_gate(
+                qc,
+                Operator(operation).data,
+                [qubits[indices[0]]],
+                per_gate_epsilon,
+            )
+        else:
+            raise RuntimeError(
+                f"unexpected gate {operation.name!r} in unitary decomposition"
+            )
+    return qc
 
 # |a>^n -> |(2**n - 1) - a>^n
 def Ones_complement_inplace(qc, a):
