@@ -60,13 +60,12 @@ def arbitrary_single_qubit_gate(qc, matrix, x, epsilon):
 def arbitrary_n_qubit_gate(qc, matrix, x, epsilon):
     """Approximate an n-qubit unitary using only Clifford and T gates."""
     matrix = np.asarray(matrix, dtype=complex)
-    qubits = list(x) if hasattr(x, "__iter__") else [x]
-    dimension = 2 ** len(qubits)
+    dimension = 2 ** len(x)
 
     if matrix.shape != (dimension, dimension):
         raise ValueError(
             f"matrix must have shape ({dimension}, {dimension}) for "
-            f"{len(qubits)} qubits"
+            f"{len(x)} qubits"
         )
     if epsilon <= 0:
         raise ValueError("epsilon must be positive")
@@ -91,12 +90,12 @@ def arbitrary_n_qubit_gate(qc, matrix, x, epsilon):
             decomposition.find_bit(qubit).index for qubit in instruction.qubits
         ]
         if operation.name == "cx":
-            qc.cx(qubits[indices[0]], qubits[indices[1]])
+            qc.cx(x[indices[0]], x[indices[1]])
         elif operation.num_qubits == 1:
             arbitrary_single_qubit_gate(
                 qc,
                 Operator(operation).data,
-                [qubits[indices[0]]],
+                [x[indices[0]]],
                 per_gate_epsilon,
             )
         else:
