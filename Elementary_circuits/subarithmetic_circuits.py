@@ -1,4 +1,3 @@
-from qiskit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
 import numpy as np
 

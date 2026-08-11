@@ -3,7 +3,7 @@ from qiskit.quantum_info import Operator
 from qiskit.synthesis import SolovayKitaevDecomposition, qs_decomposition
 
 import numpy as np
-import Elementary_circuits.subarithmetic_circuits as subarithmetic_circuits
+from Elementary_circuits import subarithmetic_circuits
 
 _SOLOVAY_KITAEV = None
 

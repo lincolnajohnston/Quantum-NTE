@@ -1,6 +1,4 @@
-from qiskit import QuantumCircuit
-
-import numpy as np
+import Elementary_circuits.basic_arithmetic_circuits as basic_arithmetic_circuits
 import Elementary_circuits.subarithmetic_circuits as subarithmetic_circuits
 
 # TODO: make sure every arithmetic operation has an inplace and outofplace version, and create tests to show that all of these work
@@ -26,11 +24,13 @@ def Twos_complement_inplace(qc, a, b):
     - 0 T gates before decomposing CCX and Peres gates
     """
     # Form the one's complement, 2**n - 1 - a.
-    Ones_complement_inplace(qc, a)
+    basic_arithmetic_circuits.Ones_complement_inplace(qc, a)
     # Store the constant 1 as little-endian 00...001 in the work register.
     qc.x(b[0])  # prepare the constant 1 in the work register
     # a <- a + 1 (mod 2**n), while the constant register b is preserved.
-    Addition_gate_inplace(qc, b, a, modular=True, useElementaryGates=False)
+    basic_arithmetic_circuits.Addition_gate_inplace(
+        qc, b, a, modular=True, useElementaryGates=False
+    )
     qc.x(b[0])  # Addition_gate preserves b, so return it to |0...0>
 
 
@@ -150,18 +150,32 @@ def Twos_complement_integer_multiplication_gate(qc, a, b, p, sign, useElementary
     # Preserve the original signs while a and b are temporarily magnitudes.
     qc.cx(a[n - 1], sign[0])
     qc.cx(b[n - 1], sign[1])
-    controlled_twos_complement(qc, sign[0], a, useElementaryGates=useElementaryGates)
-    controlled_twos_complement(qc, sign[1], b, useElementaryGates=useElementaryGates)
+    controlled_twos_complement_inplace(
+        qc, sign[0], a, useElementaryGates=useElementaryGates
+    )
+    controlled_twos_complement_inplace(
+        qc, sign[1], b, useElementaryGates=useElementaryGates
+    )
 
-    Integer_multiplication_gate(qc, a, b, p, useElementaryGates=useElementaryGates)
+    basic_arithmetic_circuits.Integer_multiplication_gate(
+        qc, a, b, p, useElementaryGates=useElementaryGates
+    )
 
     # Applying negation once per negative operand computes the sign XOR: two
     # negative operands cause two negations, which cancel.
-    controlled_twos_complement(qc, sign[0], p[:2 * n], useElementaryGates=useElementaryGates)
-    controlled_twos_complement(qc, sign[1], p[:2 * n], useElementaryGates=useElementaryGates)
+    controlled_twos_complement_inplace(
+        qc, sign[0], p[:2 * n], useElementaryGates=useElementaryGates
+    )
+    controlled_twos_complement_inplace(
+        qc, sign[1], p[:2 * n], useElementaryGates=useElementaryGates
+    )
 
     # Restore the input registers before clearing their saved sign bits.
-    controlled_twos_complement(qc, sign[1], b, useElementaryGates=useElementaryGates)
-    controlled_twos_complement(qc, sign[0], a, useElementaryGates=useElementaryGates)
+    controlled_twos_complement_inplace(
+        qc, sign[1], b, useElementaryGates=useElementaryGates
+    )
+    controlled_twos_complement_inplace(
+        qc, sign[0], a, useElementaryGates=useElementaryGates
+    )
     qc.cx(b[n - 1], sign[1])
     qc.cx(a[n - 1], sign[0])
