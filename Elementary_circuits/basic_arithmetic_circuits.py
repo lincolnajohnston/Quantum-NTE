@@ -18,10 +18,13 @@ def Ones_complement_inplace(qc, a):
     although the operation itself is independent of qubit order.
 
 
-    Gate Counts:
+    Resource Requirements:
+    Gates:
     - n X gates
     ----------------
-    -n Clifford gates
+    - n Clifford gates
+    Ancillas: 0
+    Post-selection qubits: 0
     """
     # X maps each stored bit a[i] to a[i] XOR 1.
     for i in range(len(a)):
@@ -35,12 +38,15 @@ def Ones_complement_outofplace(qc, a, result):
     The input register is preserved, and ``result`` must have the same width
     as ``a`` and start in |0>.
 
-    Gate Counts:
+    Resource Requirements:
+    Gates:
     - n X gates
     - n CNOT gates
     ----------------
     - 2n Clifford gates
     - 0 T gates
+    Ancillas: 0 (the n-qubit result is output, not workspace)
+    Post-selection qubits: 0
     """
     if len(a) != len(result):
         raise ValueError("a and result must have the same length")
@@ -51,8 +57,7 @@ def Ones_complement_outofplace(qc, a, result):
 
 
 # From section 4 of https://arxiv.org/pdf/1712.02630
-# modular: |a>^n|b>^n -> |a>^n|(a + b) mod 2**n>^n
-# full: |a>^n|b>^(n+1) -> |a>^n|a + b>^(n+1)
+# |a>^n|b> -> |a>^n|a + b> (modulo 2**n in modular mode)
 def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     """Add little-endian register ``a`` into ``b`` while preserving ``a``.
 
@@ -66,7 +71,8 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     sum bits while propagating carries.  ``useElementaryGates`` selects the
     Clifford+T implementations of the Toffoli and Peres gates when true.
 
-    Gate Counts (Modular):
+    Resource Requirements:
+    Gates (Modular):
     - Modular: (12n - 12) H gates
     - Modular: (9n - 9) S-dagger gates
     - Modular: (18n - 18) T gates
@@ -75,7 +81,7 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     - Modular: (40n - 41) Clifford gates
     - Modular: (18n - 18) T gates
 
-    Gate Counts (Full):
+    Gates (Full):
     - Full: (12n - 6) H gates
     - Full: (9n - 4) S-dagger gates
     - Full: (18n - 9) T gates
@@ -83,6 +89,8 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     ----------------
     - Full: (40n - 23) Clifford gates
     - Full: (18n - 9) T gates
+    Ancillas: 0
+    Post-selection qubits: 0
     """
     n = len(a)
     if n + int(not modular) != len(b):
@@ -106,19 +114,19 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     # Step 3: Toffoli gates generate the carry dependencies in a[i + 1].
     for i in range(n-1):
         qc.barrier(label="Toffoli Gate")
-        subarithmetic_circuits.Toffoli_gate(qc, [a[i+1], a[i], b[i]], useElementaryGates = useElementaryGates) # using Clifford + T gates
+        subarithmetic_circuits.Toffoli_gate(qc, [a[i+1], a[i], b[i]], [0, 0], useElementaryGates = useElementaryGates) # using Clifford + T gates
 
     qc.barrier(label="Step 4")
 
     # Step 4: Peres gates propagate carries back toward the low end while
     # writing the corresponding sum bits into b.
     if not modular:
-        subarithmetic_circuits.Peres_gate(qc, [b[n], b[n-1], a[n-1]], useElementaryGates = useElementaryGates)
+        subarithmetic_circuits.Peres_gate(qc, [b[n], b[n-1], a[n-1]], [0, 0], useElementaryGates = useElementaryGates)
     else:
         qc.cx(a[n-1], b[n-1])
     for i in range(n-2, -1,-1):
         qc.barrier(label="Peres Gate")
-        subarithmetic_circuits.Peres_gate(qc, [a[i+1], b[i], a[i]], useElementaryGates = useElementaryGates)
+        subarithmetic_circuits.Peres_gate(qc, [a[i+1], b[i], a[i]], [0, 0], useElementaryGates = useElementaryGates)
 
     qc.barrier(label="Step 5")
 
@@ -133,8 +141,7 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
         qc.cx(a[i], b[i])
 
 
-# modular: |a>^n|b>^n|0>^n -> |a>^n|b>^n|(a + b) mod 2**n>^n
-# full: |a>^n|b>^(n+1)|0>^(n+1) -> |a>^n|b>^(n+1)|a + b>^(n+1)
+# |a>^n|b>|0> -> |a>^n|b>|a + b> (modulo 2**n in modular mode)
 def Addition_gate_outofplace(qc, a, b, result, modular=False, useElementaryGates=True):
     """Add ``a`` and ``b`` into a zeroed result register, preserving both inputs.
 
@@ -148,7 +155,8 @@ def Addition_gate_outofplace(qc, a, b, result, modular=False, useElementaryGates
     CNOTs first copy ``b`` into ``result``.  The existing in-place adder then
     adds ``a`` to that copy, so neither source register is changed.
 
-    Gate Counts (Modular):
+    Resource Requirements:
+    Gates (Modular):
     - Modular: (12n - 12) H gates
     - Modular: (9n - 9) S-dagger gates
     - Modular: (18n - 18) T gates
@@ -157,7 +165,7 @@ def Addition_gate_outofplace(qc, a, b, result, modular=False, useElementaryGates
     - Modular: (41n - 41) Clifford gates
     - Modular: (18n - 18) T gates
 
-    Gate Counts (Full):
+    Gates (Full):
     - Full: (12n - 6) H gates
     - Full: (9n - 4) S-dagger gates
     - Full: (18n - 9) T gates
@@ -165,6 +173,8 @@ def Addition_gate_outofplace(qc, a, b, result, modular=False, useElementaryGates
     ----------------
     - Full: (41n - 22) Clifford gates
     - Full: (18n - 9) T gates
+    Ancillas: 0 (the result register is output)
+    Post-selection qubits: 0
     """
     n = len(a)
     expected_width = n + int(not modular)
@@ -197,7 +207,8 @@ def Integer_subtraction_gate_inplace(qc, a, b, useElementaryGates=True):
     Both registers are little-endian and have the same nonzero width.  The
     input register ``a`` is preserved while underflow in ``b`` wraps around.
 
-    Gate Counts:
+    Resource Requirements:
+    Gates:
     - (12n - 12) H gates
     - (9n - 9) S gates
     - (18n - 18) T-dagger gates
@@ -205,6 +216,8 @@ def Integer_subtraction_gate_inplace(qc, a, b, useElementaryGates=True):
     ----------------
     - (40n - 41) Clifford gates
     - (18n - 18) T gates
+    Ancillas: 0
+    Post-selection qubits: 0
     """
     n = len(a)
     if n == 0 or len(b) != n:
@@ -236,7 +249,8 @@ def Integer_subtraction_gate_outofplace(qc, a, b, p, useElementaryGates=True):
 
     ``p`` must start in |0> so that copying ``b`` into it prepares the minuend.
 
-    Gate Counts:
+    Resource Requirements:
+    Gates:
     - (12n - 12) H gates
     - (9n - 9) S gates
     - (18n - 18) T-dagger gates
@@ -244,6 +258,8 @@ def Integer_subtraction_gate_outofplace(qc, a, b, p, useElementaryGates=True):
     ----------------
     - (41n - 41) Clifford gates
     - (18n - 18) T gates
+    Ancillas: 0 (the p register is output)
+    Post-selection qubits: 0
     """
     n = len(a)
     if n == 0 or len(b) != n or len(p) != n:
@@ -261,8 +277,7 @@ def Integer_subtraction_gate_outofplace(qc, a, b, p, useElementaryGates=True):
     )
 
 
-# modular: |c>^1|a>^n|b>^n|0>^1|0>^1 -> |c>^1|a>^n|(b + c*a) mod 2**n>^n|0>^1|0>^1
-# full: |c>^1|a>^n|b>^n|0>^1|0>^1 -> |c>^1|a>^n|(b + c*a) mod 2**n>^n|floor((b + c*a)/2**n)>^1|0>^1
+# |c>|a>^n|b>^n|0>|0> -> |c>|a>^n|b+c*a>|carry>|0>
 def Conditional_addition_gate_inplace(
     qc, ctrl, a, b, carry, work, modular=False, useElementaryGates=True
 ):
@@ -276,7 +291,8 @@ def Conditional_addition_gate_inplace(
 
     Registers are little-endian and must have the same width of at least two qubits.
 
-    Gate Counts (Modular):
+    Resource Requirements:
+    Gates (Modular):
     - Modular: (18n - 12) H gates
     - Modular: (12n - 8) S-dagger gates
     - Modular: (27n - 18) T gates
@@ -285,7 +301,7 @@ def Conditional_addition_gate_inplace(
     - Modular: (58n - 42) Clifford gates
     - Modular: (27n - 18) T gates
 
-    Gate Counts (Full):
+    Gates (Full):
     - Full: (18n + 6) H gates
     - Full: (12n + 4) S-dagger gates
     - Full: (27n + 9) T gates
@@ -293,6 +309,8 @@ def Conditional_addition_gate_inplace(
     ----------------
     - Full: (58n + 12) Clifford gates
     - Full: (27n + 9) T gates
+    Ancillas: 2 clean qubits (carry and work), restored in modular mode
+    Post-selection qubits: 0
     """
     n = len(a)
     if n < 2 or len(b) != n:
@@ -302,7 +320,8 @@ def Conditional_addition_gate_inplace(
     def apply_toffoli(control_1, control_2, target):
         """Apply a Toffoli gate using its elementary-gate implementation.
 
-        Gate Counts:
+        Resource Requirements:
+        Gates:
         - 6 H gates
         - 4 S-dagger gates
         - 9 T gates
@@ -310,8 +329,10 @@ def Conditional_addition_gate_inplace(
         ----------------
         - 18 Clifford gates
         - 9 T gates
+        Ancillas: 0
+        Post-selection qubits: 0
         """
-        subarithmetic_circuits.Toffoli_gate(qc, [target, control_1, control_2], useElementaryGates=useElementaryGates)
+        subarithmetic_circuits.Toffoli_gate(qc, [target, control_1, control_2], [0, 0], useElementaryGates=useElementaryGates)
 
     # Step 1: encode the initial propagate information in b[1:].
     for i in range(1, n):
@@ -349,8 +370,7 @@ def Conditional_addition_gate_inplace(
         qc.cx(a[i], b[i])
 
 
-# modular: |c>^1|a>^n|b>^n|0>^n|0>^1 -> |c>^1|a>^n|b>^n|(b + c*a) mod 2**n>^n|0>^1
-# full: |c>^1|a>^n|b>^n|0>^(n+1)|0>^1 -> |c>^1|a>^n|b>^n|b + c*a>^(n+1)|0>^1
+# |c>|a>^n|b>^n|0>|0> -> |c>|a>^n|b>|b+c*a>|0>
 def Conditional_addition_gate_outofplace(
     qc, ctrl, a, b, result, work, modular=False, useElementaryGates=True
 ):
@@ -365,7 +385,8 @@ def Conditional_addition_gate_outofplace(
     CNOTs copy ``b`` into the low result bits before the in-place conditional
     adder targets that copy.
 
-    Gate Counts (Modular):
+    Resource Requirements:
+    Gates (Modular):
     - Modular: (18n - 12) H gates
     - Modular: (12n - 8) S-dagger gates
     - Modular: (27n - 18) T gates
@@ -374,7 +395,7 @@ def Conditional_addition_gate_outofplace(
     - Modular: (59n - 42) Clifford gates
     - Modular: (27n - 18) T gates
 
-    Gate Counts (Full):
+    Gates (Full):
     - Full: (18n + 6) H gates
     - Full: (12n + 4) S-dagger gates
     - Full: (27n + 9) T gates
@@ -382,6 +403,8 @@ def Conditional_addition_gate_outofplace(
     ----------------
     - Full: (59n + 12) Clifford gates
     - Full: (27n + 9) T gates
+    Ancillas: 1 clean work qubit (the result register is output)
+    Post-selection qubits: 0
     """
     n = len(a)
     if n < 2 or len(b) != n:
@@ -435,7 +458,8 @@ def Integer_multiplication_gate(qc, a, b, p, useElementaryGates=True):
     addition of ``a`` into the shifted slice ``p[j:j+n]``; the next two p
     qubits supply that addition's carry and clean work qubit.
 
-    Gate Counts:
+    Resource Requirements:
+    Gates:
     - (18n**2 - 6n - 6) H gates
     - (12n**2 - 4n - 4) S-dagger gates
     - (27n**2 - 9n - 9) T gates
@@ -443,6 +467,8 @@ def Integer_multiplication_gate(qc, a, b, p, useElementaryGates=True):
     ----------------
     - (58n**2 - 28n - 12) Clifford gates
     - (27n**2 - 9n - 9) T gates
+    Ancillas: 1 clean work qubit in addition to the 2n-qubit product output
+    Post-selection qubits: 0
     """
     n = len(a)
     if n != len(b) or len(p) != 2 * n + 1:
@@ -450,7 +476,7 @@ def Integer_multiplication_gate(qc, a, b, p, useElementaryGates=True):
 
     # Paper Step 1: p[i] ^= b[0] AND a[i], forming a*b[0].
     for i in range(n):
-        subarithmetic_circuits.Toffoli_gate(qc, [p[i], b[0], a[i]], useElementaryGates=useElementaryGates)
+        subarithmetic_circuits.Toffoli_gate(qc, [p[i], b[0], a[i]], [0, 0], useElementaryGates=useElementaryGates)
 
     # Paper Steps 2 and 3: when b[j] is one, add a*2**j into p.
     for j in range(1, n):

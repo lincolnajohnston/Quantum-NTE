@@ -102,6 +102,7 @@ def controlled_twos_complement_inplace(qc, ctrl, register, useElementaryGates=Tr
             subarithmetic_circuits.Toffoli_gate(
                 qc,
                 [register[i], controls[0], controls[1]],
+                [0, 0],
                 useElementaryGates=useElementaryGates,
             )
         else:
