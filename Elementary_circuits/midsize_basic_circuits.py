@@ -207,6 +207,60 @@ def controlled_arbitrary_n_qubit_gate(qc, matrix, control_qubits, target_qubits,
 def integer_division_gate(qc, dividend_qubits, divisor_qubits, quotient_qubits, remainder_qubits):
     pass  # Placeholder for future implementation of integer division gate
 
+def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit):
+    a_qubits = list(a_qubits)
+    b_qubits = list(b_qubits)
+    if not a_qubits or len(a_qubits) != len(b_qubits):
+        raise ValueError("a_qubits and b_qubits must have the same nonzero length")
+    if len(a_qubits) == 1:
+        qc.x(b_qubits[0])
+        qc.cx(b_qubits[0], output_qubit)
+        qc.x(b_qubits[0])
+        subarithmetic_circuits.Toffoli_gate(
+            qc,
+            [output_qubit, a_qubits[0], b_qubits[0]],
+            [0, 0],
+            gate_types="elementary",
+        )
+        return
+
+    # Form a - b as a + ~b + 1 in the extended register.  Its carry-out is
+    # one exactly when the unsigned subtraction does not borrow, i.e. a >= b.
+    for qubit in b_qubits:
+        qc.x(qubit)
+
+    extended_b = list(b_qubits) + [output_qubit]
+    basic_arithmetic_circuits.Addition_gate_inplace(
+        qc, a_qubits, extended_b, modular=False
+    )
+
+    # Increment the complete n+1 bit result so that overflow from ~b + 1 is
+    # retained in output_qubit (including the important b == 0 case).
+    if len(b_qubits) == 1:
+        qc.cx(b_qubits[0], output_qubit)
+    else:
+        qc.mcx(b_qubits, output_qubit)
+    for i in range(len(b_qubits) - 1, 0, -1):
+        if i == 1:
+            qc.cx(b_qubits[0], b_qubits[1])
+        else:
+            qc.mcx(b_qubits[:i], b_qubits[i])
+    qc.x(b_qubits[0])
+
+    # Restore b without touching the comparison bit: subtract a modulo 2^n,
+    # undo the low-register increment, and undo the one's complement.
+    basic_arithmetic_circuits.Integer_subtraction_gate_inplace(
+        qc, a_qubits, b_qubits
+    )
+    qc.x(b_qubits[0])
+    for i in range(1, len(b_qubits)):
+        if i == 1:
+            qc.cx(b_qubits[0], b_qubits[1])
+        else:
+            qc.mcx(b_qubits[:i], b_qubits[i])
+    for qubit in b_qubits:
+        qc.x(qubit)
+
 # |x>|0>_ps|0...0> -> |x>|[x >= M]>_ps|0...0>
 def pi_projector_gate(qc, x, ps, ancillas, M):
     """Put the projector onto ``x < M`` in the post-selected zero block.

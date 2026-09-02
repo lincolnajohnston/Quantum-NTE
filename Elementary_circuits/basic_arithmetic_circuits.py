@@ -7,6 +7,7 @@ from Elementary_circuits import subarithmetic_circuits
 
 _SOLOVAY_KITAEV = None
 
+# TODO: add in integer subtraction gates that use full addition as a subroutine instead of modular addition so that the carry qubit will be flipped if the result is negative (i.e. if a > b)
 # TODO: check that all of the gate counts for each of the implementations are correct and consistent with my writeup
 
 # |a>^n -> |(2**n - 1) - a>^n
@@ -114,19 +115,19 @@ def Addition_gate_inplace(qc, a, b, modular=False, useElementaryGates=True):
     # Step 3: Toffoli gates generate the carry dependencies in a[i + 1].
     for i in range(n-1):
         qc.barrier(label="Toffoli Gate")
-        subarithmetic_circuits.Toffoli_gate(qc, [a[i+1], a[i], b[i]], [0, 0], useElementaryGates = useElementaryGates) # using Clifford + T gates
+        subarithmetic_circuits.Toffoli_gate(qc, [a[i+1], a[i], b[i]], [0, 0], gate_types="elementary" if useElementaryGates else "single") # using Clifford + T gates
 
     qc.barrier(label="Step 4")
 
     # Step 4: Peres gates propagate carries back toward the low end while
     # writing the corresponding sum bits into b.
     if not modular:
-        subarithmetic_circuits.Peres_gate(qc, [b[n], b[n-1], a[n-1]], [0, 0], useElementaryGates = useElementaryGates)
+        subarithmetic_circuits.Peres_gate(qc, [b[n], b[n-1], a[n-1]], [0, 0], gate_types="elementary" if useElementaryGates else "single")
     else:
         qc.cx(a[n-1], b[n-1])
     for i in range(n-2, -1,-1):
         qc.barrier(label="Peres Gate")
-        subarithmetic_circuits.Peres_gate(qc, [a[i+1], b[i], a[i]], [0, 0], useElementaryGates = useElementaryGates)
+        subarithmetic_circuits.Peres_gate(qc, [a[i+1], b[i], a[i]], [0, 0], gate_types="elementary" if useElementaryGates else "single")
 
     qc.barrier(label="Step 5")
 
@@ -332,7 +333,7 @@ def Conditional_addition_gate_inplace(
         Ancillas: 0
         Post-selection qubits: 0
         """
-        subarithmetic_circuits.Toffoli_gate(qc, [target, control_1, control_2], [0, 0], useElementaryGates=useElementaryGates)
+        subarithmetic_circuits.Toffoli_gate(qc, [target, control_1, control_2], [0, 0], gate_types="elementary" if useElementaryGates else "single")
 
     # Step 1: encode the initial propagate information in b[1:].
     for i in range(1, n):
@@ -476,7 +477,7 @@ def Integer_multiplication_gate(qc, a, b, p, useElementaryGates=True):
 
     # Paper Step 1: p[i] ^= b[0] AND a[i], forming a*b[0].
     for i in range(n):
-        subarithmetic_circuits.Toffoli_gate(qc, [p[i], b[0], a[i]], [0, 0], useElementaryGates=useElementaryGates)
+        subarithmetic_circuits.Toffoli_gate(qc, [p[i], b[0], a[i]], [0, 0], gate_types="elementary" if useElementaryGates else "single")
 
     # Paper Steps 2 and 3: when b[j] is one, add a*2**j into p.
     for j in range(1, n):

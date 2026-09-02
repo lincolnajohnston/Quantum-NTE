@@ -103,7 +103,7 @@ def controlled_twos_complement_inplace(qc, ctrl, register, useElementaryGates=Tr
                 qc,
                 [register[i], controls[0], controls[1]],
                 [0, 0],
-                useElementaryGates=useElementaryGates,
+                gate_types="elementary" if useElementaryGates else "single",
             )
         else:
             qc.mcx(controls, register[i])
