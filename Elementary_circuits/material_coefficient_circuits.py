@@ -47,7 +47,7 @@ def _constant_comparator(qc, x, threshold, flag, bound, useElementaryGates=True)
     return qc
 
 
-def material_coefficient_block_encoding(qc, x, ps, ancillas, blocks, alpha=None):
+def material_coefficient_block_encoding(qc, x, ps, ancillas, blocks, alpha=None, useElementaryGates=True):
     """Append a block encoding of a piecewise-constant diagonal matrix.
 
     ``blocks`` contains nonoverlapping ``(start, stop, value)`` triples, with
@@ -138,12 +138,12 @@ def material_coefficient_block_encoding(qc, x, ps, ancillas, blocks, alpha=None)
             continue
         # [x >= start] XOR [x >= stop] is the interval membership flag.
         for bound in (start, stop):
-            _constant_comparator(qc, x, threshold, flag, bound)
+            _constant_comparator(qc, x, threshold, flag, bound, useElementaryGates=useElementaryGates)
         theta = 2 * np.arccos(np.clip(abs(value) / alpha, 0.0, 1.0))
         qc.cry(theta - np.pi, flag, ps[0])
         # The flag phase supplies the sign or complex phase of the coefficient.
         if np.angle(value) != 0:
             qc.p(float(np.angle(value)), flag)
         for bound in (stop, start):
-            _constant_comparator(qc, x, threshold, flag, bound)
+            _constant_comparator(qc, x, threshold, flag, bound, useElementaryGates=useElementaryGates)
     return qc
