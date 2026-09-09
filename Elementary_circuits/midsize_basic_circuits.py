@@ -207,7 +207,8 @@ def controlled_arbitrary_n_qubit_gate(qc, matrix, control_qubits, target_qubits,
 def integer_division_gate(qc, dividend_qubits, divisor_qubits, quotient_qubits, remainder_qubits):
     pass  # Placeholder for future implementation of integer division gate
 
-def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit):
+def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit, useElementaryGates=True):
+    """Toggle a >= b, preserving both registers; optionally use Clifford+T."""
     a_qubits = list(a_qubits)
     b_qubits = list(b_qubits)
     if not a_qubits or len(a_qubits) != len(b_qubits):
@@ -220,9 +221,35 @@ def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit):
             qc,
             [output_qubit, a_qubits[0], b_qubits[0]],
             [0, 0],
-            gate_types="elementary",
+            gate_types="elementary" if useElementaryGates else "single",
         )
         return
+
+    def controlled_x(controls, target):
+        if not useElementaryGates:
+            qc.mcx(controls, target)
+            return
+
+        def toffoli(a, b, target):
+            subarithmetic_circuits.T_count_optimized_Toffoli_gate(
+                qc, a, b, target, [0, 0]
+            )
+
+        if len(controls) == 2:
+            toffoli(*controls, target)
+            return
+        # The address register supplies dirty workspace. Two ladder sweeps
+        # cancel its initial values and restore it, even when entangled.
+        work = a_qubits[:len(controls) - 2]
+        ladder = [(controls[0], controls[1], work[0])]
+        ladder += [(controls[i + 1], work[i - 1], work[i])
+                   for i in range(1, len(work))]
+        for sweep in (ladder, ladder[1:]):
+            for operands in sweep:
+                toffoli(*operands)
+            toffoli(controls[-1], work[-1], target)
+            for operands in reversed(sweep):
+                toffoli(*operands)
 
     # Form a - b as a + ~b + 1 in the extended register.  Its carry-out is
     # one exactly when the unsigned subtraction does not borrow, i.e. a >= b.
@@ -231,7 +258,8 @@ def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit):
 
     extended_b = list(b_qubits) + [output_qubit]
     basic_arithmetic_circuits.Addition_gate_inplace(
-        qc, a_qubits, extended_b, modular=False
+        qc, a_qubits, extended_b, modular=False,
+        useElementaryGates=useElementaryGates
     )
 
     # Increment the complete n+1 bit result so that overflow from ~b + 1 is
@@ -239,25 +267,25 @@ def integer_comparator_gate(qc, a_qubits, b_qubits, output_qubit):
     if len(b_qubits) == 1:
         qc.cx(b_qubits[0], output_qubit)
     else:
-        qc.mcx(b_qubits, output_qubit)
+        controlled_x(b_qubits, output_qubit)
     for i in range(len(b_qubits) - 1, 0, -1):
         if i == 1:
             qc.cx(b_qubits[0], b_qubits[1])
         else:
-            qc.mcx(b_qubits[:i], b_qubits[i])
+            controlled_x(b_qubits[:i], b_qubits[i])
     qc.x(b_qubits[0])
 
     # Restore b without touching the comparison bit: subtract a modulo 2^n,
     # undo the low-register increment, and undo the one's complement.
     basic_arithmetic_circuits.Integer_subtraction_gate_inplace(
-        qc, a_qubits, b_qubits
+        qc, a_qubits, b_qubits, useElementaryGates=useElementaryGates
     )
     qc.x(b_qubits[0])
     for i in range(1, len(b_qubits)):
         if i == 1:
             qc.cx(b_qubits[0], b_qubits[1])
         else:
-            qc.mcx(b_qubits[:i], b_qubits[i])
+            controlled_x(b_qubits[:i], b_qubits[i])
     for qubit in b_qubits:
         qc.x(qubit)
 
